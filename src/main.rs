@@ -1,4 +1,5 @@
-use graphql_parser::query::{parse_query, Definition, OperationDefinition, Query};
+use convert_case::{Case, Casing};
+use graphql_parser::query::{parse_query, Definition, OperationDefinition, Query, Selection};
 fn main() {
     println!("{}", build_root());
 }
@@ -9,9 +10,9 @@ fn build_root() -> String {
         for definition in tree.definitions.iter() {
             match definition {
                 Definition::Operation(operation_definition) => {
-                    build_operation_definition(operation_definition)
+                    return build_operation_definition(operation_definition)
                 }
-                Definition::Fragment(fragment_definition) => {
+                Definition::Fragment(_fragment_definition) => {
                     return String::from("Definition::Fragment not implemented yet")
                 }
             }
@@ -25,23 +26,45 @@ fn build_operation_definition<'a>(
 ) -> String {
     match operation_definition {
         OperationDefinition::Query(query) => build_query(query),
-        OperationDefinition::Subscription() => {
+        OperationDefinition::Subscription(_) => {
             return String::from("Subscription not yet implemented");
         }
-        OperationDefinition::Mutation() => {
+        OperationDefinition::Mutation(_) => {
             return String::from("Mutation not yet implemented");
         }
-        OperationDefinition::SelectionSet() => {
+        OperationDefinition::SelectionSet(_) => {
             return String::from("SelectionSet not yet implemented");
         }
     }
 }
 
 fn build_query<'a>(query: &'a Query<&'a str>) -> String {
-    let constant = "select to_json(
+    let mut hardcoded = "select to_json(
       json_build_array(__local_0__.\"id\")
-    ) as \"__identifiers\",";
-    String::from("stinky")
+    ) as \"__identifiers\",".to_owned();
+
+    let dynamic = query
+            .selection_set
+            .items
+            .iter()
+            .map(|selection| build_selection(selection))
+            .fold(String::new(), |a, b| format!("{}{}",a, b));
+    hardcoded.push_str(&dynamic);
+    return hardcoded
+}
+
+fn build_selection<'a>(selection: &'a Selection<&'a str>) -> String {
+    match selection {
+        Selection::Field(field) => format!(
+            "to_json((__local_0__.\"{}\")) as \"{}\"",
+            field.name.to_case(Case::Snake),
+            field.name
+        ),
+        Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),
+        Selection::InlineFragment(_) => String::from("InlineFragment not implemented"),
+    }
+}
+fn build_attributes(){
 }
 //to_json((__local_0__."body_part")) as "bodyPart",
 //to_json((__local_0__."exercise_type")) as "exerciseType"
