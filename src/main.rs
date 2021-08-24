@@ -1,7 +1,10 @@
 use convert_case::{Case, Casing};
 use graphql_parser::query::{parse_query, Definition, OperationDefinition, Query, Selection};
+use std::time::Instant;
 fn main() {
+    let before = Instant::now();
     println!("{}", build_root());
+    println!("Elapsed time: {:.2?}", before.elapsed());
 }
 
 fn build_root() -> String {
@@ -25,7 +28,13 @@ fn build_operation_definition<'a>(
     operation_definition: &'a OperationDefinition<&'a str>,
 ) -> String {
     match operation_definition {
-        OperationDefinition::Query(query) => build_query(query),
+        OperationDefinition::Query(query) => format!(
+            "select to_json(
+              json_build_array(__local_0__.\"id\")
+            ) as \"__identifiers\", 
+            {}",
+            build_query(query)
+        ),
         OperationDefinition::Subscription(_) => {
             return String::from("Subscription not yet implemented");
         }
@@ -41,36 +50,39 @@ fn build_operation_definition<'a>(
 fn build_query<'a>(query: &'a Query<&'a str>) -> String {
     let mut hardcoded = "select to_json(
       json_build_array(__local_0__.\"id\")
-    ) as \"__identifiers\",".to_owned();
+    ) as \"__identifiers\","
+        .to_owned();
 
-    let dynamic = query
-            .selection_set
-            .items
-            .iter()
-            .map(|selection| build_selection(selection))
-            .fold(String::new(), |a, b| format!("{}{}",a, b));
+    let dynamic = build_selection(&query.selection_set.items[0]);
     hardcoded.push_str(&dynamic);
-    return hardcoded
+    return hardcoded;
 }
 
 fn build_selection<'a>(selection: &'a Selection<&'a str>) -> String {
     match selection {
-        Selection::Field(field) => format!(
-            "to_json((__local_0__.\"{}\")) as \"{}\"",
-            field.name.to_case(Case::Snake),
-            field.name
-        ),
+        Selection::Field(field) => {
+            if field.selection_set.items.is_empty() {
+                format!(
+                    "to_json((__local_0__.\"{}\")) as \"{}\"
+                    ",
+                    field.name.to_case(Case::Snake),
+                    field.name,
+                )
+            } else {
+                field
+                    .selection_set
+                    .items
+                    .iter()
+                    .map(|selection| build_selection(selection))
+                    .fold(String::new(), |a, b| format!("{}{}", a, b))
+            }
+        }
         Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),
         Selection::InlineFragment(_) => String::from("InlineFragment not implemented"),
     }
 }
-fn build_attributes(){
-}
-//to_json((__local_0__."body_part")) as "bodyPart",
-//to_json((__local_0__."exercise_type")) as "exerciseType"
-//from (
-//  select __local_0__.*
-//  from "public"."exercise" as __local_0__
-//  where (TRUE) and (TRUE)
-//  order by __local_0__."id" ASC
-//) __local_0__"
+
+//from "public"."app_user" as __local_0__
+//where (
+//  __local_0__."id" = $1
+//) and (TRUE) and (TRUE)
