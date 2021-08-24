@@ -28,13 +28,7 @@ fn build_operation_definition<'a>(
     operation_definition: &'a OperationDefinition<&'a str>,
 ) -> String {
     match operation_definition {
-        OperationDefinition::Query(query) => format!(
-            "select to_json(
-              json_build_array(__local_0__.\"id\")
-            ) as \"__identifiers\", 
-            {}",
-            build_query(query)
-        ),
+        OperationDefinition::Query(query) => build_query(query),
         OperationDefinition::Subscription(_) => {
             return String::from("Subscription not yet implemented");
         }
@@ -61,20 +55,39 @@ fn build_query<'a>(query: &'a Query<&'a str>) -> String {
 fn build_selection<'a>(selection: &'a Selection<&'a str>) -> String {
     match selection {
         Selection::Field(field) => {
+            //no children
             if field.selection_set.items.is_empty() {
+                //simply add json field with the field name in snake case 
                 format!(
-                    "to_json((__local_0__.\"{}\")) as \"{}\"
+                    "to_json((__local_0__.\"{}\")) as \"{}\",
                     ",
                     field.name.to_case(Case::Snake),
                     field.name,
                 )
             } else {
-                field
+                //otherwise call this method recursively on all children and join their outputs
+                //together
+                let children = field
                     .selection_set
                     .items
                     .iter()
                     .map(|selection| build_selection(selection))
-                    .fold(String::new(), |a, b| format!("{}{}", a, b))
+                    .fold(String::new(), |a, b| format!("{}{}", a, b));
+
+                //remove the last trailing comma of the last select
+                println!("{}", children.len());
+                
+                //the last select has an unnecessary comma which causes syntax errors
+                let without_last_comma = &children[0..children.len() - 22];
+
+                //select all the child fields from this 
+                format!(
+                    "{}
+                     from \"{}\" as __local_0__
+                    ",
+                    without_last_comma,
+                    "exercise"
+                )
             }
         }
         Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),
