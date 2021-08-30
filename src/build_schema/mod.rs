@@ -1,50 +1,83 @@
 use convert_case::{Case, Casing};
+use inflector::Inflector;
 use postgres::{Client, NoTls};
+use graphql_parser::parse_schema;
+
 pub fn client_connect() -> Result<String, postgres::Error> {
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
 
-    let mut schema = String::from("");
-    let mut current_graphql_type = String::from("type{{\n");
+    let mut schema_types = String::from("");
 
-    let rows = client.query("select table_name, column_name, data_type from information_schema.columns where table_schema = 'public' group by table_name, data_type, column_name", &[])?.iter().peekable();
+    let mut query_types = String::from("type query{\n");
+    let mut current_graphql_type = String::from("");
 
-    let previous_row: &str;
-    match rows.peek(){
-        Some(first_row) => previous_row = first_row,
-        None => panic!("Your database has no columns!")
-    };
+    let query_res = client.query(
+        "
+            select table_name, column_name, data_type,
+            case is_nullable
+                when 'NO' then '!'
+                when 'YES' then ''
+            end as nullable
+            from information_schema.columns where table_schema = 'public' 
+            group by table_name, column_name, data_type, nullable;
+",
+        &[],
+    )?;
 
+    let mut rows = query_res.iter();
+
+    let mut previous_table_name = String::from("");
 
     while let Some(current_row) = rows.next() {
         //if the table names match then keep building the current graphql type
         let table_name: &str = current_row.get("table_name");
         let column_name: &str = current_row.get("column_name");
         let data_type: &str = current_row.get("data_type");
+        let nullable: &str = current_row.get("nullable");
         let graphql_type = match data_type {
             "integer" => "Int",
             "smallint" => "Int",
             "boolean" => "Boolean",
             "character varying" => "String",
-            "Text" => "String",
+            "text" => "String",
+            "timestamp with time zone" => "Datetime",
+            "timestamp" => "Datetime",
+            "float" => "Float",
+            "double precision" => "Float",
             _ => "Ooopsie",
         };
-        let previous_table_name: &str = previous_row.get("table_name");
         if previous_table_name != table_name {
             //close the current type;
-            current_graphql_type.push_str("\n}}\n");
+            current_graphql_type.push_str("\n}\n\n");
 
             //add the current type to the schema
-            schema.push_str(&current_graphql_type);
+            schema_types.push_str(&current_graphql_type);
+
+            let camel_table_name = table_name.to_case(Case::Camel);
+            let upper_camel_table_name = table_name.to_case(Case::UpperCamel); query_types.push_str(&format!("\t{}: [{}!]!\n", camel_table_name.to_plural(), upper_camel_table_name));
 
             //reinitialize the current type with the opening
-            current_graphql_type = String::from("type{{\n");
+            current_graphql_type = format!("type {} {{", upper_camel_table_name);
+
+            previous_table_name = table_name.to_string();
         }
 
         current_graphql_type.push_str(&format!(
-            "\n\t{}: {}",
+            "\n\t{}: {}{}",
             column_name.to_case(Case::Camel),
-            graphql_type
+            graphql_type,
+            nullable
         ));
     }
+    //remove the leading {\n\n inserted when the previous_table_name doesn't initially match
+    let complete_schema = format!("{}{}{}", query_types, "\n}", &schema_types[3..]);
+    println!("{}", complete_schema);
+
+    match parse_schema::<&str>(&complete_schema){
+        Ok(schema) => println!("{:?}", schema),
+        Err(e) => println!("{}", e)
+    }
+
+
     Ok("It went ok".to_string())
 }
