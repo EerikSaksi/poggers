@@ -71,13 +71,10 @@ pub fn client_connect() -> Result<String, postgres::Error> {
     }
     //remove the leading {\n\n inserted when the previous_table_name doesn't initially match
     let complete_schema = format!("{}{}{}", query_types, "\n}", &schema_types[3..]);
-    println!("{}", complete_schema);
 
     match parse_schema::<&str>(&complete_schema){
         Ok(schema) => println!("{:?}", schema),
         Err(e) => println!("{}", e)
     }
-
-
     Ok("It went ok".to_string())
 }

@@ -14,10 +14,6 @@ impl Query {
     }
 }
 
-
-#[tokio::main]
-async fn main() {
-    let schema = Schema::new(Query, EmptyMutation, EmptySubscription);
-    let res = schema.execute("{ add(a: 10, b: 20) }").await;
-    println!("{:?}", serde_json::to_string(&res));
+fn main(){
+    build_schema::client_connect();
 }
