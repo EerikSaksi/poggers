@@ -1,15 +1,11 @@
 use convert_case::{Case, Casing};
-use inflector::Inflector;
-use postgres::{Client, NoTls};
 use graphql_parser::parse_schema;
+use graphql_parser::schema::Document;
+use inflector::Inflector;
+use postgres::{Client, NoTls, Row};
 
-pub fn client_connect() -> Result<String, postgres::Error> {
+pub fn client_connect() -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
-
-    let mut schema_types = String::from("");
-
-    let mut query_types = String::from("type query{\n");
-    let mut current_graphql_type = String::from("");
 
     let query_res = client.query(
         "
@@ -23,12 +19,17 @@ pub fn client_connect() -> Result<String, postgres::Error> {
 ",
         &[],
     )?;
+    Ok(query_res)
+}
 
-    let mut rows = query_res.iter();
-
+pub fn create_schema<'a>() -> Document<'a, &'a str> {
     let mut previous_table_name = String::from("");
+    let mut schema_types = String::from("");
+    let mut query_types = String::from("type query{\n");
+    let mut current_graphql_type = String::from("");
 
-    while let Some(current_row) = rows.next() {
+    let rows = client_connect().unwrap();
+    while let Some(current_row) = rows.iter().next() {
         //if the table names match then keep building the current graphql type
         let table_name: &str = current_row.get("table_name");
         let column_name: &str = current_row.get("column_name");
@@ -53,8 +54,13 @@ pub fn client_connect() -> Result<String, postgres::Error> {
             //add the current type to the schema
             schema_types.push_str(&current_graphql_type);
 
-            let camel_table_name = table_name.to_case(Case::Camel);
-            let upper_camel_table_name = table_name.to_case(Case::UpperCamel); query_types.push_str(&format!("\t{}: [{}!]!\n", camel_table_name.to_plural(), upper_camel_table_name));
+            let camel_table_name = table_name.to_camel_case();
+            let upper_camel_table_name = table_name.to_case(Case::UpperCamel);
+            query_types.push_str(&format!(
+                "\t{}: [{}!]!\n",
+                camel_table_name.to_plural(),
+                upper_camel_table_name
+            ));
 
             //reinitialize the current type with the opening
             current_graphql_type = format!("type {} {{", upper_camel_table_name);
@@ -71,10 +77,4 @@ pub fn client_connect() -> Result<String, postgres::Error> {
     }
     //remove the leading {\n\n inserted when the previous_table_name doesn't initially match
     let complete_schema = format!("{}{}{}", query_types, "\n}", &schema_types[3..]);
-
-    match parse_schema::<&str>(&complete_schema){
-        Ok(schema) => println!("{:?}", schema),
-        Err(e) => println!("{}", e)
-    }
-    Ok("It went ok".to_string())
 }

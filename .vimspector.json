@@ -1,0 +1,24 @@
+{
+	"configurations": {
+		"Run - CodeLLDB": {
+			"adapter": "CodeLLDB",
+			"configuration": {
+				"request": "launch",
+				"program": "${workspaceRoot}/target/debug/postgrustql"
+			},
+			"variables": {
+				"build": { "shell": "cargo build" }
+			},
+			"breakpoints": {
+				"exception": {
+					"cpp_catch": "",
+					"cpp_throw": "",
+					"objc_catch": "",
+					"objc_throw": "",
+					"swift_catch": "",
+					"swift_throw": ""
+				}
+			}
+		}
+	}
+}
