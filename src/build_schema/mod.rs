@@ -1,9 +1,10 @@
+use crate::handle_query::{Poggers, SqlOperation};
 use convert_case::{Case, Casing};
 use graphql_parser::parse_schema;
 use graphql_parser::schema::Document;
 use inflector::Inflector;
 use postgres::{Client, NoTls, Row};
-
+use std::collections::HashMap;
 pub fn client_connect() -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
 
@@ -22,11 +23,12 @@ pub fn client_connect() -> Result<Vec<Row>, postgres::Error> {
     Ok(query_res)
 }
 
-pub fn create_schema<'a>() -> Document<'a, &'a str> {
+pub fn create_schema<'a>() -> (String, Poggers<'a>) {
     let mut previous_table_name = String::from("");
     let mut schema_types = String::from("");
     let mut query_types = String::from("type query{\n");
     let mut current_graphql_type = String::from("");
+    let poggers_hashmap: HashMap<String, Poggers> = HashMap::new();
 
     let rows = client_connect().unwrap();
     while let Some(current_row) = rows.iter().next() {
@@ -56,11 +58,14 @@ pub fn create_schema<'a>() -> Document<'a, &'a str> {
 
             let camel_table_name = table_name.to_camel_case();
             let upper_camel_table_name = table_name.to_case(Case::UpperCamel);
+            let many_query_name = camel_table_name.to_plural();
+
             query_types.push_str(&format!(
                 "\t{}: [{}!]!\n",
-                camel_table_name.to_plural(),
+                many_query_name,
                 upper_camel_table_name
             ));
+            poggers_hashmap.insert(many_query_name, SqlOperation{table_name, is_many: true});
 
             //reinitialize the current type with the opening
             current_graphql_type = format!("type {} {{", upper_camel_table_name);
@@ -77,4 +82,6 @@ pub fn create_schema<'a>() -> Document<'a, &'a str> {
     }
     //remove the leading {\n\n inserted when the previous_table_name doesn't initially match
     let complete_schema = format!("{}{}{}", query_types, "\n}", &schema_types[3..]);
+
+    (complete_schema, Poggers{graphql_query_to_operation: poggers_hashmap})
 }
