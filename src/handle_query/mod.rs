@@ -4,12 +4,12 @@ use graphql_parser::query::{
 };
 use std::collections::HashMap;
 
-pub struct SqlOperation {
-    table_name: &str,
+pub struct SqlOperation<'a> {
+    table_name: &'a str,
     is_many: bool,
 }
 pub struct Poggers<'a> {
-    pub graphql_query_to_operation: HashMap<&'a str, SqlOperation>,
+    pub graphql_query_to_operation: HashMap<String, SqlOperation<'a>>,
 }
 
 impl Poggers<'_> {
@@ -93,17 +93,15 @@ impl Poggers<'_> {
                                 //query_string.push_str(&field.name.to_singular());
                                 query_string
                                     .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC)");
-                            } else {
-                                if let Some((name, val)) = field.arguments.iter().next() {
-                                    query_string.push_str("from \"public\".\"");
-                                    //query_string.push_str(&field.name.to_singular());
-                                    query_string.push_str("\" as __local_0__ ");
-                                    query_string.push_str("where ( __local_0__.\"");
-                                    query_string.push_str(name);
-                                    query_string.push_str("\" = ");
-                                    query_string.push_str(&val.to_string());
-                                    query_string.push(')');
-                                }
+                            } else if let Some((name, val)) = field.arguments.iter().next() {
+                                query_string.push_str("from \"public\".\"");
+                                //query_string.push_str(&field.name.to_singular());
+                                query_string.push_str("\" as __local_0__ ");
+                                query_string.push_str("where ( __local_0__.\"");
+                                query_string.push_str(name);
+                                query_string.push_str("\" = ");
+                                query_string.push_str(&val.to_string());
+                                query_string.push(')');
                             }
                         }
                         None => panic!("graphql_query_to_operation doesn't contain {}", field.name),
