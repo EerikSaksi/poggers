@@ -7,7 +7,7 @@
 				"program": "${workspaceRoot}/target/debug/postgrustql"
 			},
 			"variables": {
-				"build": { "shell": "cargo build" }
+				"build": { "shell": "cargo run" }
 			},
 			"breakpoints": {
 				"exception": {

@@ -3,10 +3,13 @@ use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
 };
 use std::collections::HashMap;
+#[cfg(test)]
+#[path = "./test.rs"]
+mod test;
 
 pub struct SqlOperation<'a> {
-    table_name: &'a str,
-    is_many: bool,
+    pub table_name: &'a str,
+    pub is_many: bool,
 }
 pub struct Poggers<'a> {
     pub graphql_query_to_operation: HashMap<String, SqlOperation<'a>>,
@@ -15,13 +18,13 @@ pub struct Poggers<'a> {
 impl Poggers<'_> {
     pub fn build_root(&self, query: &str) -> Result<String, ParseError> {
         let ast = parse_query::<&str>(query)?;
-        let definition = ast.definitions.iter().next().unwrap();
+        let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
-                return Ok(self.build_operation_definition(operation_definition));
+                Ok(self.build_operation_definition(operation_definition))
             }
             Definition::Fragment(_fragment_definition) => {
-                return Ok(String::from("Definition::Fragment not implemented yet"));
+                Ok(String::from("Definition::Fragment not implemented yet"))
             }
         }
     }
@@ -33,13 +36,13 @@ impl Poggers<'_> {
         match operation_definition {
             OperationDefinition::Query(query) => self.build_query(query),
             OperationDefinition::Subscription(_) => {
-                return String::from("Subscription not yet implemented");
+                String::from("Subscription not yet implemented")
             }
-            OperationDefinition::Mutation(_) => {
-                return String::from("Mutation not yet implemented");
-            }
+
+            OperationDefinition::Mutation(_) => String::from("Mutation not yet implemented"),
+
             OperationDefinition::SelectionSet(_) => {
-                return String::from("SelectionSet not yet implemented");
+                String::from("SelectionSet not yet implemented")
             }
         }
     }
@@ -64,7 +67,7 @@ impl Poggers<'_> {
                     let mut to_return = String::from("to_json((__local_0__.\"");
                     to_return.push_str(&field.name.to_case(Case::Snake));
                     to_return.push_str("\")) as \"");
-                    to_return.push_str("\")) as \"");
+                    to_return.push_str(field.name);
                     to_return.push_str("\",");
                     to_return
                 } else {
@@ -89,19 +92,21 @@ impl Poggers<'_> {
                                 //select all the child fields from this
                                 //
                                 query_string
-                                    .push_str("from ( select __local_0__.* from \"public\".\")");
+                                    .push_str(" from ( select __local_0__.* from \"public\".\"");
+                                query_string.push_str(table_name);
                                 //query_string.push_str(&field.name.to_singular());
                                 query_string
-                                    .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC)");
-                            } else if let Some((name, val)) = field.arguments.iter().next() {
-                                query_string.push_str("from \"public\".\"");
+                                    .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC )");
+                            } else if let Some((name, val)) = field.arguments.get(0) {
+                                query_string.push_str(" from \"public\".\"");
+                                query_string.push_str(table_name);
                                 //query_string.push_str(&field.name.to_singular());
-                                query_string.push_str("\" as __local_0__ ");
-                                query_string.push_str("where ( __local_0__.\"");
+                                query_string.push_str("\" as __local_0__");
+                                query_string.push_str(" where ( __local_0__.\"");
                                 query_string.push_str(name);
                                 query_string.push_str("\" = ");
                                 query_string.push_str(&val.to_string());
-                                query_string.push(')');
+                                query_string.push_str(" )");
                             }
                         }
                         None => panic!("graphql_query_to_operation doesn't contain {}", field.name),

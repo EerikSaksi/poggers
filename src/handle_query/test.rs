@@ -1,5 +1,6 @@
-use super::build_root;
+use super::{Poggers, SqlOperation};
 use graphql_parser::query::ParseError;
+use std::collections::HashMap;
 fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
     assert!(actual.is_ok());
     actual
@@ -11,7 +12,10 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
 
 #[test]
 fn simple_query() {
-    let actual = build_root(
+    let mut graphql_query_to_operation = HashMap::new();
+    graphql_query_to_operation.insert(String::from("exercises"), SqlOperation{is_many: true, table_name: "exercise"});
+    let pogg = Poggers{graphql_query_to_operation};
+    let actual = pogg.build_root(
         "
             query {
                 exercises {
@@ -35,7 +39,10 @@ fn simple_query() {
 
 #[test]
 fn simple_query_with_filter() {
-    let actual = build_root(
+    let mut graphql_query_to_operation = HashMap::new();
+    graphql_query_to_operation.insert(String::from("exercise"), SqlOperation{is_many: false, table_name: "exercise"});
+    let pogg = Poggers{graphql_query_to_operation};
+    let actual = pogg.build_root(
         "
             query {
               exercise(id: 123) {
