@@ -2,6 +2,7 @@ use convert_case::{Case, Casing};
 use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
 };
+use std::time::Instant;
 use std::collections::HashMap;
 #[cfg(test)]
 #[path = "./test.rs"]
@@ -18,10 +19,13 @@ pub struct Poggers<'a> {
 impl Poggers<'_> {
     pub fn build_root(&self, query: &str) -> Result<String, ParseError> {
         let ast = parse_query::<&str>(query)?;
+        let before = Instant::now();
         let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
-                Ok(self.build_operation_definition(operation_definition))
+                let val = self.build_operation_definition(operation_definition);
+                println!("Elapsed time: {:.2?}", before.elapsed());
+                Ok(val)
             }
             Definition::Fragment(_fragment_definition) => {
                 Ok(String::from("Definition::Fragment not implemented yet"))
@@ -50,8 +54,8 @@ impl Poggers<'_> {
     fn build_query<'a>(&self, query: &'a Query<&'a str>) -> String {
         let mut query_string = String::from(
             "select to_json(
-          json_build_array(__local_0__.\"id\")
-        ) as \"__identifiers\",
+              json_build_array(__local_0__.\"id\")
+            ) as \"__identifiers\",
         ",
         );
         query_string.push_str(&self.build_selection(&query.selection_set.items[0]));

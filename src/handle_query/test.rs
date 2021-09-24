@@ -13,8 +13,16 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
 #[test]
 fn simple_query() {
     let mut graphql_query_to_operation = HashMap::new();
-    graphql_query_to_operation.insert(String::from("exercises"), SqlOperation{is_many: true, table_name: "exercise"});
-    let pogg = Poggers{graphql_query_to_operation};
+    graphql_query_to_operation.insert(
+        String::from("exercises"),
+        SqlOperation {
+            is_many: true,
+            table_name: "exercise",
+        },
+    );
+    let pogg = Poggers {
+        graphql_query_to_operation,
+    };
     let actual = pogg.build_root(
         "
             query {
@@ -40,8 +48,16 @@ fn simple_query() {
 #[test]
 fn simple_query_with_filter() {
     let mut graphql_query_to_operation = HashMap::new();
-    graphql_query_to_operation.insert(String::from("exercise"), SqlOperation{is_many: false, table_name: "exercise"});
-    let pogg = Poggers{graphql_query_to_operation};
+    graphql_query_to_operation.insert(
+        String::from("exercise"),
+        SqlOperation {
+            is_many: false,
+            table_name: "exercise",
+        },
+    );
+    let pogg = Poggers {
+        graphql_query_to_operation,
+    };
     let actual = pogg.build_root(
         "
             query {
@@ -50,7 +66,7 @@ fn simple_query_with_filter() {
               } 
             }",
     );
-    let expected = "select to_json(
+        let expected = "select to_json(
                           json_build_array(__local_0__.\"id\")
                         ) as \"__identifiers\",
                         to_json((__local_0__.\"body_part\")) as \"bodyPart\"
@@ -58,5 +74,66 @@ fn simple_query_with_filter() {
                         where (
                           __local_0__.\"id\" = 123
                         )";
+    test_sql_equality(actual, expected);
+}
+#[test]
+fn join() {
+    let mut graphql_query_to_operation = HashMap::new();
+    graphql_query_to_operation.insert(
+        String::from("exercise"),
+        SqlOperation {
+            is_many: false,
+            table_name: "exercise",
+        },
+    );
+    let pogg = Poggers {
+        graphql_query_to_operation,
+    };
+    let actual = pogg.build_root(
+        "
+        let query{
+          workoutPlans{
+            appUserId
+            workoutPlanDays{
+              workoutPlanId
+            }
+          }
+        }"
+    );
+    let expected = "
+        select to_json(
+          json_build_array(__local_0__.\"id\")
+        ) as \"__identifiers\",
+        to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
+        to_json(
+          (
+            select coalesce(
+              (
+                select json_agg(__local_1__.\"object\")
+                from (
+                  select json_build_object(
+                    '__identifiers'::text,
+                    json_build_array(__local_2__.\"id\"),
+                    'workoutPlanId'::text,
+                    (__local_2__.\"workout_plan_id\")
+                  ) as object
+                  from (
+                    select __local_2__.*
+                    from \"public\".\"workout_plan_day\" as __local_2__
+                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
+                    order by __local_2__.\"id\" ASC
+                  ) __local_2__
+                ) as __local_1__
+              ),
+              '[]'::json
+            )
+          )
+        ) as \"@workoutPlanDays\"
+        from (
+          select __local_0__.*
+          from \"public\".\"workout_plan\" as __local_0__
+          where (TRUE) and (TRUE)
+          order by __local_0__.\"id\" ASC
+        ) __local_0__";
     test_sql_equality(actual, expected);
 }
