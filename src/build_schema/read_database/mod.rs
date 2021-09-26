@@ -5,26 +5,40 @@ pub fn read_tables() -> Result<Vec<Row>, postgres::Error> {
     //https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys
     let query_res = client.query(
         "
-            select cols.table_name, cols.column_name, cols.data_type, ccu.table_name as foreign_table_name,
+            select cols.table_name, cols.column_name,  data_type, foreign_keys.foreign_table_name,
             case is_nullable
                 when 'NO' then '!'
                 when 'YES' then ''
             end as nullable
-            from information_schema.columns as cols 
-            JOIN information_schema.table_constraints AS tc on cols.table_name = tc.table_name and cols.table_schema = tc.table_schema 
-            full JOIN information_schema.key_column_usage AS kcu
-              ON tc.constraint_name = kcu.constraint_name
-              AND tc.table_schema = kcu.table_schema
-            full JOIN information_schema.constraint_column_usage AS ccu
-              ON ccu.constraint_name = tc.constraint_name
-              AND ccu.table_schema = tc.table_schema
-              AND ccu.column_name = cols.column_name 
-              AND ccu.table_schema = 'public'
+            from information_schema.columns as cols left join
+            (
+                SELECT
+                    tc.table_schema source_table_schema, 
+                    tc.table_name source_table_name, 
+                    kcu.column_name as source_column_name, 
+                    ccu.table_schema AS foreign_table_schema,
+                    ccu.table_name AS foreign_table_name,
+                    ccu.column_name AS foreign_column_name 
+                FROM 
+                    information_schema.table_constraints AS tc 
+                    JOIN information_schema.key_column_usage AS kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                      AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage AS ccu
+                      ON ccu.constraint_name = tc.constraint_name
+                      AND ccu.table_schema = tc.table_schema
+                WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public' and ccu.table_schema = 'public'
+            ) as foreign_keys
+            on foreign_keys.source_column_name = column_name and foreign_keys.source_table_name = cols.table_name
             where cols.table_schema = 'public'
-            group by cols.table_name, cols.column_name, cols.data_type, nullable, foreign_table_name;
+            group by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable
+            ;
+
+
+
+
 
 ",
-            //WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public' AND ccu.table_schema = 'public'
         &[],
     )?;
     Ok(query_res)
