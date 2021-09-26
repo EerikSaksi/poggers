@@ -7,5 +7,5 @@ mod handle_query;
 
 #[tokio::main]
 async fn main() {
+    build_schema::create_schema();
 }
-

@@ -2,8 +2,8 @@ use convert_case::{Case, Casing};
 use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
 };
-use std::time::Instant;
 use std::collections::HashMap;
+use std::time::Instant;
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
@@ -19,10 +19,10 @@ pub struct Poggers<'a> {
 impl Poggers<'_> {
     pub fn build_root(&self, query: &str) -> Result<String, ParseError> {
         let ast = parse_query::<&str>(query)?;
-        let before = Instant::now();
         let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
+                let before = Instant::now();
                 let val = self.build_operation_definition(operation_definition);
                 println!("Elapsed time: {:.2?}", before.elapsed());
                 Ok(val)
@@ -99,8 +99,9 @@ impl Poggers<'_> {
                                     .push_str(" from ( select __local_0__.* from \"public\".\"");
                                 query_string.push_str(table_name);
                                 //query_string.push_str(&field.name.to_singular());
-                                query_string
-                                    .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC )");
+                                query_string.push_str(
+                                    "\" as __local_0__ order by __local_0__.\"id\" ASC )",
+                                );
                             } else if let Some((name, val)) = field.arguments.get(0) {
                                 query_string.push_str(" from \"public\".\"");
                                 query_string.push_str(table_name);

@@ -2,16 +2,29 @@ use postgres::{Client, NoTls, Row};
 
 pub fn read_tables() -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
+    //https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys
     let query_res = client.query(
         "
-            select table_name, column_name, data_type,
+            select cols.table_name, cols.column_name, cols.data_type, ccu.table_name as foreign_table_name,
             case is_nullable
                 when 'NO' then '!'
                 when 'YES' then ''
             end as nullable
-            from information_schema.columns where table_schema = 'public' 
-            group by table_name, column_name, data_type, nullable;
+            from information_schema.columns as cols 
+            JOIN information_schema.table_constraints AS tc on cols.table_name = tc.table_name and cols.table_schema = tc.table_schema 
+            full JOIN information_schema.key_column_usage AS kcu
+              ON tc.constraint_name = kcu.constraint_name
+              AND tc.table_schema = kcu.table_schema
+            full JOIN information_schema.constraint_column_usage AS ccu
+              ON ccu.constraint_name = tc.constraint_name
+              AND ccu.table_schema = tc.table_schema
+              AND ccu.column_name = cols.column_name 
+              AND ccu.table_schema = 'public'
+            where cols.table_schema = 'public'
+            group by cols.table_name, cols.column_name, cols.data_type, nullable, foreign_table_name;
+
 ",
+            //WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public' AND ccu.table_schema = 'public'
         &[],
     )?;
     Ok(query_res)

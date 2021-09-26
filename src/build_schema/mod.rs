@@ -1,8 +1,16 @@
 use convert_case::{Case, Casing};
 use inflector::Inflector;
+use std::rc::Rc;
 mod read_database;
 use graphql_parser::parse_schema;
 use graphql_parser::schema::{Definition, ObjectType, TypeDefinition};
+
+struct GraphQLFieldMetadata {
+    //this is optional as a field may be a foreign key to (Some(table_name)), or a column or the
+    //table itself (None)
+    database_table_name: Option<String>,
+    fields: Vec<GraphQLFieldMetadata>,
+}
 
 pub fn create_schema() -> String {
     let mut schema_types = String::from("");
@@ -62,21 +70,19 @@ pub fn create_schema() -> String {
     let ast = parse_schema::<&str>(&schema).unwrap();
     for def in ast.definitions {
         if let Definition::TypeDefinition(TypeDefinition::Object(val)) = def {
-            println!("{:?}", val.fields);
+            if val.name != "Query" {
+                for field in val.fields {}
+            }
         }
     }
     schema
 }
 fn convert_pg_to_gql(data_type: &str) -> String {
     match data_type {
-        "integer" => String::from("Int"),
-        "smallint" => String::from("Int"),
-        "boolean" => String::from("Boolean"),
+        "integer" | "smallint" => String::from("Int"),
         "character varying" => String::from("String"),
         "text" => String::from("String"),
-        "timestamp with time zone" => String::from("Datetime"),
-        "timestamp" => String::from("Datetime"),
-        "float" => String::from("Float"),
+        "timestamp with time zone" | "timestamp" => String::from("Datetime"),
         "double precision" => String::from("Float"),
         other => other.to_case(Case::UpperCamel),
     }
