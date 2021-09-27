@@ -12,6 +12,7 @@ async-graphql = "2.10.0"
 convert_case = "0.4.0"
 futures = "0.3.17"
 graphql-parser = "0.3.0"
+petgraph = "0.6.0"
 postgres = "0.19.1"
 serde_json = "1.0.68"
 tokio = { version = "0.2", features = ["macros", "tcp", "dns", "io-util"] }

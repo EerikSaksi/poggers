@@ -1,6 +1,6 @@
 use convert_case::{Case, Casing};
-mod read_database;
-pub mod create_internal_schema_info;
+pub mod read_database;
+pub mod internal_schema_info;
 use std::collections::HashMap;
 
 
