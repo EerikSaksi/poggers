@@ -31,7 +31,7 @@ pub fn read_tables() -> Result<Vec<Row>, postgres::Error> {
             ) as foreign_keys
             on foreign_keys.source_column_name = column_name and foreign_keys.source_table_name = cols.table_name
             where cols.table_schema = 'public'
-            group by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable
+            order by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable
             ;
 
 

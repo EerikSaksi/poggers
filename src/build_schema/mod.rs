@@ -1,19 +1,10 @@
 use convert_case::{Case, Casing};
-
-use std::rc::Rc;
 mod read_database;
-use graphql_parser::parse_schema;
-use graphql_parser::schema::{Definition, TypeDefinition};
+pub mod create_internal_schema_info;
 use std::collections::HashMap;
 
-struct GraphQLFieldMetadata {
-    //this is optional as a field may be a foreign key to (Some(table_name)), or a column or the
-    //table itself (None)
-    database_table_name: Option<String>,
-    fields: Vec<Rc<GraphQLFieldMetadata>>,
-}
 
-pub fn create_schema() -> String {
+pub fn create_schema_document() -> String {
     let mut schema_types: HashMap<String, String> = HashMap::new();
     //for current_row in read_database::read_type_information().unwrap().iter() {
     //    let type_name: &str = current_row.get("obj_name");
