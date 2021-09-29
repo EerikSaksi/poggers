@@ -6,6 +6,7 @@ mod async_implementation;
 mod build_schema;
 mod handle_query;
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    let g = internal_schema_info::create();
+    println!("hello");
 }
