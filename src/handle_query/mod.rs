@@ -1,31 +1,27 @@
+#[cfg(test)]
+#[path = "./test.rs"]
+mod test;
+use std::collections::HashMap;
+use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
+use petgraph::prelude::NodeIndex;
 use convert_case::{Case, Casing};
 use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
 };
-use std::collections::HashMap;
-use std::time::Instant;
-#[cfg(test)]
-#[path = "./test.rs"]
-mod test;
+use petgraph::graph::DiGraph;
 
-pub struct SqlOperation<'a> {
-    pub table_name: &'a str,
-    pub is_many: bool,
-}
-pub struct Poggers<'a> {
-    pub graphql_query_to_operation: HashMap<String, SqlOperation<'a>>,
+pub struct Poggers {
+    type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    query_to_type: HashMap<String, QueryEdgeInfo>
 }
 
-impl Poggers<'_> {
+impl Poggers {
     pub fn build_root(&self, query: &str) -> Result<String, ParseError> {
         let ast = parse_query::<&str>(query)?;
         let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
-                let before = Instant::now();
-                let val = self.build_operation_definition(operation_definition);
-                println!("Elapsed time: {:.2?}", before.elapsed());
-                Ok(val)
+                Ok(self.build_operation_definition(operation_definition))
             }
             Definition::Fragment(_fragment_definition) => {
                 Ok(String::from("Definition::Fragment not implemented yet"))
@@ -58,11 +54,11 @@ impl Poggers<'_> {
             ) as \"__identifiers\",
         ",
         );
-        query_string.push_str(&self.build_selection(&query.selection_set.items[0]));
+        query_string.push_str(&self.build_selection(&query.selection_set.items[0], self.query_to_type()));
         query_string
     }
 
-    fn build_selection<'a>(&self, selection: &'a Selection<&'a str>) -> String {
+    fn build_selection<'a>(&self, selection: &'a Selection<&'a str>, node_index: NodeIndex<u32>) -> String {
         match selection {
             Selection::Field(field) => {
                 //leaf node

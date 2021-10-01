@@ -1,4 +1,3 @@
-use crate::handle_query::SqlOperation;
 use handle_query::Poggers;
 use std::collections::HashMap;
 use build_schema::internal_schema_info;

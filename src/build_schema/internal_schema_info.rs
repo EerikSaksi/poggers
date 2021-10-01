@@ -1,20 +1,35 @@
 use crate::build_schema::read_database;
+use inflector::Inflector;
 use petgraph::graph::DiGraph;
+use petgraph::prelude::NodeIndex;
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 pub struct GraphQLType {
     selections: HashSet<String>,
     table_name: String,
 }
+pub struct GraphQLEdgeInfo {
+    child_field_name: String,
+    is_many: bool,
+}
+pub struct QueryEdgeInfo {
+    is_many: bool,
+    node_index: NodeIndex<u32>,
+}
 
-pub fn create() -> DiGraph<GraphQLType, ()> {
-    let mut g: DiGraph<GraphQLType, ()> = DiGraph::new();
+pub fn create() -> (
+    DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    HashMap<String, QueryEdgeInfo>,
+) {
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+    let query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+
     for current_row in read_database::read_tables().unwrap().iter() {
         let table_name: String = current_row.get("table_name");
         let column_name: String = current_row.get("column_name");
         let foreign_table_name: Option<String> = current_row.get("foreign_table_name");
         //let nullable: &str = current_row.get("nullable");
-        //let data_type: &str = current_row.get("data_type");
 
         //add this table as a node if no such node
 
@@ -38,25 +53,59 @@ pub fn create() -> DiGraph<GraphQLType, ()> {
                 Some(foreign_index) => foreign_index,
                 None => g.add_node(GraphQLType {
                     selections: HashSet::new(),
-                    table_name: foreign_table_name,
+                    table_name: foreign_table_name.clone(),
                 }),
             };
-            g.add_edge(source_index, foreign_index, ());
+
+            //theres is one foreign object for every table
+            g.add_edge(
+                source_index,
+                foreign_index,
+                GraphQLEdgeInfo {
+                    is_many: false,
+                    child_field_name: foreign_table_name.clone().to_camel_case(),
+                },
+            );
+
+            //there are many foreigns for this table being referred to
+            g.add_edge(
+                foreign_index,
+                source_index,
+                GraphQLEdgeInfo {
+                    is_many: true,
+                    child_field_name: foreign_table_name.to_camel_case().to_plural(),
+                },
+            );
+            query_to_type.insert(
+                foreign_table_name.clone().to_camel_case().to_plural(),
+                QueryEdgeInfo {
+                    node_index: source_index,
+                    is_many: true,
+                },
+            );
+            query_to_type.insert(
+                foreign_table_name.clone().to_camel_case(),
+                QueryEdgeInfo {
+                    node_index: source_index,
+                    is_many: false,
+                },
+            );
         }
+
         g.node_weights_mut().for_each(|graphql_type| {
             if graphql_type.table_name == table_name {
                 graphql_type.selections.insert(column_name.clone());
             }
         });
     }
-    g
+    (g, query_to_type)
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn all_tables_in_graph() {
-        let g = super::create();
+        let g = super::create().0;
         for table_name in [
             "app_user",
             "completed_set",
