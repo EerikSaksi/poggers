@@ -63,7 +63,7 @@ for row in rows {
 
 With regards to queries, initially I wanted to implement my own parser. I saw this as beneficial, as it would allow me to resolve values in one pass. After realizing how hard this would be, and how I would need to keep updating this parser as the GraphQL spec changed, I decided that it would make more sense to simply to download a parser. I benchmarked the parser and was amazed at it's performance. It was able to parse queries in a matter of microseconds. Thus I decided that I should just parse requests, and then visit the generated AST.
 
-Next I decided to try to implement a generalized query parser. This simply visited matched enum types, and then visited the various types. I only implemented visitors for query types, and not mutations and subscriptions. I implmented some tests based on the explain that Postgraphile generated for GraphQL queries. I was able to create a query for 
+Next I decided to try to implement a generalized query parser. This simply visited matched enum types, and then visited the various types. I only implemented visitors for query types, and not mutations and subscriptions. I implemented some tests based on the explain that Postgraphile generated for GraphQL queries. I was able to create a query for 
 
 
 I implemented a visitor design pattern which visited different selections of fields
@@ -71,4 +71,19 @@ I implemented a visitor design pattern which visited different selections of fie
 I used a test driven development in order to progressively add features
 
 Initially no filter select all exercises
-	This was the easiest at all it required was formatting the table name and the fields we wanted to an SQL query. I did this by recursively traversing the fields. If the current field had children, the function was recursively called on all children, and the results were formatted into the parent query. If the current field had no children, they would simply return themselves as a select statement. I had to make sure that I converted all database fields from snake case back to camel case for GraphQL and vice versa
+	This was the easiest at all it required was formatting the table name and the fields we wanted to an SQL query. I did this by recursively traversing the fields. If the current field had children, the function was recursively called on all children, and the results were formatted into the parent query. If the current field had no children, they would simply return themselves as a select statement. I had to make sure that I converted all database fields from snake case back to camel case for GraphQL and vice versa.
+
+	This was also very simple as it only had a depth of one. This select only selected from one table and asked for the fields of this table. This query also did not need to know anything about the database or the GraphQL schema. 
+
+Adding a query which selects a single item based on ID.
+	The JSON build which is applied for a single element is different than that for multiple elements. In addition, there is an additional where clause at the end of the query so we select the correct row. In order to make this test pass, I added a HashMap field to my parser class. This HashMap goes from a String to a boolean (is_many). By doing this I was able to call the correct JSON build SQL code, and to know when to add the filter. I was able to access the ID that was passed to the GraphQL query through the AST. 
+
+Adding a Join query
+
+This increased complexity the most. So far the queries have worked even though they have been relatively blind to the database and the GraphQL schema. In order for joins to work, Poggers has to know when a field belongs to a table, and when a field is foreign. I initially used the graqphql-parser libraries schema parser. I fed the schema parser the containing the GraphQL schema string to see if I could make use of the existing library. After analyzing the data structure I realized that this would not be helpful for my implementation for a few reasons
+
+	1. The fields were all stored as vectors with O(n) read access. This would mean that if I wanted to read e.g the employee fields, I would need to iterate over all types before I found employee. Something like a HashMap would be far more suitable. 
+	2. The data is not circular/recursive in any fashion. A query might select some fields from one type, jump to another type and select some fields, and get some nested fields from a third type. Something involving pointers/a graph would be very helpful for this. This would allow you to process the query, and make calls to foreign tables recursively, passing that query information through the pointer to that data.
+	3. I needed to embed my own context in to the queries, and didn't need a lot of the provided context. Each type should also include the corresponding table it maps to, whether a foreign query returns one or many, etc. There was also a lot of unnecessary context that the parser included, such as row and column position of each field, which I did not need.
+
+I initially tried to create a Graph like structure, where each node would be a type containing a set of terminal fields, and a set of pointers to other types. This proved to be very challenging due to Rust's ownership model. I also tried to create a vector based Graph, where each item was a type which contained its own set of vector indices and it's relation to these types, but rust was also very unhappy with this due to the borrow checker. I caved in and downloaded a package called petcrate which allows you to create a directional Graph. Each node in this directional Graph stores a set containing all names of all terminal fields, and the table the type corresponds to. A node has an edge to another node if one has a foreign key to the other. This edge also contains information about this relation (one to many, many to one, etc) as well as the name of this field (if one to many the field is capitalized otherwise not). 

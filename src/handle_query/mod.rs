@@ -1,18 +1,18 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
-use std::collections::HashMap;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
-use petgraph::prelude::NodeIndex;
 use convert_case::{Case, Casing};
 use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
 };
 use petgraph::graph::DiGraph;
+use petgraph::prelude::NodeIndex;
+use std::collections::HashMap;
 
 pub struct Poggers {
-    type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    query_to_type: HashMap<String, QueryEdgeInfo>
+    pub type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    pub query_to_type: HashMap<String, QueryEdgeInfo>,
 }
 
 impl Poggers {
@@ -54,69 +54,83 @@ impl Poggers {
             ) as \"__identifiers\",
         ",
         );
-        query_string.push_str(&self.build_selection(&query.selection_set.items[0], self.query_to_type()));
+        if let Selection::Field(field) = &query.selection_set.items[0] {
+            let query_type = self.query_to_type.get(field.name).unwrap().node_index;
+            query_string.push_str(&self.build_selection(
+                &query.selection_set.items[0],
+                node_index: query_type.node_index
+            ));
+
+        } else {
+            panic!("First selection_set item isn't a field");
+        }
         query_string
     }
 
-    fn build_selection<'a>(&self, selection: &'a Selection<&'a str>, node_index: NodeIndex<u32>) -> String {
+    fn build_selection<'a>(
+        &self,
+        selection: &'a Selection<&'a str>,
+        node_index: NodeIndex<u32>,
+    ) -> String {
         match selection {
             Selection::Field(field) => {
-                //leaf node
-                if field.selection_set.items.is_empty() {
-                    //simply add json field with the field name in snake case
-                    let mut to_return = String::from("to_json((__local_0__.\"");
-                    to_return.push_str(&field.name.to_case(Case::Snake));
-                    to_return.push_str("\")) as \"");
-                    to_return.push_str(field.name);
-                    to_return.push_str("\",");
-                    to_return
-                } else {
-                    //first we recursively get all queries from the children
-                    let mut query_string = field
-                        .selection_set
-                        .items
-                        .iter()
-                        .map(|selection| self.build_selection(selection))
-                        .collect::<Vec<String>>()
-                        .join("");
-
-                    //the last select has an unnecessary comma which causes syntax errors
-                    query_string.pop();
-
-                    match self.graphql_query_to_operation.get(field.name) {
-                        Some(SqlOperation {
-                            table_name,
-                            is_many,
-                        }) => {
-                            if *is_many {
-                                //select all the child fields from this
-                                //
-                                query_string
-                                    .push_str(" from ( select __local_0__.* from \"public\".\"");
-                                query_string.push_str(table_name);
-                                //query_string.push_str(&field.name.to_singular());
-                                query_string.push_str(
-                                    "\" as __local_0__ order by __local_0__.\"id\" ASC )",
-                                );
-                            } else if let Some((name, val)) = field.arguments.get(0) {
-                                query_string.push_str(" from \"public\".\"");
-                                query_string.push_str(table_name);
-                                //query_string.push_str(&field.name.to_singular());
-                                query_string.push_str("\" as __local_0__");
-                                query_string.push_str(" where ( __local_0__.\"");
-                                query_string.push_str(name);
-                                query_string.push_str("\" = ");
-                                query_string.push_str(&val.to_string());
-                                query_string.push_str(" )");
+                let gql_type = &self.type_graph[node_index]; 
+                //first we recursively get all queries from the children
+                let mut to_return = String::new();
+                for selection in &field.selection_set.items {
+                    match selection {
+                        Selection::Field(field) => {
+                            //this field is terminal
+                            if gql_type.terminal_fields.contains(field.name) {
+                                Poggers::build_terminal_field(&mut to_return, field.name);
                             }
                         }
-                        None => panic!("graphql_query_to_operation doesn't contain {}", field.name),
+
+                        _ => panic!("Non field selection"),
                     }
-                    query_string
                 }
+
+                to_return.pop();
+
+                //match self.graphql_query_to_operation.get(field.name) {
+                //    Some(SqlOperation {
+                //        table_name,
+                //        is_many,
+                //    }) => {
+                //        if *is_many {
+                //            //select all the child fields from this
+                //            //
+                //            query_string
+                //                .push_str(" from ( select __local_0__.* from \"public\".\"");
+                //            query_string.push_str(table_name);
+                //            //query_string.push_str(&field.name.to_singular());
+                //            query_string
+                //                .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC )");
+                //        } else if let Some((name, val)) = field.arguments.get(0) {
+                //            query_string.push_str(" from \"public\".\"");
+                //            query_string.push_str(table_name);
+                //            //query_string.push_str(&field.name.to_singular());
+                //            query_string.push_str("\" as __local_0__");
+                //            query_string.push_str(" where ( __local_0__.\"");
+                //            query_string.push_str(name);
+                //            query_string.push_str("\" = ");
+                //            query_string.push_str(&val.to_string());
+                //            query_string.push_str(" )");
+                //        }
+                //    }
+                //    None => panic!("graphql_query_to_operation doesn't contain {}", field.name),
+                //}
+                to_return
             }
             Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),
             Selection::InlineFragment(_) => String::from("InlineFragment not implemented"),
         }
+    }
+    fn build_terminal_field(to_return: &mut String, field_name: &str) {
+        to_return.push_str("to_json((__local_0__.\"");
+        to_return.push_str(&field_name.to_case(Case::Snake));
+        to_return.push_str("\")) as \"");
+        to_return.push_str(field_name);
+        to_return.push_str("\",");
     }
 }
