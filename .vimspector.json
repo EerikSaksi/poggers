@@ -1,24 +1,42 @@
 {
-	"configurations": {
-		"Run - CodeLLDB": {
-			"adapter": "CodeLLDB",
-			"configuration": {
-				"request": "launch",
-				"program": "${workspaceRoot}/target/debug/postgrustql"
+  "configurations": {
+    "Regular": {
+      "adapter": "CodeLLDB",
+      "configuration": {
+        "request": "launch",
+        "program": "${workspaceRoot}/target/debug/postgrustql"
+      },
+      "variables": {
+        "build": { "shell": "cargo run" }
+      },
+      "breakpoints": {
+        "exception": {
+          "cpp_catch": "",
+          "cpp_throw": "",
+          "objc_catch": "",
+          "objc_throw": "",
+          "swift_catch": "",
+          "swift_throw": ""
+        }
+      }
+    },
+    "Test": {
+      "adapter": "CodeLLDB",
+
+      "configuration": {
+        "request": "launch",
+				"program": "${programName}"
 			},
-			"variables": {
-				"build": { "shell": "cargo run" }
-			},
-			"breakpoints": {
-				"exception": {
-					"cpp_catch": "",
-					"cpp_throw": "",
-					"objc_catch": "",
-					"objc_throw": "",
-					"swift_catch": "",
-					"swift_throw": ""
-				}
-			}
-		}
-	}
+      "breakpoints": {
+        "exception": {
+          "cpp_catch": "",
+          "cpp_throw": "",
+          "objc_catch": "",
+          "objc_throw": "",
+          "swift_catch": "",
+          "swift_throw": ""
+        }
+      }
+    }
+  }
 }

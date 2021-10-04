@@ -55,12 +55,24 @@ impl Poggers {
         ",
         );
         if let Selection::Field(field) = &query.selection_set.items[0] {
-            let query_type = self.query_to_type.get(field.name).unwrap().node_index;
-            query_string.push_str(&self.build_selection(
-                &query.selection_set.items[0],
-                node_index: query_type.node_index
-            ));
-
+            let query_type = self.query_to_type.get(field.name).unwrap();
+            query_string.push_str(
+                &self.build_selection(&query.selection_set.items[0], query_type.node_index),
+            );
+            if query_type.is_many {
+                query_string.push_str(" from ( select __local_0__.* from \"public\".\"");
+                query_string.push_str(&self.type_graph[query_type.node_index].table_name);
+                query_string
+                    .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC ) __local_0__");
+            } else {
+                query_string.push_str(" from \"public\".\"");
+                query_string.push_str(&self.type_graph[query_type.node_index].table_name);
+                query_string.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
+                if let graphql_parser::schema::Value::Int(id) = &field.arguments.get(0).unwrap().1 {
+                    query_string.push_str(&id.as_i64().unwrap().to_string());
+                }
+                query_string.push_str("\n )");
+            }
         } else {
             panic!("First selection_set item isn't a field");
         }
@@ -74,7 +86,7 @@ impl Poggers {
     ) -> String {
         match selection {
             Selection::Field(field) => {
-                let gql_type = &self.type_graph[node_index]; 
+                let gql_type = &self.type_graph[node_index];
                 //first we recursively get all queries from the children
                 let mut to_return = String::new();
                 for selection in &field.selection_set.items {
@@ -91,35 +103,6 @@ impl Poggers {
                 }
 
                 to_return.pop();
-
-                //match self.graphql_query_to_operation.get(field.name) {
-                //    Some(SqlOperation {
-                //        table_name,
-                //        is_many,
-                //    }) => {
-                //        if *is_many {
-                //            //select all the child fields from this
-                //            //
-                //            query_string
-                //                .push_str(" from ( select __local_0__.* from \"public\".\"");
-                //            query_string.push_str(table_name);
-                //            //query_string.push_str(&field.name.to_singular());
-                //            query_string
-                //                .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC )");
-                //        } else if let Some((name, val)) = field.arguments.get(0) {
-                //            query_string.push_str(" from \"public\".\"");
-                //            query_string.push_str(table_name);
-                //            //query_string.push_str(&field.name.to_singular());
-                //            query_string.push_str("\" as __local_0__");
-                //            query_string.push_str(" where ( __local_0__.\"");
-                //            query_string.push_str(name);
-                //            query_string.push_str("\" = ");
-                //            query_string.push_str(&val.to_string());
-                //            query_string.push_str(" )");
-                //        }
-                //    }
-                //    None => panic!("graphql_query_to_operation doesn't contain {}", field.name),
-                //}
                 to_return
             }
             Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),

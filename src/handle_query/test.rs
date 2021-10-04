@@ -54,6 +54,7 @@ fn simple_query() {
         ",
     );
 
+
     let expected = "select to_json(
                           json_build_array(__local_0__.\"id\")
                         ) as \"__identifiers\",
@@ -66,37 +67,50 @@ fn simple_query() {
     test_sql_equality(actual, expected);
 }
 
-//#[test]
-//fn simple_query_with_filter() {
-//    let mut graphql_query_to_operation = HashMap::new();
-//    graphql_query_to_operation.insert(
-//        String::from("exercise"),
-//        SqlOperation {
-//            is_many: false,
-//            table_name: "exercise",
-//        },
-//    );
-//    let pogg = Poggers {
-//        graphql_query_to_operation,
-//    };
-//    let actual = pogg.build_root(
-//        "
-//            query {
-//              exercise(id: 123) {
-//                bodyPart
-//              }
-//            }",
-//    );
-//        let expected = "select to_json(
-//                          json_build_array(__local_0__.\"id\")
-//                        ) as \"__identifiers\",
-//                        to_json((__local_0__.\"body_part\")) as \"bodyPart\"
-//                        from \"public\".\"exercise\" as __local_0__
-//                        where (
-//                          __local_0__.\"id\" = 123
-//                        )";
-//    test_sql_equality(actual, expected);
-//}
+#[test]
+fn simple_query_with_filter() {
+    let mut type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+
+    let mut terminal_fields = HashSet::new();
+    terminal_fields.insert("bodyPart".to_string());
+
+    let node_index = type_graph.add_node(GraphQLType {
+        table_name: "exercise".to_string(),
+        terminal_fields,
+    });
+
+    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+    query_to_type.insert(
+        "exercise".to_string(),
+        QueryEdgeInfo {
+            is_many: false,
+            node_index,
+        },
+    );
+
+    let pogg = Poggers {
+        type_graph,
+        query_to_type,
+    };
+
+    let actual = pogg.build_root(
+        "
+            query {
+              exercise(id: 123) {
+                bodyPart
+              }
+            }",
+    );
+        let expected = "select to_json(
+                          json_build_array(__local_0__.\"id\")
+                        ) as \"__identifiers\",
+                        to_json((__local_0__.\"body_part\")) as \"bodyPart\"
+                        from \"public\".\"exercise\" as __local_0__
+                        where (
+                          __local_0__.\"id\" = 123
+                        )";
+    test_sql_equality(actual, expected);
+}
 //#[test]
 //fn join() {
 //    let mut graphql_query_to_operation = HashMap::new();
