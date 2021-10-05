@@ -1,1 +1,1 @@
-Poggers optimally generates GraphQL employing Rust's speed 
+POGGERS Optimally Generates GraphQL Employing Rust's Speed 
