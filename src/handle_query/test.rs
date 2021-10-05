@@ -40,7 +40,7 @@ fn simple_query() {
         },
     );
 
-    let pogg = Poggers {
+    let mut pogg = Poggers {
         type_graph,
         query_to_type,
         local_id: 0
@@ -89,7 +89,7 @@ fn simple_query_with_filter() {
         },
     );
 
-    let pogg = Poggers {
+    let mut pogg = Poggers {
         type_graph,
         query_to_type,
         local_id: 0

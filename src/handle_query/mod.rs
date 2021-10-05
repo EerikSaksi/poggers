@@ -59,9 +59,10 @@ impl<'b> Poggers {
 
         //create a __local__ string that we can use to distinguish this selection, and increment
         //the local_id to ensure that this stays as unique
-        let mut local_string = String::from("__local__");
+        let mut local_string = String::from("__local_");
         local_string.push_str(&self.local_id.to_string());
         self.local_id += 1;
+        local_string.push_str("__");
 
         if let Selection::Field(field) = &query.selection_set.items[0] {
             let query_type = self.query_to_type.get(field.name).unwrap();
@@ -69,10 +70,17 @@ impl<'b> Poggers {
                 &self.build_selection(&query.selection_set.items[0], query_type.node_index),
             );
             if query_type.is_many {
-                query_string.push_str(" from ( select __local_0__.* from \"public\".\"");
+                query_string.push_str(" from ( select ");
+                query_string.push_str(&local_string);
+                query_string.push_str(".* from \"public\".\"");
+
                 query_string.push_str(&self.type_graph[query_type.node_index].table_name);
-                query_string
-                    .push_str("\" as __local_0__ order by __local_0__.\"id\" ASC ) __local_0__");
+                query_string.push_str("\" as  ");
+                query_string.push_str(&local_string);
+                query_string.push_str(" order by ");
+                query_string.push_str(&local_string);
+                query_string.push_str(".\"id\" ASC ) ");
+                query_string.push_str(&local_string);
             } else {
                 query_string.push_str(" from \"public\".\"");
                 query_string.push_str(&self.type_graph[query_type.node_index].table_name);
