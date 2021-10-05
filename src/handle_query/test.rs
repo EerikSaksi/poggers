@@ -43,6 +43,7 @@ fn simple_query() {
     let pogg = Poggers {
         type_graph,
         query_to_type,
+        local_id: 0
     };
     let actual = pogg.build_root(
         "
@@ -91,6 +92,7 @@ fn simple_query_with_filter() {
     let pogg = Poggers {
         type_graph,
         query_to_type,
+        local_id: 0
     };
 
     let actual = pogg.build_root(

@@ -11,12 +11,14 @@ use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
 
 pub struct Poggers {
-    pub type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    pub query_to_type: HashMap<String, QueryEdgeInfo>,
+    type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    query_to_type: HashMap<String, QueryEdgeInfo>,
+    local_id: u8,
 }
 
-impl Poggers {
-    pub fn build_root(&self, query: &str) -> Result<String, ParseError> {
+#[allow(dead_code)]
+impl<'b> Poggers {
+    pub fn build_root(&mut self, query: &str) -> Result<String, ParseError> {
         let ast = parse_query::<&str>(query)?;
         let definition = ast.definitions.get(0).unwrap();
         match definition {
@@ -30,7 +32,7 @@ impl Poggers {
     }
 
     fn build_operation_definition<'a>(
-        &self,
+        &mut self,
         operation_definition: &'a OperationDefinition<&'a str>,
     ) -> String {
         match operation_definition {
@@ -47,13 +49,20 @@ impl Poggers {
         }
     }
 
-    fn build_query<'a>(&self, query: &'a Query<&'a str>) -> String {
+    fn build_query<'a>(&mut self, query: &'a Query<&'a str>) -> String {
         let mut query_string = String::from(
             "select to_json(
               json_build_array(__local_0__.\"id\")
             ) as \"__identifiers\",
         ",
         );
+
+        //create a __local__ string that we can use to distinguish this selection, and increment
+        //the local_id to ensure that this stays as unique
+        let mut local_string = String::from("__local__");
+        local_string.push_str(&self.local_id.to_string());
+        self.local_id += 1;
+
         if let Selection::Field(field) = &query.selection_set.items[0] {
             let query_type = self.query_to_type.get(field.name).unwrap();
             query_string.push_str(
@@ -91,13 +100,13 @@ impl Poggers {
                 let mut to_return = String::new();
                 for selection in &field.selection_set.items {
                     match selection {
-                        Selection::Field(field) => {
+                        Selection::Field(child_field) => {
                             //this field is terminal
-                            if gql_type.terminal_fields.contains(field.name) {
-                                Poggers::build_terminal_field(&mut to_return, field.name);
+                            if gql_type.terminal_fields.contains(child_field.name) {
+                                Poggers::build_terminal_field(&mut to_return, child_field.name);
+                            } else {
                             }
                         }
-
                         _ => panic!("Non field selection"),
                     }
                 }
@@ -116,4 +125,54 @@ impl Poggers {
         to_return.push_str(field_name);
         to_return.push_str("\",");
     }
+    //    fn build_foreign_field<'a>(
+    //        &self,
+    //        selection: &'a Selection<&'a str>,
+    //        node_index: NodeIndex<u32>,
+    //    ) {
+    //        let mut to_return = String::from(
+    //            "to_json(
+    //                  (
+    //                    select coalesce(
+    //                      (
+    //                        select json_agg(__local_1__.\"object\")
+    //                        from (
+    //                          select json_build_object(
+    //                            '__identifiers'::text,
+    //                            json_build_array(__local_2__.\"id\"),",
+    //        );
+    //        if let Selection::Field(field) = selection {
+    //            field
+    //                .selection_set
+    //                .items
+    //                .iter()
+    //                .fold(String::new(), |mut cumm, selection| {
+    //                    if let Selection::Field(child_field) = selection {
+    //                        cumm.push_str(&format!(
+    //                            "'{}'::text,
+    //                            (__local_2__.\"{}\")\n",
+    //                            child_field.name,
+    //                            child_field.name.to_case(Case::Snake)
+    //                        ));
+    //                    }
+    //                    cumm
+    //                });
+    //        }
+    //        to_return.push_str(
+    //            );
+    //        let a = "
+    //                                                      ) as object
+    //                          from (
+    //                            select __local_2__.*
+    //                            from \"public\".\"workout_plan_day\" as __local_2__
+    //                            where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
+    //                            order by __local_2__.\"id\" ASC
+    //                          ) __local_2__
+    //                        ) as __local_1__
+    //                      ),
+    //                      '[]'::json
+    //                    )
+    //                  )
+    //                ) as \"@workoutPlanDays\"";
+    //    }
 }
