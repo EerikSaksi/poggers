@@ -10,19 +10,21 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
         .unwrap()
         .split_ascii_whitespace()
         .zip(expected.split_ascii_whitespace())
-        .fold((String::new(), String::new()), |mut cumm, (actual, expected)| {
-            cumm.0.push_str(actual);
-            cumm.0.push(' ');
-            cumm.1.push_str(expected);
-            cumm.1.push(' ');
-            if actual != expected {
-                println!("{}", cumm.0);
-                println!("{}", cumm.1);
-                panic!();
-            }
-            cumm
-        });
-
+        .fold(
+            (String::new(), String::new()),
+            |mut cumm, (actual, expected)| {
+                cumm.0.push_str(actual);
+                cumm.0.push(' ');
+                cumm.1.push_str(expected);
+                cumm.1.push(' ');
+                if actual != expected {
+                    println!("{}", cumm.0);
+                    println!("{}", cumm.1);
+                    panic!();
+                }
+                cumm
+            },
+        );
 
     //zip will only compare the smaller elements list so we should also make sure the sizes match
     assert_eq!(
@@ -197,7 +199,7 @@ fn join() {
                   from (
                     select __local_2__.*
                     from \"public\".\"workout_plan_day\" as __local_2__
-                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
+                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") 
                     order by __local_2__.\"id\" ASC
                   ) __local_2__
                 ) as __local_1__

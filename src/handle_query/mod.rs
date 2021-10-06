@@ -61,7 +61,6 @@ impl<'b> Poggers {
         //the local_id to ensure that this stays as unique
         let mut local_string = String::from("__local_");
         local_string.push_str(&self.local_id.to_string());
-        self.local_id += 1;
         local_string.push_str("__");
 
         if let Selection::Field(field) = &query.selection_set.items[0] {
@@ -93,6 +92,7 @@ impl<'b> Poggers {
         } else {
             panic!("First selection_set item isn't a field");
         }
+        self.local_id += 1;
         query_string
     }
 
@@ -130,7 +130,7 @@ impl<'b> Poggers {
                                                     selection,
                                                     endpoints.1,
                                                     &self.g[edge].foreign_key_name,
-                                                    child_field.to_string(),
+                                                    child_field.name,
                                                 ));
                                                 break;
                                             }
@@ -164,7 +164,7 @@ impl<'b> Poggers {
         selection: &'a Selection<&'a str>,
         node_index: NodeIndex<u32>,
         foreign_key_name: &str,
-        parent_field_name: String,
+        parent_field_name: &str,
     ) -> String {
         let mut to_return = String::from(
             "\nto_json(
@@ -176,39 +176,29 @@ impl<'b> Poggers {
 
         to_return.push_str(&(self.local_id + 1).to_string());
         to_return.push_str(
-            " __.\"object\")
+            "__.\"object\")
                             from (
                               select json_build_object(
                                 '__identifiers'::text,
-                                json_build_array(__local_
-                           ",
+                                json_build_array(__local_",
         );
         to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str("__.\"id\"),");
+        to_return.push_str("__.\"id\"), ");
 
         if let Selection::Field(field) = selection {
-            field
-                .selection_set
-                .items
-                .iter()
-                .fold(String::new(), |mut cumm, selection| {
-                    if let Selection::Field(child_field) = selection {
-                        cumm.push('\'');
-                        cumm.push_str(child_field.name);
-                        cumm.push('\'');
-                        cumm.push_str(
-                            "::text,
-                                (__local_",
-                        );
-                        to_return.push_str(&(self.local_id + 2).to_string());
-                        to_return.push_str("__.\"");
-                        to_return.push_str(&child_field.name.to_case(Case::Snake));
-                        to_return.push_str(")\n");
-                    }
-                    cumm
-                });
+            for selection in field.selection_set.items.iter() {
+                if let Selection::Field(child_field) = selection {
+                    to_return.push('\'');
+                    to_return.push_str(child_field.name);
+                    to_return.push_str("'::text, (__local_");
+                    to_return.push_str(&(self.local_id + 2).to_string());
+                    to_return.push_str("__.\"");
+                    to_return.push_str(&child_field.name.to_case(Case::Snake));
+                    to_return.push_str("\")");
+                }
+            }
         }
-        to_return.push_str(" ) as object");
+        to_return.push_str(" ) as object ");
         to_return.push_str("from ( select __local_");
         to_return.push_str(&(self.local_id + 2).to_string());
         to_return.push_str(
@@ -229,10 +219,7 @@ impl<'b> Poggers {
         to_return.push_str(foreign_key_name);
         to_return.push_str("\" = __local_");
         to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str(
-            " __.\"id\") 
-                                order by __local_",
-        );
+        to_return.push_str("__.\"id\") order by __local_");
         to_return.push_str(&(self.local_id + 2).to_string());
         to_return.push_str(
             "__.\"id\" ASC
@@ -245,15 +232,29 @@ impl<'b> Poggers {
         );
         to_return.push_str(&(self.local_id + 1).to_string());
         to_return.push_str(
-            "),
+            "__ ),
                           '[]'::json
                         )
                       )
                     )",
         );
-        to_return.push_str("as \"@");
+        to_return.push_str(" as \"@");
         to_return.push_str(&parent_field_name);
-        to_return.push('\"');
+        to_return.push_str("\" from (
+                                  select __local_0__.*
+                                  from \"public\".\"",
+        );
+        to_return.push_str(&self.g[node_index].table_name);
+        to_return.push_str("\" as __local_");
+        to_return.push_str(&(self.local_id).to_string());
+        to_return.push_str(" where order by __local_");
+        to_return.push_str(&(self.local_id).to_string());
+        to_return.push_str(
+            "__.\"id\" ASC
+                                ) __local_",
+        );
+        to_return.push_str(&(self.local_id).to_string());
+        to_return.push_str("__");
         to_return
     }
 }
