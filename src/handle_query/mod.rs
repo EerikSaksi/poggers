@@ -2,6 +2,7 @@
 #[path = "./test.rs"]
 mod test;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
+use async_graphql_parser;
 use convert_case::{Case, Casing};
 use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
@@ -9,6 +10,7 @@ use graphql_parser::query::{
 use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
+use std::time::Instant;
 
 pub struct Poggers {
     g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
@@ -19,11 +21,20 @@ pub struct Poggers {
 #[allow(dead_code)]
 impl<'b> Poggers {
     pub fn build_root(&mut self, query: &str) -> Result<String, ParseError> {
+        let before = Instant::now();
         let ast = parse_query::<&str>(query)?;
+        println!("Parse time: {:.2?}", before.elapsed());
+
+        let before = Instant::now();
+        async_graphql_parser::parse_query::<&str>(query).unwrap();
+        println!("Async graphql time: {:.2?}", before.elapsed());
         let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
-                Ok(self.build_operation_definition(operation_definition))
+                let before = Instant::now();
+                let a = Ok(self.build_operation_definition(operation_definition));
+                println!("Poggers time: {:.2?}", before.elapsed());
+                a
             }
             Definition::Fragment(_fragment_definition) => {
                 Ok(String::from("Definition::Fragment not implemented yet"))
@@ -105,6 +116,7 @@ impl<'b> Poggers {
             Selection::Field(field) => {
                 let gql_type = &self.g[node_index];
                 //first we recursively get all queries from the children
+                //
                 let mut to_return = String::new();
                 for selection in &field.selection_set.items {
                     match selection {
@@ -128,7 +140,7 @@ impl<'b> Poggers {
                                             Some(endpoints) => {
                                                 to_return.push_str(&self.build_foreign_field(
                                                     selection,
-                                                    endpoints.1,
+                                                    endpoints,
                                                     &self.g[edge].foreign_key_name,
                                                     child_field.name,
                                                 ));
@@ -162,7 +174,7 @@ impl<'b> Poggers {
     fn build_foreign_field<'a>(
         &self,
         selection: &'a Selection<&'a str>,
-        node_index: NodeIndex<u32>,
+        endpoints: (NodeIndex<u32>, NodeIndex<u32>),
         foreign_key_name: &str,
         parent_field_name: &str,
     ) -> String {
@@ -206,7 +218,7 @@ impl<'b> Poggers {
                            from \"public\".\"",
         );
 
-        let gql_type = &self.g[node_index];
+        let gql_type = &self.g[endpoints.1];
         to_return.push_str(&gql_type.table_name);
         to_return.push_str("\" as __local_");
         to_return.push_str(&(self.local_id + 2).to_string());
@@ -239,22 +251,20 @@ impl<'b> Poggers {
                     )",
         );
         to_return.push_str(" as \"@");
-        to_return.push_str(&parent_field_name);
-        to_return.push_str("\" from (
+        to_return.push_str(parent_field_name);
+        to_return.push_str(
+            "\" from (
                                   select __local_0__.*
                                   from \"public\".\"",
         );
-        to_return.push_str(&self.g[node_index].table_name);
+        to_return.push_str(&self.g[endpoints.0].table_name);
         to_return.push_str("\" as __local_");
         to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str(" where order by __local_");
+        to_return.push_str("__ where order by __local_");
         to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str(
-            "__.\"id\" ASC
-                                ) __local_",
-        );
+        to_return.push_str("__.\"id\" ASC ) __local_");
         to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str("__");
+        to_return.push_str("__ ");
         to_return
     }
 }

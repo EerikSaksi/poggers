@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 Inflector = "0.11.4"
 async-graphql = "2.10.0"
+async-graphql-parser = "2.10.1"
 convert_case = "0.4.0"
 futures = "0.3.17"
 graphql-parser = "0.3.0"

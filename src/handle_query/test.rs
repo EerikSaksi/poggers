@@ -1,7 +1,9 @@
 use super::{GraphQLEdgeInfo, GraphQLType, Poggers, QueryEdgeInfo};
 use graphql_parser::query::ParseError;
 use petgraph::graph::DiGraph;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::time::Instant;
 
 fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
     assert!(actual.is_ok());
@@ -19,18 +21,38 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
                 cumm.1.push(' ');
                 if actual != expected {
                     println!("{}", cumm.0);
-                    println!("{}", cumm.1);
+                    println!("\n{}\n", cumm.1);
                     panic!();
                 }
                 cumm
             },
         );
 
-    //zip will only compare the smaller elements list so we should also make sure the sizes match
-    assert_eq!(
-        actual.unwrap().split_ascii_whitespace().count(),
-        expected.split_ascii_whitespace().count()
-    )
+    let actual_count = &actual.as_ref().unwrap().split_ascii_whitespace().count();
+    let expected_count = expected.split_ascii_whitespace().count();
+
+    //check if either string has any overflow which zip didnt catch
+    match actual_count.cmp(&expected_count) {
+        Ordering::Greater => {
+            let overflow = actual
+                .as_ref()
+                .unwrap()
+                .split_ascii_whitespace()
+                .skip(expected_count)
+                .fold(String::new(), |a, b| format!("{} {}", a, b));
+            println!("Actual overflow: {}\n", overflow);
+            panic!()
+        }
+        Ordering::Less => {
+            let overflow = expected
+                .split_ascii_whitespace()
+                .skip(*actual_count)
+                .fold(String::new(), |a, b| format!("{} {}", a, b));
+            println!("Expected overflow: {}\n", overflow);
+            panic!();
+        }
+        _ => (),
+    }
 }
 
 #[test]
