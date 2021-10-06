@@ -10,7 +10,19 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
         .unwrap()
         .split_ascii_whitespace()
         .zip(expected.split_ascii_whitespace())
-        .for_each(|(a, b)| assert_eq!(a, b));
+        .fold((String::new(), String::new()), |mut cumm, (actual, expected)| {
+            cumm.0.push_str(actual);
+            cumm.0.push(' ');
+            cumm.1.push_str(expected);
+            cumm.1.push(' ');
+            if actual != expected {
+                println!("{}", cumm.0);
+                println!("{}", cumm.1);
+                panic!();
+            }
+            cumm
+        });
+
 
     //zip will only compare the smaller elements list so we should also make sure the sizes match
     assert_eq!(
@@ -21,12 +33,12 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
 
 #[test]
 fn simple_query() {
-    let mut type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
 
     let mut terminal_fields = HashSet::new();
     terminal_fields.insert("bodyPart".to_string());
 
-    let node_index = type_graph.add_node(GraphQLType {
+    let node_index = g.add_node(GraphQLType {
         table_name: "exercise".to_string(),
         terminal_fields,
     });
@@ -41,9 +53,9 @@ fn simple_query() {
     );
 
     let mut pogg = Poggers {
-        type_graph,
+        g,
         query_to_type,
-        local_id: 0
+        local_id: 0,
     };
     let actual = pogg.build_root(
         "
@@ -54,7 +66,6 @@ fn simple_query() {
           }
         ",
     );
-
 
     let expected = "select to_json(
                           json_build_array(__local_0__.\"id\")
@@ -70,12 +81,12 @@ fn simple_query() {
 
 #[test]
 fn simple_query_with_filter() {
-    let mut type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
 
     let mut terminal_fields = HashSet::new();
     terminal_fields.insert("bodyPart".to_string());
 
-    let node_index = type_graph.add_node(GraphQLType {
+    let node_index = g.add_node(GraphQLType {
         table_name: "exercise".to_string(),
         terminal_fields,
     });
@@ -90,9 +101,9 @@ fn simple_query_with_filter() {
     );
 
     let mut pogg = Poggers {
-        type_graph,
+        g,
         query_to_type,
-        local_id: 0
+        local_id: 0,
     };
 
     let actual = pogg.build_root(
@@ -103,7 +114,7 @@ fn simple_query_with_filter() {
               }
             }",
     );
-        let expected = "select to_json(
+    let expected = "select to_json(
                           json_build_array(__local_0__.\"id\")
                         ) as \"__identifiers\",
                         to_json((__local_0__.\"body_part\")) as \"bodyPart\"
@@ -113,64 +124,93 @@ fn simple_query_with_filter() {
                         )";
     test_sql_equality(actual, expected);
 }
-//#[test]
-//fn join() {
-//    let mut graphql_query_to_operation = HashMap::new();
-//    graphql_query_to_operation.insert(
-//        String::from("exercise"),
-//        SqlOperation {
-//            is_many: false,
-//            table_name: "exercise",
-//        },
-//    );
-//    let pogg = Poggers {
-//        graphql_query_to_operation,
-//    };
-//    let actual = pogg.build_root(
-//        "
-//        let query{
-//          workoutPlans{
-//            appUserId
-//            workoutPlanDays{
-//              workoutPlanId
-//            }
-//          }
-//        }"
-//    );
-//    let expected = "
-//        select to_json(
-//          json_build_array(__local_0__.\"id\")
-//        ) as \"__identifiers\",
-//        to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
-//        to_json(
-//          (
-//            select coalesce(
-//              (
-//                select json_agg(__local_1__.\"object\")
-//                from (
-//                  select json_build_object(
-//                    '__identifiers'::text,
-//                    json_build_array(__local_2__.\"id\"),
-//                    'workoutPlanId'::text,
-//                    (__local_2__.\"workout_plan_id\")
-//                  ) as object
-//                  from (
-//                    select __local_2__.*
-//                    from \"public\".\"workout_plan_day\" as __local_2__
-//                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
-//                    order by __local_2__.\"id\" ASC
-//                  ) __local_2__
-//                ) as __local_1__
-//              ),
-//              '[]'::json
-//            )
-//          )
-//        ) as \"@workoutPlanDays\"
-//        from (
-//          select __local_0__.*
-//          from \"public\".\"workout_plan\" as __local_0__
-//          where (TRUE) and (TRUE)
-//          order by __local_0__.\"id\" ASC
-//        ) __local_0__";
-//    test_sql_equality(actual, expected);
-//}
+#[test]
+fn join() {
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+
+    let mut workout_plan_terminal_fields = HashSet::new();
+    workout_plan_terminal_fields.insert("appUserId".to_string());
+
+    let node_index = g.add_node(GraphQLType {
+        table_name: "workout_plan".to_string(),
+        terminal_fields: workout_plan_terminal_fields,
+    });
+    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+    query_to_type.insert(
+        "workoutPlans".to_string(),
+        QueryEdgeInfo {
+            is_many: true,
+            node_index,
+        },
+    );
+
+    let mut days_terminal_fields = HashSet::new();
+    days_terminal_fields.insert("workoutPlanId".to_string());
+    let day_node_index = g.add_node(GraphQLType {
+        table_name: "workout_plan_day".to_string(),
+        terminal_fields: days_terminal_fields,
+    });
+
+    g.add_edge(
+        node_index,
+        day_node_index,
+        GraphQLEdgeInfo {
+            is_many: true,
+            foreign_key_name: "workout_plan_id".to_string(),
+            graphql_field_name: "workoutPlanDays".to_string(),
+        },
+    );
+
+    let mut pogg = Poggers {
+        g,
+        query_to_type,
+        local_id: 0,
+    };
+    let actual = pogg.build_root(
+        "
+        query{
+          workoutPlans{
+            appUserId
+            workoutPlanDays{
+              workoutPlanId
+            }
+          }
+        }",
+    );
+    let expected = "
+        select to_json(
+          json_build_array(__local_0__.\"id\")
+        ) as \"__identifiers\",
+        to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
+        to_json(
+          (
+            select coalesce(
+              (
+                select json_agg(__local_1__.\"object\")
+                from (
+                  select json_build_object(
+                    '__identifiers'::text,
+                    json_build_array(__local_2__.\"id\"),
+                    'workoutPlanId'::text,
+                    (__local_2__.\"workout_plan_id\")
+                  ) as object
+                  from (
+                    select __local_2__.*
+                    from \"public\".\"workout_plan_day\" as __local_2__
+                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
+                    order by __local_2__.\"id\" ASC
+                  ) __local_2__
+                ) as __local_1__
+              ),
+              '[]'::json
+            )
+          )
+        ) as \"@workoutPlanDays\"
+        from (
+          select __local_0__.*
+          from \"public\".\"workout_plan\" as __local_0__
+          where 
+          order by __local_0__.\"id\" ASC
+        ) __local_0__";
+    test_sql_equality(actual, expected);
+}

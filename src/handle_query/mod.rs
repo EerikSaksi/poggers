@@ -11,7 +11,7 @@ use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
 
 pub struct Poggers {
-    type_graph: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     query_to_type: HashMap<String, QueryEdgeInfo>,
     local_id: u8,
 }
@@ -74,7 +74,7 @@ impl<'b> Poggers {
                 query_string.push_str(&local_string);
                 query_string.push_str(".* from \"public\".\"");
 
-                query_string.push_str(&self.type_graph[query_type.node_index].table_name);
+                query_string.push_str(&self.g[query_type.node_index].table_name);
                 query_string.push_str("\" as  ");
                 query_string.push_str(&local_string);
                 query_string.push_str(" order by ");
@@ -83,7 +83,7 @@ impl<'b> Poggers {
                 query_string.push_str(&local_string);
             } else {
                 query_string.push_str(" from \"public\".\"");
-                query_string.push_str(&self.type_graph[query_type.node_index].table_name);
+                query_string.push_str(&self.g[query_type.node_index].table_name);
                 query_string.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
                 if let graphql_parser::schema::Value::Int(id) = &field.arguments.get(0).unwrap().1 {
                     query_string.push_str(&id.as_i64().unwrap().to_string());
@@ -103,7 +103,7 @@ impl<'b> Poggers {
     ) -> String {
         match selection {
             Selection::Field(field) => {
-                let gql_type = &self.type_graph[node_index];
+                let gql_type = &self.g[node_index];
                 //first we recursively get all queries from the children
                 let mut to_return = String::new();
                 for selection in &field.selection_set.items {
@@ -113,6 +113,31 @@ impl<'b> Poggers {
                             if gql_type.terminal_fields.contains(child_field.name) {
                                 Poggers::build_terminal_field(&mut to_return, child_field.name);
                             } else {
+                                let mut edges = self
+                                    .g
+                                    .neighbors_directed(
+                                        node_index,
+                                        petgraph::EdgeDirection::Outgoing,
+                                    )
+                                    .detach();
+                                while let Some(edge) = edges.next_edge(&self.g) {
+                                    //found the edge which corresponds to this field
+                                    if self.g[edge].graphql_field_name == child_field.name {
+                                        let endpoints = self.g.edge_endpoints(edge);
+                                        match endpoints {
+                                            Some(endpoints) => {
+                                                to_return.push_str(&self.build_foreign_field(
+                                                    selection,
+                                                    endpoints.1,
+                                                    &self.g[edge].foreign_key_name,
+                                                    child_field.to_string(),
+                                                ));
+                                                break;
+                                            }
+                                            None => panic!("No endpoints found"),
+                                        }
+                                    }
+                                }
                             }
                         }
                         _ => panic!("Non field selection"),
@@ -133,54 +158,102 @@ impl<'b> Poggers {
         to_return.push_str(field_name);
         to_return.push_str("\",");
     }
-    //    fn build_foreign_field<'a>(
-    //        &self,
-    //        selection: &'a Selection<&'a str>,
-    //        node_index: NodeIndex<u32>,
-    //    ) {
-    //        let mut to_return = String::from(
-    //            "to_json(
-    //                  (
-    //                    select coalesce(
-    //                      (
-    //                        select json_agg(__local_1__.\"object\")
-    //                        from (
-    //                          select json_build_object(
-    //                            '__identifiers'::text,
-    //                            json_build_array(__local_2__.\"id\"),",
-    //        );
-    //        if let Selection::Field(field) = selection {
-    //            field
-    //                .selection_set
-    //                .items
-    //                .iter()
-    //                .fold(String::new(), |mut cumm, selection| {
-    //                    if let Selection::Field(child_field) = selection {
-    //                        cumm.push_str(&format!(
-    //                            "'{}'::text,
-    //                            (__local_2__.\"{}\")\n",
-    //                            child_field.name,
-    //                            child_field.name.to_case(Case::Snake)
-    //                        ));
-    //                    }
-    //                    cumm
-    //                });
-    //        }
-    //        to_return.push_str(
-    //            );
-    //        let a = "
-    //                                                      ) as object
-    //                          from (
-    //                            select __local_2__.*
-    //                            from \"public\".\"workout_plan_day\" as __local_2__
-    //                            where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
-    //                            order by __local_2__.\"id\" ASC
-    //                          ) __local_2__
-    //                        ) as __local_1__
-    //                      ),
-    //                      '[]'::json
-    //                    )
-    //                  )
-    //                ) as \"@workoutPlanDays\"";
-    //    }
+
+    fn build_foreign_field<'a>(
+        &self,
+        selection: &'a Selection<&'a str>,
+        node_index: NodeIndex<u32>,
+        foreign_key_name: &str,
+        parent_field_name: String,
+    ) -> String {
+        let mut to_return = String::from(
+            "\nto_json(
+                      (
+                        select coalesce(
+                          (
+                            select json_agg(__local_",
+        );
+
+        to_return.push_str(&(self.local_id + 1).to_string());
+        to_return.push_str(
+            " __.\"object\")
+                            from (
+                              select json_build_object(
+                                '__identifiers'::text,
+                                json_build_array(__local_
+                           ",
+        );
+        to_return.push_str(&(self.local_id + 2).to_string());
+        to_return.push_str("__.\"id\"),");
+
+        if let Selection::Field(field) = selection {
+            field
+                .selection_set
+                .items
+                .iter()
+                .fold(String::new(), |mut cumm, selection| {
+                    if let Selection::Field(child_field) = selection {
+                        cumm.push('\'');
+                        cumm.push_str(child_field.name);
+                        cumm.push('\'');
+                        cumm.push_str(
+                            "::text,
+                                (__local_",
+                        );
+                        to_return.push_str(&(self.local_id + 2).to_string());
+                        to_return.push_str("__.\"");
+                        to_return.push_str(&child_field.name.to_case(Case::Snake));
+                        to_return.push_str(")\n");
+                    }
+                    cumm
+                });
+        }
+        to_return.push_str(" ) as object");
+        to_return.push_str("from ( select __local_");
+        to_return.push_str(&(self.local_id + 2).to_string());
+        to_return.push_str(
+            "__.* 
+                           from \"public\".\"",
+        );
+
+        let gql_type = &self.g[node_index];
+        to_return.push_str(&gql_type.table_name);
+        to_return.push_str("\" as __local_");
+        to_return.push_str(&(self.local_id + 2).to_string());
+        to_return.push_str(
+            "__
+                                where (__local_",
+        );
+        to_return.push_str(&(self.local_id + 2).to_string());
+        to_return.push_str("__.\"");
+        to_return.push_str(foreign_key_name);
+        to_return.push_str("\" = __local_");
+        to_return.push_str(&(self.local_id).to_string());
+        to_return.push_str(
+            " __.\"id\") 
+                                order by __local_",
+        );
+        to_return.push_str(&(self.local_id + 2).to_string());
+        to_return.push_str(
+            "__.\"id\" ASC
+                              ) __local_",
+        );
+        to_return.push_str(&(self.local_id + 2).to_string());
+        to_return.push_str(
+            "__
+                            ) as __local_",
+        );
+        to_return.push_str(&(self.local_id + 1).to_string());
+        to_return.push_str(
+            "),
+                          '[]'::json
+                        )
+                      )
+                    )",
+        );
+        to_return.push_str("as \"@");
+        to_return.push_str(&parent_field_name);
+        to_return.push('\"');
+        to_return
+    }
 }

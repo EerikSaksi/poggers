@@ -10,8 +10,9 @@ pub struct GraphQLType {
     pub table_name: String,
 }
 pub struct GraphQLEdgeInfo {
-    child_field_name: String,
-    is_many: bool,
+    pub graphql_field_name: String,
+    pub is_many: bool,
+    pub foreign_key_name: String
 }
 
 pub struct QueryEdgeInfo {
@@ -64,7 +65,8 @@ pub fn create() -> (
                 foreign_index,
                 GraphQLEdgeInfo {
                     is_many: false,
-                    child_field_name: foreign_table_name.clone().to_camel_case(),
+                    graphql_field_name: foreign_table_name.clone().to_camel_case(),
+                    foreign_key_name: "".to_string()
                 },
             );
 
@@ -74,7 +76,8 @@ pub fn create() -> (
                 source_index,
                 GraphQLEdgeInfo {
                     is_many: true,
-                    child_field_name: foreign_table_name.to_camel_case().to_plural(),
+                    graphql_field_name: foreign_table_name.to_camel_case().to_plural(),
+                    foreign_key_name: column_name.to_string()
                 },
             );
             query_to_type.insert(
