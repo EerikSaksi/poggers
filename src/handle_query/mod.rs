@@ -1,8 +1,7 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
-use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
-use async_graphql_parser;
+use crate::build_schema::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use convert_case::{Case, Casing};
 use graphql_parser::query::{
     parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
@@ -10,23 +9,50 @@ use graphql_parser::query::{
 use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 use std::time::Instant;
 
 pub struct Poggers {
-    g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    query_to_type: HashMap<String, QueryEdgeInfo>,
-    local_id: u8,
+    pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    pub query_to_type: HashMap<String, QueryEdgeInfo>,
+    pub local_id: u8,
 }
 
 #[allow(dead_code)]
 impl<'b> Poggers {
     pub fn build_root(&mut self, query: &str) -> Result<String, ParseError> {
+        let before = Instant::now();
         let ast = parse_query::<&str>(query)?;
+        let juniper_parser_time = before.elapsed();
+
+        let before = Instant::now();
         async_graphql_parser::parse_query::<&str>(query).unwrap();
+        let async_graphql_parser_time = before.elapsed();
+
         let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
-                Ok(self.build_operation_definition(operation_definition))
+                let before = Instant::now();
+                let to_return = Ok(self.build_operation_definition(operation_definition));
+                let poggers_time = before.elapsed();
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .append(true)
+                    .open("/home/eerik/postgrustql/src/handle_query/join_many_fields.csv")
+                    .unwrap();
+                if let Err(e) = writeln!(
+                    file,
+                    "{}, {}, {}",
+                    juniper_parser_time.as_micros().to_string(),
+                    async_graphql_parser_time.as_micros().to_string(),
+                    poggers_time.as_micros().to_string()
+                ) {
+                    eprintln!("Couldn't write to file: {}", e);
+                }
+                
+                
+                to_return
             }
             Definition::Fragment(_fragment_definition) => {
                 Ok(String::from("Definition::Fragment not implemented yet"))
