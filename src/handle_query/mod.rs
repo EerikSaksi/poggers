@@ -21,20 +21,12 @@ pub struct Poggers {
 #[allow(dead_code)]
 impl<'b> Poggers {
     pub fn build_root(&mut self, query: &str) -> Result<String, ParseError> {
-        let before = Instant::now();
         let ast = parse_query::<&str>(query)?;
-        println!("Parse time: {:.2?}", before.elapsed());
-
-        let before = Instant::now();
         async_graphql_parser::parse_query::<&str>(query).unwrap();
-        println!("Async graphql time: {:.2?}", before.elapsed());
         let definition = ast.definitions.get(0).unwrap();
         match definition {
             Definition::Operation(operation_definition) => {
-                let before = Instant::now();
-                let a = Ok(self.build_operation_definition(operation_definition));
-                println!("Poggers time: {:.2?}", before.elapsed());
-                a
+                Ok(self.build_operation_definition(operation_definition))
             }
             Definition::Fragment(_fragment_definition) => {
                 Ok(String::from("Definition::Fragment not implemented yet"))
@@ -155,7 +147,6 @@ impl<'b> Poggers {
                         _ => panic!("Non field selection"),
                     }
                 }
-
                 to_return.pop();
                 to_return
             }
@@ -252,19 +243,7 @@ impl<'b> Poggers {
         );
         to_return.push_str(" as \"@");
         to_return.push_str(parent_field_name);
-        to_return.push_str(
-            "\" from (
-                                  select __local_0__.*
-                                  from \"public\".\"",
-        );
-        to_return.push_str(&self.g[endpoints.0].table_name);
-        to_return.push_str("\" as __local_");
-        to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str("__ where order by __local_");
-        to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str("__.\"id\" ASC ) __local_");
-        to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str("__ ");
+        to_return.push_str("\",");
         to_return
     }
 }

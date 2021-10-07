@@ -1,57 +1,43 @@
 use super::{GraphQLEdgeInfo, GraphQLType, Poggers, QueryEdgeInfo};
 use graphql_parser::query::ParseError;
 use petgraph::graph::DiGraph;
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
 
 fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
     assert!(actual.is_ok());
-    actual
+
+    let mut actual_iter = actual
         .as_ref()
         .unwrap()
-        .split_ascii_whitespace()
-        .zip(expected.split_ascii_whitespace())
-        .fold(
-            (String::new(), String::new()),
-            |mut cumm, (actual, expected)| {
-                cumm.0.push_str(actual);
-                cumm.0.push(' ');
-                cumm.1.push_str(expected);
-                cumm.1.push(' ');
-                if actual != expected {
-                    println!("{}", cumm.0);
-                    println!("\n{}\n", cumm.1);
-                    panic!();
-                }
-                cumm
-            },
-        );
+        .split_ascii_whitespace().peekable();
 
-    let actual_count = &actual.as_ref().unwrap().split_ascii_whitespace().count();
-    let expected_count = expected.split_ascii_whitespace().count();
-
-    //check if either string has any overflow which zip didnt catch
-    match actual_count.cmp(&expected_count) {
-        Ordering::Greater => {
-            let overflow = actual
-                .as_ref()
-                .unwrap()
-                .split_ascii_whitespace()
-                .skip(expected_count)
-                .fold(String::new(), |a, b| format!("{} {}", a, b));
-            println!("Actual overflow: {}\n", overflow);
-            panic!()
-        }
-        Ordering::Less => {
-            let overflow = expected
-                .split_ascii_whitespace()
-                .skip(*actual_count)
-                .fold(String::new(), |a, b| format!("{} {}", a, b));
-            println!("Expected overflow: {}\n", overflow);
+    let mut expected_iter = expected.split_ascii_whitespace().peekable();
+    let mut actual_cumm = String::new();
+    let mut expected_cumm = String::new();
+    while actual_iter.peek().is_some() && expected_iter.peek().is_some() {
+        let actual_val = actual_iter.next().unwrap();
+        let expected_val = expected_iter.next().unwrap();
+        actual_cumm.push_str(&format!("{} ", actual_val));
+        expected_cumm.push_str(&format!("{} ", expected_val));
+        if actual_val != expected_val {
+            println!("\n{}\n", actual_cumm);
+            println!("{}", expected_cumm);
             panic!();
         }
-        _ => (),
+    }
+    if actual_iter.peek().is_some() {
+        println!("Actual still has vals");
+        for token in actual_iter {
+            print!("{} ", token);
+        }
+        panic!("\n");
+    }
+    if expected_iter.peek().is_some() {
+        println!("expected still has vals");
+        for token in expected_iter {
+            print!("{} ", token);
+        }
+        panic!();
     }
 }
 
@@ -233,7 +219,6 @@ fn join() {
         from (
           select __local_0__.*
           from \"public\".\"workout_plan\" as __local_0__
-          where 
           order by __local_0__.\"id\" ASC
         ) __local_0__";
     test_sql_equality(actual, expected);
