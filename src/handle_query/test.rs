@@ -1,9 +1,10 @@
 use super::{GraphQLEdgeInfo, GraphQLType, Poggers, QueryEdgeInfo};
-use graphql_parser::query::ParseError;
 use petgraph::graph::DiGraph;
+use async_graphql_parser::Error;
 use std::collections::{HashMap, HashSet};
 
-fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
+
+fn test_sql_equality(actual: Result<String, Error>, expected: &str) {
     assert!(actual.is_ok());
 
     let mut actual_iter = actual
@@ -25,6 +26,7 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
             panic!();
         }
     }
+    println!("{}", actual_cumm);
     if actual_iter.peek().is_some() {
         println!("Actual still has vals");
         for token in actual_iter {
@@ -34,9 +36,10 @@ fn test_sql_equality(actual: Result<String, ParseError>, expected: &str) {
     }
     if expected_iter.peek().is_some() {
         println!("expected still has vals");
-        for token in expected_iter {
+        for (i, token) in expected_iter.enumerate() {
             print!("{} ", token);
         }
+        println!();
         panic!();
     }
 }
