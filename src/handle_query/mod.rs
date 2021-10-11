@@ -104,8 +104,10 @@ impl<'b> Poggers {
                             .g
                             .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
                             .detach();
-                        to_return
-                            .push_str(&self.build_foreign_field(selection, child_name, &mut edges));
+
+                        to_return.push_str(
+                            &self.build_foreign_field(selection, child_name, &mut edges, true),
+                        );
                     }
                 }
             }
@@ -126,16 +128,19 @@ impl<'b> Poggers {
         &self,
         selection: &Positioned<Selection>,
         parent_field_name: &str,
-        edges: &mut WalkNeighbors<u32>,
+        parent_edges: &mut WalkNeighbors<u32>,
+        include_to_json: bool,
     ) -> String {
-        while let Some(edge) = edges.next_edge(&self.g) {
+        while let Some(edge) = parent_edges.next_edge(&self.g) {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
                 let endpoints = self.g.edge_endpoints(edge).unwrap();
-
-                let mut to_return = String::from(
-                    "\nto_json(
-                      (
+                let mut to_return = String::new();
+                if include_to_json {
+                    to_return.push_str(" to_json(\n (\n")
+                }
+                to_return.push_str(
+                    "
                         select coalesce(
                           (
                             select json_agg(__local_",
@@ -161,14 +166,27 @@ impl<'b> Poggers {
                             if !gql_type.terminal_fields.contains(child_name) {
                                 to_return.push('@');
                                 to_return.push_str(child_name);
-                                to_return.push_str("'::text")
+                                to_return.push_str("'::text, (");
+                                let mut edges = self
+                                    .g
+                                    .neighbors_directed(
+                                        endpoints.1,
+                                        petgraph::EdgeDirection::Outgoing,
+                                    )
+                                    .detach();
+                                to_return.push_str(
+                                    &self.build_foreign_field(
+                                        selection, child_name, &mut edges, true,
+                                    ),
+                                );
+                            } else {
+                                to_return.push_str(child_name);
+                                to_return.push_str("'::text, (__local_");
+                                to_return.push_str(&(self.local_id + 2).to_string());
+                                to_return.push_str("__.\"");
+                                to_return.push_str(&child_name.to_case(Case::Snake));
+                                to_return.push_str("\"),\n");
                             }
-                            to_return.push_str(child_name);
-                            to_return.push_str("'::text, (__local_");
-                            to_return.push_str(&(self.local_id + 2).to_string());
-                            to_return.push_str("__.\"");
-                            to_return.push_str(&child_name.to_case(Case::Snake));
-                            to_return.push_str("\"),\n");
                         }
                     }
                 }
@@ -210,9 +228,11 @@ impl<'b> Poggers {
                     "__ ),
                           '[]'::json
                         )
-                      )
                     )",
                 );
+                if include_to_json {
+                    to_return.push_str(" )");
+                }
                 to_return.push_str(" as \"@");
                 to_return.push_str(parent_field_name);
                 to_return.push_str("\",\n");

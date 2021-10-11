@@ -26,7 +26,7 @@
       "configuration": {
         "request": "launch",
 				"program": "${programName}",
-				"args": ["handle_query::test::many_select"]
+				"args": ["handle_query::test::join"]
 			},
       "breakpoints": {
         "exception": {
