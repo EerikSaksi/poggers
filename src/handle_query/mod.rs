@@ -6,7 +6,6 @@ use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
 use async_graphql_value::Value;
 use convert_case::{Case, Casing};
-use petgraph::adj::EdgeIndex;
 use petgraph::graph::{DiGraph, WalkNeighbors};
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
@@ -45,20 +44,28 @@ impl<'b> Poggers {
         local_string.push_str("__");
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
-            let query_type = self
-                .query_to_type
-                .get(field.node.name.node.as_str())
-                .unwrap();
+            let node_index;
+            let is_many;
 
-            //query_string.push_str(&self.build_selection(
-            //    selection_set.node.items.get(0).unwrap(),
-            //    query_type.node_index,
-            //));
-            if query_type.is_many {
+            //we need to wrap this so that query_type is dropped, and copy out the is_many and
+            //node_index fields to satisfy the borrow checker
+            {
+                let query_type = self
+                    .query_to_type
+                    .get(field.node.name.node.as_str())
+                    .unwrap();
+                is_many = query_type.is_many;
+                node_index = query_type.node_index;
+            }
+
+            query_string.push_str(
+                &self.build_selection(selection_set.node.items.get(0).unwrap(), node_index),
+            );
+            if is_many {
                 query_string.push_str(" from ( select ");
                 query_string.push_str(&local_string);
                 query_string.push_str(".* from \"public\".\"");
-                query_string.push_str(&self.g[query_type.node_index].table_name);
+                query_string.push_str(&self.g[node_index].table_name);
                 query_string.push_str("\" as  ");
                 query_string.push_str(&local_string);
                 query_string.push_str(" order by ");
@@ -67,7 +74,7 @@ impl<'b> Poggers {
                 query_string.push_str(&local_string);
             } else {
                 query_string.push_str(" from \"public\".\"");
-                query_string.push_str(&self.g[query_type.node_index].table_name);
+                query_string.push_str(&self.g[node_index].table_name);
                 query_string.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
                 match &field.node.arguments.get(0).unwrap().1.node {
                     Value::Number(num) => {
@@ -131,10 +138,12 @@ impl<'b> Poggers {
         parent_edges: &mut WalkNeighbors<u32>,
         include_to_json: bool,
     ) -> String {
+
         while let Some(edge) = parent_edges.next_edge(&self.g) {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
                 self.local_id += 2;
+                let local_id_copy = self.local_id;
 
                 //endpoints is a tuple where endpoints.0 contains the parent nodeindex, and
                 //endpoints.1 contains the current graphql types node index
@@ -202,7 +211,7 @@ impl<'b> Poggers {
                 to_return.drain(to_return.len() - 2..to_return.len());
                 to_return.push_str(" ) as object ");
                 to_return.push_str("from ( select __local_");
-                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str(&(local_id_copy).to_string());
                 to_return.push_str(
                     "__.*
                            from \"public\".\"",
@@ -210,40 +219,40 @@ impl<'b> Poggers {
 
                 to_return.push_str(&self.g[endpoints.1].table_name);
                 to_return.push_str("\" as __local_");
-                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str(&(local_id_copy).to_string());
                 to_return.push_str(
                     "__
                                 where (__local_",
                 );
-                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str(&(local_id_copy).to_string());
                 to_return.push_str("__.\"");
                 to_return.push_str(&self.g[edge].foreign_key_name);
                 to_return.push_str("\" = __local_");
-                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str(&(local_id_copy - 2).to_string());
                 to_return.push_str("__.\"id\") order by __local_");
-                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str(&(local_id_copy).to_string());
                 to_return.push_str(
                     "__.\"id\" ASC
                               ) __local_",
                 );
-                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str(&(local_id_copy).to_string());
                 to_return.push_str(
                     "__
                             ) as __local_",
                 );
-                to_return.push_str(&(self.local_id - 1).to_string());
+                to_return.push_str(&(local_id_copy - 1).to_string());
                 to_return.push_str(
                     "__ ),
                           '[]'::json
                         )
-                    )",
+                    )
+                ",
                 );
                 if include_to_json {
-                    to_return.push_str(" )");
+                    to_return.push_str(") as \"@");
+                    to_return.push_str(parent_field_name);
+                    to_return.push_str("\",\n");
                 }
-                to_return.push_str(" as \"@");
-                to_return.push_str(parent_field_name);
-                to_return.push_str("\",\n");
                 return to_return;
             }
         }

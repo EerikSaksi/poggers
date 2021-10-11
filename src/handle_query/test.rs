@@ -25,7 +25,7 @@ fn test_sql_equality(actual: Result<String, Error>, expected: &str) {
             panic!();
         }
     }
-    println!("{}", actual_cumm);
+    //println!("{}", actual_cumm);
     if actual_iter.peek().is_some() {
         println!("Actual still has vals");
         for token in actual_iter {
@@ -35,7 +35,7 @@ fn test_sql_equality(actual: Result<String, Error>, expected: &str) {
     }
     if expected_iter.peek().is_some() {
         println!("expected still has vals");
-        for (i, token) in expected_iter.enumerate() {
+        for token in expected_iter {
             print!("{} ", token);
         }
         println!();
@@ -320,78 +320,78 @@ fn three_way_join_multiple_fields() {
           }
         }",
     );
-    let expected = "
-        select to_json(
-          json_build_array(__local_0__.\"id\")
-        ) as \"__identifiers\",
-        to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
-        to_json((__local_0__.\"id\")) as \"id\",
-        to_json((__local_0__.\"updated_at\")) as \"updatedAt\",
-        to_json((__local_0__.\"created_at\")) as \"createdAt\",
-        to_json(
+let expected = "
+    select to_json(
+      json_build_array(__local_0__.\"id\")
+    ) as \"__identifiers\",
+    to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
+    to_json((__local_0__.\"id\")) as \"id\",
+    to_json((__local_0__.\"updated_at\")) as \"updatedAt\",
+    to_json((__local_0__.\"created_at\")) as \"createdAt\",
+    to_json(
+      (
+        select coalesce(
           (
-            select coalesce(
-              (
-                select json_agg(__local_1__.\"object\")
-                from (
-                  select json_build_object(
-                    '__identifiers'::text,
-                    json_build_array(__local_2__.\"id\"),
-                    'id'::text,
-                    (__local_2__.\"id\"),
-                    'workoutPlanId'::text,
-                    (__local_2__.\"workout_plan_id\"),
-                    'name'::text,
-                    (__local_2__.\"name\"),
-                    '@workoutPlanExercises'::text,
+            select json_agg(__local_1__.\"object\")
+            from (
+              select json_build_object(
+                '__identifiers'::text,
+                json_build_array(__local_2__.\"id\"),
+                'id'::text,
+                (__local_2__.\"id\"),
+                'workoutPlanId'::text,
+                (__local_2__.\"workout_plan_id\"),
+                'name'::text,
+                (__local_2__.\"name\"),
+                '@workoutPlanExercises'::text,
+                (
+                  select coalesce(
                     (
-                      select coalesce(
-                        (
-                          select json_agg(__local_3__.\"object\")
-                          from (
-                            select json_build_object(
-                              '__identifiers'::text,
-                              json_build_array(__local_4__.\"id\"),
-                              'id'::text,
-                              (__local_4__.\"id\"),
-                              'ordering'::text,
-                              (__local_4__.\"ordering\"),
-                              'sets'::text,
-                              (__local_4__.\"sets\"),
-                              'workoutPlanDayId'::text,
-                              (__local_4__.\"workout_plan_day_id\")
-                            ) as object
-                            from (
-                              select __local_4__.*
-                              from \"public\".\"workout_plan_exercise\" as __local_4__
-                              where (
-                                __local_4__.\"workout_plan_day_id\" = __local_2__.\"id\"
-                              ) 
-                              order by __local_4__.\"id\" ASC
-                            ) __local_4__
-                          ) as __local_3__
-                        ),
-                        '[]'::json
-                      )
-                    )
-                  ) as object
-                  from (
-                    select __local_2__.*
-                    from \"public\".\"workout_plan_day\" as __local_2__
-                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") 
-                    order by __local_2__.\"id\" ASC
-                  ) __local_2__
-                ) as __local_1__
-              ),
-              '[]'::json
-            )
-          )
-        ) as \"@workoutPlanDays\"
-        from (
-          select __local_0__.*
-          from \"public\".\"workout_plan\" as __local_0__
-          order by __local_0__.\"id\" ASC
-        ) __local_0__";
+                      select json_agg(__local_3__.\"object\")
+                      from (
+                        select json_build_object(
+                          '__identifiers'::text,
+                          json_build_array(__local_4__.\"id\"),
+                          'id'::text,
+                          (__local_4__.\"id\"),
+                          'ordering'::text,
+                          (__local_4__.\"ordering\"),
+                          'sets'::text,
+                          (__local_4__.\"sets\"),
+                          'reps'::text,
+                          (__local_4__.\"reps\"),
+                          'workoutPlanDayId'::text,
+                          (__local_4__.\"workout_plan_day_id\")
+                        ) as object
+                        from (
+                          select __local_4__.*
+                          from \"public\".\"workout_plan_exercise\" as __local_4__
+                          where (__local_4__.\"workout_plan_day_id\" = __local_2__.\"id\") 
+                          order by __local_4__.\"id\" ASC
+                        ) __local_4__
+                      ) as __local_3__
+                    ),
+                    '[]'::json
+                  )
+                )
+              ) as object
+              from (
+                select __local_2__.*
+                from \"public\".\"workout_plan_day\" as __local_2__
+                where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") 
+                order by __local_2__.\"id\" ASC
+              ) __local_2__
+            ) as __local_1__
+          ),
+          '[]'::json
+        )
+      )
+    ) as \"@workoutPlanDays\"
+    from (
+      select __local_0__.*
+      from \"public\".\"workout_plan\" as __local_0__
+      order by __local_0__.\"id\" ASC
+    ) __local_0__";
 
     test_sql_equality(actual, expected);
 }
