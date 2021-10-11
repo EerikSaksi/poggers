@@ -143,6 +143,9 @@ impl<'b> Poggers {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
                 self.local_id += 2;
+                
+                //we need a copy of this, as any further recursive calls would increment local_id
+                //leading to incorrect results
                 let local_id_copy = self.local_id;
 
                 //endpoints is a tuple where endpoints.0 contains the parent nodeindex, and
