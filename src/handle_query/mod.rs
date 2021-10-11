@@ -2,13 +2,12 @@
 #[path = "./test.rs"]
 mod test;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
-use async_graphql_parser::types::{
-    DocumentOperations, Selection, SelectionSet
-};
+use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
 use async_graphql_value::Value;
 use convert_case::{Case, Casing};
-use petgraph::graph::DiGraph;
+use petgraph::adj::EdgeIndex;
+use petgraph::graph::{DiGraph, WalkNeighbors};
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
 
@@ -31,10 +30,7 @@ impl<'b> Poggers {
             }
         }
     }
-    fn visit_query(
-        &mut self,
-        selection_set: Positioned<SelectionSet>,
-    ) -> String {
+    fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
         let mut query_string = String::from(
             "select to_json(
               json_build_array(__local_0__.\"id\")
@@ -76,7 +72,7 @@ impl<'b> Poggers {
                     Value::Number(num) => {
                         query_string.push_str(&num.to_string());
                         query_string.push_str(" )");
-                    },
+                    }
                     _ => println!("Didn't get Value::Number"),
                 }
             }
@@ -92,57 +88,32 @@ impl<'b> Poggers {
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
     ) -> String {
-        match &selection.node {
-            Selection::Field(field) => {
-                let gql_type = &self.g[node_index];
-                //first we recursively get all queries from the children
+        let mut to_return = String::new();
+        if let Selection::Field(field) = &selection.node {
+            let gql_type = &self.g[node_index];
+            //first we recursively get all queries from the children
 
-                let mut to_return = String::new();
-                for selection in &field.node.selection_set.node.items {
-                    match &selection.node {
-                        Selection::Field(child_field) => {
-                            //this field is terminal
-                            let child_name = child_field.node.name.node.as_str();
-                            if gql_type.terminal_fields.contains(child_name) {
-                                Poggers::build_terminal_field(&mut to_return, child_name);
-                            } else {
-                                let mut edges = self
-                                    .g
-                                    .neighbors_directed(
-                                        node_index,
-                                        petgraph::EdgeDirection::Outgoing,
-                                    )
-                                    .detach();
-                                while let Some(edge) = edges.next_edge(&self.g) {
-                                    //found the edge which corresponds to this field
-                                    if self.g[edge].graphql_field_name == child_name {
-                                        let endpoints = self.g.edge_endpoints(edge);
-                                        match endpoints {
-                                            Some(endpoints) => {
-                                                to_return.push_str(&self.build_foreign_field(
-                                                    selection,
-                                                    endpoints,
-                                                    &self.g[edge].foreign_key_name,
-                                                    child_name,
-                                                ));
-                                                break;
-                                            }
-                                            None => panic!("No endpoints found"),
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        _ => panic!("Non field selection"),
+            for selection in &field.node.selection_set.node.items {
+                if let Selection::Field(child_field) = &selection.node {
+                    //this field is terminal
+                    let child_name = child_field.node.name.node.as_str();
+                    if gql_type.terminal_fields.contains(child_name) {
+                        Poggers::build_terminal_field(&mut to_return, child_name);
+                    } else {
+                        let mut edges = self
+                            .g
+                            .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
+                            .detach();
+                        to_return
+                            .push_str(&self.build_foreign_field(selection, child_name, &mut edges));
                     }
                 }
-                to_return.pop(); to_return.pop();
-                to_return
             }
-            Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),
-            Selection::InlineFragment(_) => String::from("InlineFragment not implemented"),
         }
+        to_return.drain(to_return.len() - 2..to_return.len());
+        to_return
     }
+
     fn build_terminal_field(to_return: &mut String, field_name: &str) {
         to_return.push_str("to_json((__local_0__.\"");
         to_return.push_str(&field_name.to_case(Case::Snake));
@@ -154,88 +125,100 @@ impl<'b> Poggers {
     fn build_foreign_field(
         &self,
         selection: &Positioned<Selection>,
-        endpoints: (NodeIndex<u32>, NodeIndex<u32>),
-        foreign_key_name: &str,
         parent_field_name: &str,
+        edges: &mut WalkNeighbors<u32>,
     ) -> String {
-        let mut to_return = String::from(
-            "\nto_json(
+        while let Some(edge) = edges.next_edge(&self.g) {
+            //found the edge which corresponds to this field
+            if self.g[edge].graphql_field_name == parent_field_name {
+                let endpoints = self.g.edge_endpoints(edge).unwrap();
+
+                let mut to_return = String::from(
+                    "\nto_json(
                       (
                         select coalesce(
                           (
                             select json_agg(__local_",
-        );
+                );
 
-        to_return.push_str(&(self.local_id + 1).to_string());
-        to_return.push_str(
-            "__.\"object\")
+                to_return.push_str(&(self.local_id + 1).to_string());
+                to_return.push_str(
+                    "__.\"object\")
                             from (
                               select json_build_object(
                                 '__identifiers'::text,
                                 json_build_array(__local_",
-        );
-        to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str("__.\"id\"), ");
+                );
+                to_return.push_str(&(self.local_id + 2).to_string());
+                to_return.push_str("__.\"id\"), ");
 
-        if let Selection::Field(field) = &selection.node {
-            for selection in &field.node.selection_set.node.items {
-                if let Selection::Field(child_field) = &selection.node {
-                    let child_name = child_field.node.name.node.as_str();
-                    to_return.push('\'');
-                    to_return.push_str(child_name);
-                    to_return.push_str("'::text, (__local_");
-                    to_return.push_str(&(self.local_id + 2).to_string());
-                    to_return.push_str("__.\"");
-                    to_return.push_str(&child_name.to_case(Case::Snake));
-                    to_return.push_str("\"),\n");
+                let gql_type = &self.g[endpoints.1];
+                if let Selection::Field(field) = &selection.node {
+                    for selection in &field.node.selection_set.node.items {
+                        if let Selection::Field(child_field) = &selection.node {
+                            let child_name = child_field.node.name.node.as_str();
+                            to_return.push('\'');
+                            if !gql_type.terminal_fields.contains(child_name) {
+                                to_return.push('@');
+                                to_return.push_str(child_name);
+                                to_return.push_str("'::text")
+                            }
+                            to_return.push_str(child_name);
+                            to_return.push_str("'::text, (__local_");
+                            to_return.push_str(&(self.local_id + 2).to_string());
+                            to_return.push_str("__.\"");
+                            to_return.push_str(&child_name.to_case(Case::Snake));
+                            to_return.push_str("\"),\n");
+                        }
+                    }
                 }
-            }
-        }
-        to_return.pop();
-        to_return.pop();
-        to_return.push_str(" ) as object ");
-        to_return.push_str("from ( select __local_");
-        to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str(
-            "__.*
+                //remove last two chars
+                to_return.drain(to_return.len() - 2..to_return.len());
+                to_return.push_str(" ) as object ");
+                to_return.push_str("from ( select __local_");
+                to_return.push_str(&(self.local_id + 2).to_string());
+                to_return.push_str(
+                    "__.*
                            from \"public\".\"",
-        );
+                );
 
-        let gql_type = &self.g[endpoints.1];
-        to_return.push_str(&gql_type.table_name);
-        to_return.push_str("\" as __local_");
-        to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str(
-            "__
+                to_return.push_str(&gql_type.table_name);
+                to_return.push_str("\" as __local_");
+                to_return.push_str(&(self.local_id + 2).to_string());
+                to_return.push_str(
+                    "__
                                 where (__local_",
-        );
-        to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str("__.\"");
-        to_return.push_str(foreign_key_name);
-        to_return.push_str("\" = __local_");
-        to_return.push_str(&(self.local_id).to_string());
-        to_return.push_str("__.\"id\") order by __local_");
-        to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str(
-            "__.\"id\" ASC
+                );
+                to_return.push_str(&(self.local_id + 2).to_string());
+                to_return.push_str("__.\"");
+                to_return.push_str(&self.g[edge].foreign_key_name);
+                to_return.push_str("\" = __local_");
+                to_return.push_str(&(self.local_id).to_string());
+                to_return.push_str("__.\"id\") order by __local_");
+                to_return.push_str(&(self.local_id + 2).to_string());
+                to_return.push_str(
+                    "__.\"id\" ASC
                               ) __local_",
-        );
-        to_return.push_str(&(self.local_id + 2).to_string());
-        to_return.push_str(
-            "__
+                );
+                to_return.push_str(&(self.local_id + 2).to_string());
+                to_return.push_str(
+                    "__
                             ) as __local_",
-        );
-        to_return.push_str(&(self.local_id + 1).to_string());
-        to_return.push_str(
-            "__ ),
+                );
+                to_return.push_str(&(self.local_id + 1).to_string());
+                to_return.push_str(
+                    "__ ),
                           '[]'::json
                         )
                       )
                     )",
-        );
-        to_return.push_str(" as \"@");
-        to_return.push_str(parent_field_name);
-        to_return.push_str("\",\n");
-        to_return
+                );
+                to_return.push_str(" as \"@");
+                to_return.push_str(parent_field_name);
+                to_return.push_str("\",\n");
+                return to_return;
+            }
+        }
+        panic!("No endpoints found")
     }
 }
