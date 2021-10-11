@@ -4,6 +4,8 @@ pub mod internal_schema_info;
 use std::collections::HashMap;
 
 
+
+#[allow(dead_code)]
 pub fn create_schema_document() -> String {
     let mut schema_types: HashMap<String, String> = HashMap::new();
     //for current_row in read_database::read_type_information().unwrap().iter() {

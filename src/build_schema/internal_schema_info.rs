@@ -20,6 +20,8 @@ pub struct QueryEdgeInfo {
     pub node_index: NodeIndex<u32>,
 }
 
+
+#[allow(dead_code)]
 pub fn create() -> (
     DiGraph<GraphQLType, GraphQLEdgeInfo>,
     HashMap<String, QueryEdgeInfo>,

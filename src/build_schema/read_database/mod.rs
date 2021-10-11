@@ -44,6 +44,8 @@ pub fn read_tables() -> Result<Vec<Row>, postgres::Error> {
     Ok(query_res)
 }
 
+
+#[allow(dead_code)]
 pub fn read_type_information() -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
     let rows = client.query(
