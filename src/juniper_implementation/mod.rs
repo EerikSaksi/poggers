@@ -1,32 +1,54 @@
-use crate::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
-use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
-use async_graphql_parser::{parse_query, Positioned};
-use async_graphql_value::Value;
+use crate::build_schema::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use convert_case::{Case, Casing};
+use graphql_parser::query::{
+    parse_query, Definition, OperationDefinition, ParseError, Query, Selection,
+};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
-
-pub struct Poggers {
+pub struct JuniperPoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
 }
 
 #[allow(dead_code)]
-impl<'b> Poggers {
-    pub fn build_root(&mut self, query: &str) -> Result<String, async_graphql_parser::Error> {
+impl<'b> JuniperPoggers {
+    pub fn build_root(&mut self, query: &str) -> Result<String, ParseError> {
         let ast = parse_query::<&str>(query)?;
-        match ast.operations {
-            DocumentOperations::Single(Positioned { node, pos: _ }) => {
-                Ok(self.visit_query(node.selection_set))
+
+        async_graphql_parser::parse_query::<&str>(query).unwrap();
+
+        let definition = ast.definitions.get(0).unwrap();
+        match definition {
+            Definition::Operation(operation_definition) => {
+                Ok(self.build_operation_definition(operation_definition))
             }
-            DocumentOperations::Multiple(_) => {
-                panic!("DocumentOperations::Multiple(operation)")
+            Definition::Fragment(_fragment_definition) => {
+                Ok(String::from("Definition::Fragment not implemented yet"))
             }
         }
     }
-    fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
+
+    fn build_operation_definition<'a>(
+        &mut self,
+        operation_definition: &'a OperationDefinition<&'a str>,
+    ) -> String {
+        match operation_definition {
+            OperationDefinition::Query(query) => self.build_query(query),
+            OperationDefinition::Subscription(_) => {
+                String::from("Subscription not yet implemented")
+            }
+
+            OperationDefinition::Mutation(_) => String::from("Mutation not yet implemented"),
+
+            OperationDefinition::SelectionSet(_) => {
+                String::from("SelectionSet not yet implemented")
+            }
+        }
+    }
+
+    fn build_query<'a>(&mut self, query: &'a Query<&'a str>) -> String {
         let mut query_string = String::from(
             "select to_json(
               json_build_array(__local_0__.\"id\")
@@ -40,19 +62,16 @@ impl<'b> Poggers {
         local_string.push_str(&self.local_id.to_string());
         local_string.push_str("__");
 
-        if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
-            let query_type = self
-                .query_to_type
-                .get(field.node.name.node.as_str())
-                .unwrap();
-            query_string.push_str(&self.build_selection(
-                selection_set.node.items.get(0).unwrap(),
-                query_type.node_index,
-            ));
+        if let Selection::Field(field) = &query.selection_set.items[0] {
+            let query_type = self.query_to_type.get(field.name).unwrap();
+            query_string.push_str(
+                &self.build_selection(&query.selection_set.items[0], query_type.node_index),
+            );
             if query_type.is_many {
                 query_string.push_str(" from ( select ");
                 query_string.push_str(&local_string);
                 query_string.push_str(".* from \"public\".\"");
+
                 query_string.push_str(&self.g[query_type.node_index].table_name);
                 query_string.push_str("\" as  ");
                 query_string.push_str(&local_string);
@@ -64,13 +83,10 @@ impl<'b> Poggers {
                 query_string.push_str(" from \"public\".\"");
                 query_string.push_str(&self.g[query_type.node_index].table_name);
                 query_string.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
-                match &field.node.arguments.get(0).unwrap().1.node {
-                    Value::Number(num) => {
-                        query_string.push_str(&num.to_string());
-                        query_string.push_str(" )");
-                    }
-                    _ => println!("Didn't get Value::Number"),
+                if let graphql_parser::schema::Value::Int(id) = &field.arguments.get(0).unwrap().1 {
+                    query_string.push_str(&id.as_i64().unwrap().to_string());
                 }
+                query_string.push_str("\n )");
             }
         } else {
             panic!("First selection_set item isn't a field");
@@ -79,24 +95,23 @@ impl<'b> Poggers {
         query_string
     }
 
-    fn build_selection(
+    fn build_selection<'a>(
         &self,
-        selection: &Positioned<Selection>,
+        selection: &'a Selection<&'a str>,
         node_index: NodeIndex<u32>,
     ) -> String {
-        match &selection.node {
+        match selection {
             Selection::Field(field) => {
                 let gql_type = &self.g[node_index];
                 //first we recursively get all queries from the children
-
+                //
                 let mut to_return = String::new();
-                for selection in &field.node.selection_set.node.items {
-                    match &selection.node {
+                for selection in &field.selection_set.items {
+                    match selection {
                         Selection::Field(child_field) => {
                             //this field is terminal
-                            let child_name = child_field.node.name.node.as_str();
-                            if gql_type.terminal_fields.contains(child_name) {
-                                Poggers::build_terminal_field(&mut to_return, child_name);
+                            if gql_type.terminal_fields.contains(child_field.name) {
+                                JuniperPoggers::build_terminal_field(&mut to_return, child_field.name);
                             } else {
                                 let mut edges = self
                                     .g
@@ -107,7 +122,7 @@ impl<'b> Poggers {
                                     .detach();
                                 while let Some(edge) = edges.next_edge(&self.g) {
                                     //found the edge which corresponds to this field
-                                    if self.g[edge].graphql_field_name == child_name {
+                                    if self.g[edge].graphql_field_name == child_field.name {
                                         let endpoints = self.g.edge_endpoints(edge);
                                         match endpoints {
                                             Some(endpoints) => {
@@ -115,7 +130,7 @@ impl<'b> Poggers {
                                                     selection,
                                                     endpoints,
                                                     &self.g[edge].foreign_key_name,
-                                                    child_name,
+                                                    child_field.name,
                                                 ));
                                                 break;
                                             }
@@ -145,7 +160,7 @@ impl<'b> Poggers {
 
     fn build_foreign_field<'a>(
         &self,
-        selection: &Positioned<Selection>,
+        selection: &'a Selection<&'a str>,
         endpoints: (NodeIndex<u32>, NodeIndex<u32>),
         foreign_key_name: &str,
         parent_field_name: &str,
@@ -169,16 +184,15 @@ impl<'b> Poggers {
         to_return.push_str(&(self.local_id + 2).to_string());
         to_return.push_str("__.\"id\"), ");
 
-        if let Selection::Field(field) = &selection.node {
-            for selection in &field.node.selection_set.node.items {
-                if let Selection::Field(child_field) = &selection.node {
-                    let child_name = child_field.node.name.node.as_str();
+        if let Selection::Field(field) = selection {
+            for selection in field.selection_set.items.iter() {
+                if let Selection::Field(child_field) = selection {
                     to_return.push('\'');
-                    to_return.push_str(child_name);
+                    to_return.push_str(child_field.name);
                     to_return.push_str("'::text, (__local_");
                     to_return.push_str(&(self.local_id + 2).to_string());
                     to_return.push_str("__.\"");
-                    to_return.push_str(&child_name.to_case(Case::Snake));
+                    to_return.push_str(&child_field.name.to_case(Case::Snake));
                     to_return.push_str("\")");
                 }
             }
@@ -187,7 +201,7 @@ impl<'b> Poggers {
         to_return.push_str("from ( select __local_");
         to_return.push_str(&(self.local_id + 2).to_string());
         to_return.push_str(
-            "__.*
+            "__.* 
                            from \"public\".\"",
         );
 
