@@ -187,10 +187,12 @@ impl<'b> Poggers {
                     to_return.push_str(&(self.local_id + 2).to_string());
                     to_return.push_str("__.\"");
                     to_return.push_str(&child_name.to_case(Case::Snake));
-                    to_return.push_str("\")");
+                    to_return.push_str("\"),\n");
                 }
             }
         }
+        to_return.pop();
+        to_return.pop();
         to_return.push_str(" ) as object ");
         to_return.push_str("from ( select __local_");
         to_return.push_str(&(self.local_id + 2).to_string());
