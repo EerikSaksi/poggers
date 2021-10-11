@@ -25,7 +25,8 @@
 
       "configuration": {
         "request": "launch",
-				"program": "${programName}"
+				"program": "${programName}",
+				"args": ["many_select"]
 			},
       "breakpoints": {
         "exception": {

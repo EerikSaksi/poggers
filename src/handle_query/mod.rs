@@ -136,7 +136,7 @@ impl<'b> Poggers {
                         _ => panic!("Non field selection"),
                     }
                 }
-                to_return.pop();
+                to_return.pop(); to_return.pop();
                 to_return
             }
             Selection::FragmentSpread(_) => String::from("FragmentSpread not implemented"),
@@ -148,10 +148,10 @@ impl<'b> Poggers {
         to_return.push_str(&field_name.to_case(Case::Snake));
         to_return.push_str("\")) as \"");
         to_return.push_str(field_name);
-        to_return.push_str("\",");
+        to_return.push_str("\",\n");
     }
 
-    fn build_foreign_field<'a>(
+    fn build_foreign_field(
         &self,
         selection: &Positioned<Selection>,
         endpoints: (NodeIndex<u32>, NodeIndex<u32>),
@@ -233,7 +233,7 @@ impl<'b> Poggers {
         );
         to_return.push_str(" as \"@");
         to_return.push_str(parent_field_name);
-        to_return.push_str("\",");
+        to_return.push_str("\",\n");
         to_return
     }
 }
