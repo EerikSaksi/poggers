@@ -550,8 +550,11 @@ fn test_arbitrary_depth_join() {
         }
         ";
 
+    use std::time::Instant;
+    let before = Instant::now();
     let actual = pogg.build_root(query);
-let expected = "select to_json(
+let expected = "
+select to_json(
   json_build_array(__local_0__.\"id\")
 ) as \"__identifiers\",
 to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
