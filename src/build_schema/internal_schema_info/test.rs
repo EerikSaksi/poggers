@@ -16,11 +16,11 @@ fn assert_some_edge_eq(expected: &GraphQLEdgeInfo, edges: &[Edge<GraphQLEdgeInfo
     for edge in edges {
         let GraphQLEdgeInfo {
             graphql_field_name,
-            is_many,
+            one_to_many,
             foreign_key_name,
         } = &edge.weight;
         if graphql_field_name == &expected.graphql_field_name
-            && is_many == &expected.is_many
+            && one_to_many == &expected.one_to_many
             && foreign_key_name == &expected.foreign_key_name
         {
             return;
@@ -46,7 +46,7 @@ fn check_single_connection() {
 
     assert_some_edge_eq(
         &GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "parent_table_id".to_string(),
             graphql_field_name: "parentTables".to_string(),
         },
@@ -54,7 +54,7 @@ fn check_single_connection() {
     );
     assert_some_edge_eq(
         &GraphQLEdgeInfo {
-            is_many: false,
+            one_to_many: false,
             foreign_key_name: "parent_table_id".to_string(),
             graphql_field_name: "parentTable".to_string(),
         },

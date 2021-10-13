@@ -268,7 +268,7 @@ fn three_way_join_multiple_fields() {
         node_index,
         day_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "workout_plan_id".to_string(),
             graphql_field_name: "workoutPlanDays".to_string(),
         },
@@ -286,7 +286,7 @@ fn three_way_join_multiple_fields() {
         day_node_index,
         exercise_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "workout_plan_day_id".to_string(),
             graphql_field_name: "workoutPlanExercises".to_string(),
         },
@@ -430,7 +430,7 @@ fn test_arbitrary_depth_join() {
         node_index,
         day_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "workout_plan_id".to_string(),
             graphql_field_name: "workoutPlanDays".to_string(),
         },
@@ -448,7 +448,7 @@ fn test_arbitrary_depth_join() {
         day_node_index,
         exercise_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "workout_plan_day_id".to_string(),
             graphql_field_name: "workoutPlanExercises".to_string(),
         },
@@ -464,7 +464,7 @@ fn test_arbitrary_depth_join() {
         exercise_node_index,
         table1_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "workout_plan_exercise_id".to_string(),
             graphql_field_name: "table1s".to_string(),
         },
@@ -480,7 +480,7 @@ fn test_arbitrary_depth_join() {
         table1_node_index,
         table2_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "table1_id".to_string(),
             graphql_field_name: "table2s".to_string(),
         },
@@ -498,7 +498,7 @@ fn test_arbitrary_depth_join() {
         table2_node_index,
         table3_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "table2_id".to_string(),
             graphql_field_name: "table3s".to_string(),
         },
@@ -740,7 +740,7 @@ fn test_many_to_one() {
         day_node_index,
         node_index,
         GraphQLEdgeInfo {
-            is_many: false,
+            one_to_many: false,
             foreign_key_name: "workout_plan_id".to_string(),
             graphql_field_name: "workoutPlan".to_string(),
         },
@@ -758,7 +758,7 @@ fn test_many_to_one() {
         day_node_index,
         exercise_node_index,
         GraphQLEdgeInfo {
-            is_many: true,
+            one_to_many: true,
             foreign_key_name: "workout_plan_day_id".to_string(),
             graphql_field_name: "workoutPlanExercises".to_string(),
         },
