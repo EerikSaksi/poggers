@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 
 #[allow(dead_code)]
-pub fn create_schema_document() -> String {
+pub fn create_schema_document(database_url: &str) -> String {
     let mut schema_types: HashMap<String, String> = HashMap::new();
     //for current_row in read_database::read_type_information().unwrap().iter() {
     //    let type_name: &str = current_row.get("obj_name");
@@ -16,7 +16,7 @@ pub fn create_schema_document() -> String {
     //    add_row(&mut schema_types, column_name, &graphql_type, type_name, "");
     //}
 
-    for current_row in read_database::read_tables().unwrap().iter() {
+    for current_row in read_database::read_tables(database_url).unwrap().iter() {
         //if the table names match then keep building the current graphql type
         let table_name: &str = current_row.get("table_name");
         let column_name: &str = current_row.get("column_name");

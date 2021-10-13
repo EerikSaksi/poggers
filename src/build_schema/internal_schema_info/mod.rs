@@ -1,3 +1,6 @@
+#[cfg(test)]
+#[path = "./test.rs"]
+mod test;
 use crate::build_schema::read_database;
 use inflector::Inflector;
 use petgraph::graph::DiGraph;
@@ -12,7 +15,7 @@ pub struct GraphQLType {
 pub struct GraphQLEdgeInfo {
     pub graphql_field_name: String,
     pub is_many: bool,
-    pub foreign_key_name: String
+    pub foreign_key_name: String,
 }
 
 pub struct QueryEdgeInfo {
@@ -20,16 +23,17 @@ pub struct QueryEdgeInfo {
     pub node_index: NodeIndex<u32>,
 }
 
-
 #[allow(dead_code)]
-pub fn create() -> (
+pub fn create(
+    database_url: &str,
+) -> (
     DiGraph<GraphQLType, GraphQLEdgeInfo>,
     HashMap<String, QueryEdgeInfo>,
 ) {
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
 
-    for current_row in read_database::read_tables().unwrap().iter() {
+    for current_row in read_database::read_tables(database_url).unwrap().iter() {
         let table_name: String = current_row.get("table_name");
         let column_name: String = current_row.get("column_name");
         let foreign_table_name: Option<String> = current_row.get("foreign_table_name");
@@ -68,7 +72,7 @@ pub fn create() -> (
                 GraphQLEdgeInfo {
                     is_many: false,
                     graphql_field_name: foreign_table_name.clone().to_camel_case(),
-                    foreign_key_name: "".to_string()
+                    foreign_key_name: "".to_string(),
                 },
             );
 
@@ -79,7 +83,7 @@ pub fn create() -> (
                 GraphQLEdgeInfo {
                     is_many: true,
                     graphql_field_name: foreign_table_name.to_camel_case().to_plural(),
-                    foreign_key_name: column_name.to_string()
+                    foreign_key_name: column_name.to_string(),
                 },
             );
             query_to_type.insert(
@@ -106,29 +110,3 @@ pub fn create() -> (
     }
     (g, query_to_type)
 }
-
-//#[cfg(test)]
-//mod tests {
-//    #[test]
-//    fn all_tables_in_graph() {
-//        let g = super::create().0;
-//        for table_name in [
-//            "app_user",
-//            "completed_set",
-//            "completed_workout",
-//            "completed_workout_exercise",
-//            "exercise",
-//            "exercise_alias",
-//            "session_analytics",
-//            "sets_and_exercise_id",
-//            "user_exercise",
-//            "workout_plan",
-//            "workout_plan_day",
-//            "workout_plan_exercise",
-//        ] {
-//            assert!(g
-//                .node_weights()
-//                .any(|gql_type| gql_type.table_name == table_name));
-//        }
-//    }
-//}

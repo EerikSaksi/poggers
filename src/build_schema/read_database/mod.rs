@@ -1,7 +1,7 @@
 use postgres::{Client, NoTls, Row};
 
-pub fn read_tables() -> Result<Vec<Row>, postgres::Error> {
-    let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
+pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
+    let mut client = Client::connect(database_url, NoTls)?;
     //https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys
     let query_res = client.query(
         "
