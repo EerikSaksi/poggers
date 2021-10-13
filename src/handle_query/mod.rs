@@ -11,13 +11,24 @@ use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
 
 pub struct Poggers {
-    g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    query_to_type: HashMap<String, QueryEdgeInfo>,
-    local_id: u8,
+    pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    pub query_to_type: HashMap<String, QueryEdgeInfo>,
+    pub local_id: u8,
 }
 
 #[allow(dead_code)]
 impl<'b> Poggers {
+    pub fn new(
+        g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+        query_to_type: HashMap<String, QueryEdgeInfo>,
+    ) -> Self {
+        Poggers {
+            g,
+            query_to_type,
+            local_id: 0,
+        }
+    }
+
     pub fn build_root(&mut self, query: &str) -> Result<String, async_graphql_parser::Error> {
         let ast = parse_query::<&str>(query)?;
         match ast.operations {
@@ -138,12 +149,11 @@ impl<'b> Poggers {
         parent_edges: &mut WalkNeighbors<u32>,
         include_to_json: bool,
     ) -> String {
-
         while let Some(edge) = parent_edges.next_edge(&self.g) {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
                 self.local_id += 2;
-                
+
                 //we need a copy of this, as any further recursive calls would increment local_id
                 //leading to incorrect results
                 let local_id_copy = self.local_id;

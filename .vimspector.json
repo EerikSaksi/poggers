@@ -22,12 +22,11 @@
     },
     "Test": {
       "adapter": "CodeLLDB",
-
       "configuration": {
         "request": "launch",
-				"program": "${programName}",
-				"args": ["handle_query::test::three_way_join_multiple_fields"]
-			},
+        "program": "${programName}",
+        "args": ["build_schema::internal_schema_info"]
+      },
       "breakpoints": {
         "exception": {
           "cpp_catch": "",

@@ -2,6 +2,7 @@
 #[path = "./test.rs"]
 mod test;
 use crate::build_schema::read_database;
+use crate::handle_query::Poggers;
 use inflector::Inflector;
 use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
@@ -12,9 +13,11 @@ pub struct GraphQLType {
     pub terminal_fields: HashSet<String>,
     pub table_name: String,
 }
+
+#[derive(Debug)]
 pub struct GraphQLEdgeInfo {
     pub graphql_field_name: String,
-    pub is_many: bool,
+    pub one_to_many: bool,
     pub foreign_key_name: String,
 }
 
@@ -24,12 +27,7 @@ pub struct QueryEdgeInfo {
 }
 
 #[allow(dead_code)]
-pub fn create(
-    database_url: &str,
-) -> (
-    DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    HashMap<String, QueryEdgeInfo>,
-) {
+pub fn create(database_url: &str) -> Poggers {
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
 
@@ -70,9 +68,9 @@ pub fn create(
                 source_index,
                 foreign_index,
                 GraphQLEdgeInfo {
-                    is_many: false,
+                    one_to_many: false,
                     graphql_field_name: foreign_table_name.clone().to_camel_case(),
-                    foreign_key_name: "".to_string(),
+                    foreign_key_name: column_name.to_string(),
                 },
             );
 
@@ -81,7 +79,7 @@ pub fn create(
                 foreign_index,
                 source_index,
                 GraphQLEdgeInfo {
-                    is_many: true,
+                    one_to_many: true,
                     graphql_field_name: foreign_table_name.to_camel_case().to_plural(),
                     foreign_key_name: column_name.to_string(),
                 },
@@ -108,5 +106,5 @@ pub fn create(
             }
         });
     }
-    (g, query_to_type)
+    Poggers::new(g, query_to_type)
 }
