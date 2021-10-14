@@ -1,6 +1,7 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
+use crate::handle_query::postgres_query_builder::PostgresBuilder;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
@@ -9,15 +10,17 @@ use convert_case::{Case, Casing};
 use petgraph::graph::{DiGraph, WalkNeighbors};
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
+mod postgres_query_builder;
 
-pub struct Poggers {
+pub struct Poggers<T: postgres_query_builder::GraphQLQueryBuilder> {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
+    query_builder: T,
 }
 
 #[allow(dead_code)]
-impl<'b> Poggers {
+impl<'b> Poggers<dyn postgres_query_builder::GraphQLQueryBuilder> {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
         query_to_type: HashMap<String, QueryEdgeInfo>,
@@ -26,6 +29,7 @@ impl<'b> Poggers {
             g,
             query_to_type,
             local_id: 0,
+            query_builder: PostgresBuilder {},
         }
     }
 
@@ -153,30 +157,6 @@ impl<'b> Poggers {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
                 let mut to_return = String::new();
-                if !self.g[edge].one_to_many {
-                    let table_name = &["__local_", &self.local_id.to_string(), "__"].concat();
-
-                    let res = [
-                        "
-                         select json_build_object(
-                         '__identifiers'::text,
-                         json_build_array(",
-                        table_name,
-                        ".\"id\"),",
-                    ]
-                    .concat();
-                    let a = "
-                   ,
-                      'id'::text,
-                      (__local_1__.\"id\"),
-                      'name'::text,
-                      (__local_1__.\"name\"),
-                      'appUserId'::text,
-                      (__local_1__.\"app_user_id\")
-                    ) as object
-                    from \"public\".\"workout_plan\" as __local_1__
-                    where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\")";
-                }
                 self.local_id += 2;
 
                 //we need a copy of this, as any further recursive calls would increment local_id

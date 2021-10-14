@@ -86,8 +86,52 @@ This increased complexity the most. So far the queries have worked even though t
 	2. The data is not circular/recursive in any fashion. A query might select some fields from one type, jump to another type and select some fields, and get some nested fields from a third type. Something involving pointers/a graph would be very helpful for this. This would allow you to process the query, and make calls to foreign tables recursively, passing that query information through the pointer to that data.
 	3. I needed to embed my own context in to the queries, and didn't need a lot of the provided context. Each type should also include the corresponding table it maps to, whether a foreign query returns one or many, etc. There was also a lot of unnecessary context that the parser included, such as row and column position of each field, which I did not need.
 
-I initially tried to create a Graph like structure, where each node would be a type containing a set of terminal fields, and a set of pointers to other types. This proved to be very challenging due to Rust's ownership model. I also tried to create a vector based Graph, where each item was a type which contained its own set of vector indices and it's relation to these types, but rust was also very unhappy with this due to the borrow checker. I caved in and downloaded a package called petcrate which allows you to create a directional Graph. Each node in this directional Graph stores a set containing all names of all terminal fields, and the table the type corresponds to. A node has an edge to another node if one has a foreign key to the other. Each edge stores the name of the GraphQL field it corresponds to. As an example, if employees have a foreign key to departments, departments have an edge where (graphql\_field\_name) is "employees". When we encounter a field, we first check the current nodes terminal fields hashset for presence. If it's there, this GraphQL field is processed as a column of the table. Otherwise we iterate over all edges of the node until we find a node who's graphql\_field\_name matches this field. The edge also stores other information needed to construct the query: the directionality of the relation (one to many or many to one) and the column they are joined on. We also use the information stored on the node endpoints of this edge (e.g table\_name) in order to join the correct tables together. Who would've thought that a graph based representation of a graph based query language would work well. One of the performance assumptions of this implementation is that tables generally have more of their own columns rather than foreign keys. Identifying your own columns happens with O(1) complexity through the hashset, and is always done before traversing edges finding an edge with the matching field name. This implementation might be slow with tables with lots of foreign keys, as each join has complexity O(f) complexity, where f is the number of foreign keys a table has.
+I initially tried to create a Graph like structure, where each node would be a type containing a set of terminal fields, and a set of pointers to other types. This proved to be very challenging due to Rust's ownership model. I also tried to create a vector based Graph, where each item was a type which contained its own set of vector indices and it's relation to these types, but rust was also very unhappy with this due to the borrow checker. I caved in and downloaded a package called petcrate which allows you to create a directional Graph. Each node in this directional Graph stores a set containing all names of all terminal fields, and the table the type corresponds to. A node has an edge to another node if one has a foreign key to the other. Each edge stores the name of the GraphQL field it corresponds to. As an example, if employees have a foreign key to departments, departments have an edge where (graphql\_field\_name) is "employees". When we encounter a field, we first check the current nodes terminal fields hashset for presence. If it's there, this GraphQL field is processed as a column of the table. Otherwise we iterate over all edges of the node until we find a node who's graphql\_field\_name matches this field. The edge also stores other information needed to construct the query: the directionality of the relation (one to many or many to one) and the column they are joined on. We also use the information stored on the node endpoints of this edge (e.g table\_name) in order to join the correct tables together. Who would've thought that a graph based representation of a graph based query language would work well. One of the performance assumptions of this implementation is that tables generally have more of their own columns rather than foreign keys. Identifying your own columns happens with O(1) complexity through the hashset, and is always done before traversing edges finding an edge with the matching field name. This implementation might be slow with tables with lots of foreign keys, as each join has complexity O(f) complexity, where f is the number of foreign keys a table has. This also assumes that the number of foreign keys is relatively small, so that the runtime complexity difference isn't too significant, and hashset overheads such as the hashing function are still relevant.
 
 
 Migrating from graphql\_parser to async\_graphql\_parser
-This ended up
+https://colab.research.google.com/drive/1JcsPot2k_03IYVcFG-ifNNiW0EeHjXqo
+
+One downside of this implementation is slight loss in readability. Both the Juniper parser and the async GraphQL parser store the positions of the fields (row and column). This data is irrelevant to me. The Juniper parser defines it like so:
+
+pub struct Field<'a, T: Text<'a>> {
+    pub position: Pos,
+    pub alias: Option<T::Value>,
+    pub name: T::Value,
+    pub arguments: Vec<(T::Value, Value<'a, T>)>,
+    pub directives: Vec<Directive<'a, T>>,
+    pub selection_set: SelectionSet<'a, T>,
+}
+
+In this case, the position is simply a field that I don't currently need, much like alias, name and directives.
+
+In async\_graphql\_parser however, every document element is wrapped in generic Positioned struct:
+
+pub struct Positioned<T: ?Sized> {
+    pub pos: Pos,
+    pub node: T,
+}
+As an example, this struct represents the root of the GraphQL query 
+
+pub struct SelectionSet {
+    pub items: Vec<Positioned<Selection>>,
+}
+
+What this means is that when iterating over the queries I need to call e.g item.node.name and not just item.name. This isn't the end of the world, but can make for some ugly one liners, e.g:
+
+for selection in &field.node.selection\_set.node.items {
+
+which before would've just been
+for selection in &field.selection\_set.items {
+
+But as this is a performance critical project I should use async\_graphql\_parser even for the small performance decrease.
+
+Migrating was a lot easier than I thought, even though it required replacing all function signatures and anything related to accessing query data. This was partly due to the SQL logic not changing at all, the internal representation of the schema not changing, and the fact that both parsers represent the same specification albeit differently. Rust's compiler is also very strict, so a lot of the replacement was simply going to errors with my editor, fixing it, and then going to the next error. This made me appreciate the strongly typed nature of rust and the strict memory rules, as migrating this library would have been much more hands on in a dynamically typed language with no library specific errors, and just syntax ones. 
+
+
+
+Three way join
+
+My implementation didn't yet generalize to there
+
+
