@@ -1,7 +1,7 @@
 use super::*;
 use petgraph::graph::Edge;
 use postgres::{Client, NoTls};
-fn connect_create_schema(query: &str) -> Result<Poggers, postgres::Error> {
+fn connect_create_schema(query: &str) -> Result<Poggers<PostgresBuilder>, postgres::Error> {
     let mut client = Client::connect(
         "postgres://eerik:Postgrizzly@localhost:5432/poggers_testing",
         NoTls,
@@ -31,7 +31,7 @@ fn assert_some_edge_eq(expected: &GraphQLEdgeInfo, edges: &[Edge<GraphQLEdgeInfo
 
 #[test]
 fn check_single_connection() {
-    let Poggers {g, local_id: _, query_to_type: _} = connect_create_schema(
+    let Poggers {g, local_id: _, query_to_type: _, query_builder: _} = connect_create_schema(
     "
         create table parent_table(id integer primary key generated always as identity);
         grant all on parent_table to public;

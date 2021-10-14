@@ -2,6 +2,7 @@
 #[path = "./test.rs"]
 mod test;
 use crate::build_schema::read_database;
+use crate::handle_query::postgres_query_builder::PostgresBuilder;
 use crate::handle_query::Poggers;
 use inflector::Inflector;
 use petgraph::graph::DiGraph;
@@ -27,7 +28,7 @@ pub struct QueryEdgeInfo {
 }
 
 #[allow(dead_code)]
-pub fn create(database_url: &str) -> Poggers {
+pub fn create(database_url: &str) -> Poggers<PostgresBuilder> {
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
 
@@ -106,5 +107,10 @@ pub fn create(database_url: &str) -> Poggers {
             }
         });
     }
-    Poggers::new(g, query_to_type)
+    Poggers {
+        g,
+        query_to_type,
+        local_id: 0,
+        query_builder: PostgresBuilder {},
+    }
 }

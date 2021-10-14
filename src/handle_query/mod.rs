@@ -10,21 +10,21 @@ use convert_case::{Case, Casing};
 use petgraph::graph::{DiGraph, WalkNeighbors};
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
-mod postgres_query_builder;
+pub mod postgres_query_builder;
 
-pub struct Poggers<T: postgres_query_builder::GraphQLQueryBuilder> {
+pub struct Poggers<SQL: postgres_query_builder::GraphQLQueryBuilder> {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
-    query_builder: T,
+    pub query_builder: SQL,
 }
 
 #[allow(dead_code)]
-impl<'b> Poggers<dyn postgres_query_builder::GraphQLQueryBuilder> {
+impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
         query_to_type: HashMap<String, QueryEdgeInfo>,
-    ) -> Self {
+    ) -> Poggers<postgres_query_builder::PostgresBuilder> {
         Poggers {
             g,
             query_to_type,
@@ -45,13 +45,7 @@ impl<'b> Poggers<dyn postgres_query_builder::GraphQLQueryBuilder> {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-        let mut query_string = String::from(
-            "select to_json(
-              json_build_array(__local_0__.\"id\")
-            ) as \"__identifiers\",
-        ",
-        );
-
+        let mut query_string = SQL::sql_query_header();
         //create a __local__ string that we can use to distinguish this selection, and increment
         //the local_id to ensure that this stays as unique
         let mut local_string = String::from("__local_");
@@ -120,7 +114,7 @@ impl<'b> Poggers<dyn postgres_query_builder::GraphQLQueryBuilder> {
                     //this field is terminal
                     let child_name = child_field.node.name.node.as_str();
                     if self.g[node_index].terminal_fields.contains(child_name) {
-                        Poggers::build_terminal_field(&mut to_return, child_name);
+                        SQL::build_terminal_field(&mut to_return, child_name);
                     } else {
                         let mut edges = self
                             .g
@@ -136,14 +130,6 @@ impl<'b> Poggers<dyn postgres_query_builder::GraphQLQueryBuilder> {
         }
         to_return.drain(to_return.len() - 2..to_return.len());
         to_return
-    }
-
-    fn build_terminal_field(to_return: &mut String, field_name: &str) {
-        to_return.push_str("to_json((__local_0__.\"");
-        to_return.push_str(&field_name.to_case(Case::Snake));
-        to_return.push_str("\")) as \"");
-        to_return.push_str(field_name);
-        to_return.push_str("\",\n");
     }
 
     fn build_foreign_field(
