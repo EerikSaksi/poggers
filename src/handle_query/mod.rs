@@ -46,11 +46,11 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
         let mut query_string = SQL::sql_query_header();
+
         //create a __local__ string that we can use to distinguish this selection, and increment
         //the local_id to ensure that this stays as unique
-        let mut local_string = String::from("__local_");
-        local_string.push_str(&self.local_id.to_string());
-        local_string.push_str("__");
+
+        let table_alias = SQL::table_alias(self.local_id);
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
@@ -71,16 +71,11 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 &self.build_selection(selection_set.node.items.get(0).unwrap(), node_index),
             );
             if is_many {
-                query_string.push_str(" from ( select ");
-                query_string.push_str(&local_string);
-                query_string.push_str(".* from \"public\".\"");
-                query_string.push_str(&self.g[node_index].table_name);
-                query_string.push_str("\" as  ");
-                query_string.push_str(&local_string);
-                query_string.push_str(" order by ");
-                query_string.push_str(&local_string);
-                query_string.push_str(".\"id\" ASC ) ");
-                query_string.push_str(&local_string);
+                SQL::many_query(
+                    &mut query_string,
+                    &self.g[node_index].table_name,
+                    table_alias,
+                );
             } else {
                 query_string.push_str(" from \"public\".\"");
                 query_string.push_str(&self.g[node_index].table_name);
