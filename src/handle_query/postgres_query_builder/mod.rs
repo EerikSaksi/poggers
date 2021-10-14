@@ -1,10 +1,11 @@
 use convert_case::{Case, Casing};
 
-//use a table alias wrapper to prevent errors, as we take a lot of string arguments 
+//use a table alias wrapper to prevent errors, as we take a lot of string arguments
 pub struct TableAlias(String);
 pub trait GraphQLQueryBuilder {
     fn build_terminal_field(s: &mut String, field_name: &str);
     fn sql_query_header() -> String;
+    fn single_query(s: &mut String, table_name: &str, id: i64);
     fn many_query(s: &mut String, table_name: &str, table_alias: TableAlias);
     fn table_alias(id: u8) -> TableAlias;
 }
@@ -43,5 +44,12 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         local_string.push_str(&id.to_string());
         local_string.push_str("__");
         TableAlias(local_string)
+    }
+    fn single_query(s: &mut String, table_name: &str, id: i64) {
+        s.push_str(" from \"public\".\"");
+        s.push_str(table_name);
+        s.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
+        s.push_str(&id.to_string());
+        s.push_str(" )");
     }
 }

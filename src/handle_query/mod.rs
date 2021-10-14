@@ -77,14 +77,12 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     table_alias,
                 );
             } else {
-                query_string.push_str(" from \"public\".\"");
-                query_string.push_str(&self.g[node_index].table_name);
-                query_string.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
                 match &field.node.arguments.get(0).unwrap().1.node {
-                    Value::Number(num) => {
-                        query_string.push_str(&num.to_string());
-                        query_string.push_str(" )");
-                    }
+                    Value::Number(num) => SQL::single_query(
+                        &mut query_string,
+                        &self.g[node_index].table_name,
+                        num.as_i64().unwrap(),
+                    ),
                     _ => println!("Didn't get Value::Number"),
                 }
             }
