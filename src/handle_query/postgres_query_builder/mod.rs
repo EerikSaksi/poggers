@@ -9,7 +9,15 @@ pub trait GraphQLQueryBuilder {
     fn single_query(s: &mut String, table_name: &str, id: i64);
     fn many_query(s: &mut String, table_name: &str, table_alias: TableAlias);
     fn table_alias(id: u8) -> TableAlias;
-    fn join_query(s: &mut String, local_id: u8, include_to_json: bool);
+    fn join_query_header(s: &mut String, local_id: u8, include_to_json: bool);
+    fn join_query_closer(
+        s: &mut String,
+        local_id: u8,
+        include_to_json: bool,
+        table_name: &str,
+        foreign_key_name: &str,
+        parent_field_name: &str,
+    );
 }
 
 pub struct PostgresBuilder {}
@@ -54,7 +62,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(&id.to_string());
         s.push_str(" )");
     }
-    fn join_query(s: &mut String, local_id: u8, include_to_json: bool) {
+    fn join_query_header(s: &mut String, local_id: u8, include_to_json: bool) {
         //include_to_json is needed, as we only include the to_json in the SQL if this isnt
         //a nested join. If this is a nested join then we need to omiit to_json.
         //include_to_json is called with true from build_selection but with false if called
@@ -87,5 +95,60 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str("__.\"");
         s.push_str(&field_name.to_case(Case::Snake));
         s.push_str("\"),\n");
+    }
+    fn join_query_closer(
+        s: &mut String,
+        local_id: u8,
+        include_to_json: bool,
+        table_name: &str,
+        foreign_key_name: &str,
+        parent_field_name: &str,
+    ) {
+        //remove last two chars
+        s.drain(s.len() - 2..s.len());
+        s.push_str(" ) as object ");
+        s.push_str("from ( select __local_");
+        s.push_str(&(local_id).to_string());
+        s.push_str(
+            "__.*
+                           from \"public\".\"",
+        );
+
+        s.push_str(table_name);
+        s.push_str("\" as __local_");
+        s.push_str(&(local_id).to_string());
+        s.push_str(
+            "__
+                                where (__local_",
+        );
+        s.push_str(&(local_id).to_string());
+        s.push_str("__.\"");
+        s.push_str(foreign_key_name);
+        s.push_str("\" = __local_");
+        s.push_str(&(local_id - 2).to_string());
+        s.push_str("__.\"id\") order by __local_");
+        s.push_str(&(local_id).to_string());
+        s.push_str(
+            "__.\"id\" ASC
+                              ) __local_",
+        );
+        s.push_str(&(local_id).to_string());
+        s.push_str(
+            "__
+                            ) as __local_",
+        );
+        s.push_str(&(local_id - 1).to_string());
+        s.push_str(
+            "__ ),
+                          '[]'::json
+                        )
+                    )
+                ",
+        );
+        if include_to_json {
+            s.push_str(") as \"@");
+            s.push_str(parent_field_name);
+            s.push_str("\",\n");
+        }
     }
 }

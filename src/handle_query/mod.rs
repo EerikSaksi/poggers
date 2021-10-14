@@ -143,7 +143,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 //endpoints.1 contains the current graphql types node index
                 let endpoints = self.g.edge_endpoints(edge).unwrap();
 
-                SQL::join_query(&mut to_return, self.local_id, include_to_json);
+                SQL::join_query_header(&mut to_return, self.local_id, include_to_json);
                 if let Selection::Field(field) = &selection.node {
                     for selection in &field.node.selection_set.node.items {
                         if let Selection::Field(child_field) = &selection.node {
@@ -167,57 +167,23 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                                     ),
                                 );
                             } else {
-                                SQL::build_terminal_field_join(&mut to_return, child_name, self.local_id);
+                                SQL::build_terminal_field_join(
+                                    &mut to_return,
+                                    child_name,
+                                    self.local_id,
+                                );
                             }
                         }
                     }
                 }
-                //remove last two chars
-                to_return.drain(to_return.len() - 2..to_return.len());
-                to_return.push_str(" ) as object ");
-                to_return.push_str("from ( select __local_");
-                to_return.push_str(&(local_id_copy).to_string());
-                to_return.push_str(
-                    "__.*
-                           from \"public\".\"",
+                SQL::join_query_closer(
+                    &mut to_return,
+                    local_id_copy,
+                    include_to_json,
+                    &self.g[endpoints.1].table_name,
+                    &self.g[edge].foreign_key_name,
+                    parent_field_name,
                 );
-
-                to_return.push_str(&self.g[endpoints.1].table_name);
-                to_return.push_str("\" as __local_");
-                to_return.push_str(&(local_id_copy).to_string());
-                to_return.push_str(
-                    "__
-                                where (__local_",
-                );
-                to_return.push_str(&(local_id_copy).to_string());
-                to_return.push_str("__.\"");
-                to_return.push_str(&self.g[edge].foreign_key_name);
-                to_return.push_str("\" = __local_");
-                to_return.push_str(&(local_id_copy - 2).to_string());
-                to_return.push_str("__.\"id\") order by __local_");
-                to_return.push_str(&(local_id_copy).to_string());
-                to_return.push_str(
-                    "__.\"id\" ASC
-                              ) __local_",
-                );
-                to_return.push_str(&(local_id_copy).to_string());
-                to_return.push_str(
-                    "__
-                            ) as __local_",
-                );
-                to_return.push_str(&(local_id_copy - 1).to_string());
-                to_return.push_str(
-                    "__ ),
-                          '[]'::json
-                        )
-                    )
-                ",
-                );
-                if include_to_json {
-                    to_return.push_str(") as \"@");
-                    to_return.push_str(parent_field_name);
-                    to_return.push_str("\",\n");
-                }
                 return to_return;
             }
         }
