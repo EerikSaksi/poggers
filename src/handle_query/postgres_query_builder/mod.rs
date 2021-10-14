@@ -4,6 +4,7 @@ use convert_case::{Case, Casing};
 pub struct TableAlias(String);
 pub trait GraphQLQueryBuilder {
     fn build_terminal_field(s: &mut String, field_name: &str);
+    fn build_terminal_field_join(s: &mut String, child_name: &str, local_id: u8);
     fn sql_query_header() -> String;
     fn single_query(s: &mut String, table_name: &str, id: i64);
     fn many_query(s: &mut String, table_name: &str, table_alias: TableAlias);
@@ -54,7 +55,6 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(" )");
     }
     fn join_query(s: &mut String, local_id: u8, include_to_json: bool) {
-
         //include_to_json is needed, as we only include the to_json in the SQL if this isnt
         //a nested join. If this is a nested join then we need to omiit to_json.
         //include_to_json is called with true from build_selection but with false if called
@@ -79,5 +79,13 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         );
         s.push_str(&(local_id).to_string());
         s.push_str("__.\"id\"), ");
+    }
+    fn build_terminal_field_join(s: &mut String, field_name: &str, local_id: u8) {
+        s.push_str(field_name);
+        s.push_str("'::text, (__local_");
+        s.push_str(&(local_id).to_string());
+        s.push_str("__.\"");
+        s.push_str(&field_name.to_case(Case::Snake));
+        s.push_str("\"),\n");
     }
 }

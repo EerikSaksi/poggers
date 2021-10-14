@@ -153,6 +153,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                                 to_return.push('@');
                                 to_return.push_str(child_name);
                                 to_return.push_str("'::text, (");
+
                                 let mut edges = self
                                     .g
                                     .neighbors_directed(
@@ -166,12 +167,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                                     ),
                                 );
                             } else {
-                                to_return.push_str(child_name);
-                                to_return.push_str("'::text, (__local_");
-                                to_return.push_str(&(self.local_id).to_string());
-                                to_return.push_str("__.\"");
-                                to_return.push_str(&child_name.to_case(Case::Snake));
-                                to_return.push_str("\"),\n");
+                                SQL::build_terminal_field_join(&mut to_return, child_name, self.local_id);
                             }
                         }
                     }
