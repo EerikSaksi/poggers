@@ -801,13 +801,12 @@ fn test_many_to_one() {
               (__local_1__.\"app_user_id\")
             ) as object
             from \"public\".\"workout_plan\" as __local_1__
-            where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\") and (TRUE) and (TRUE)
+            where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\") 
           )
         ) as \"@workoutPlan\"
         from (
           select __local_0__.*
           from \"public\".\"workout_plan_day\" as __local_0__
-          where (TRUE) and (TRUE)
           order by __local_0__.\"id\" ASC
         ) __local_0__";
     test_sql_equality(actual, expected);

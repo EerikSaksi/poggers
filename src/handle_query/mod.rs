@@ -152,6 +152,31 @@ impl<'b> Poggers {
         while let Some(edge) = parent_edges.next_edge(&self.g) {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
+                let mut to_return = String::new();
+                if !self.g[edge].one_to_many {
+                    let table_name = &["__local_", &self.local_id.to_string(), "__"].concat();
+
+                    let res = [
+                        "
+                         select json_build_object(
+                         '__identifiers'::text,
+                         json_build_array(",
+                        table_name,
+                        ".\"id\"),",
+                    ]
+                    .concat();
+                    let a = "
+                   ,
+                      'id'::text,
+                      (__local_1__.\"id\"),
+                      'name'::text,
+                      (__local_1__.\"name\"),
+                      'appUserId'::text,
+                      (__local_1__.\"app_user_id\")
+                    ) as object
+                    from \"public\".\"workout_plan\" as __local_1__
+                    where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\")";
+                }
                 self.local_id += 2;
 
                 //we need a copy of this, as any further recursive calls would increment local_id
@@ -161,7 +186,6 @@ impl<'b> Poggers {
                 //endpoints is a tuple where endpoints.0 contains the parent nodeindex, and
                 //endpoints.1 contains the current graphql types node index
                 let endpoints = self.g.edge_endpoints(edge).unwrap();
-                let mut to_return = String::new();
 
                 //include_to_json is needed, as we only include the to_json in the SQL if this isnt
                 //a nested join. If this is a nested join then we need to omiit to_json.
