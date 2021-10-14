@@ -6,7 +6,6 @@ use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
 use async_graphql_value::Value;
-use convert_case::{Case, Casing};
 use petgraph::graph::{DiGraph, WalkNeighbors};
 use petgraph::prelude::NodeIndex;
 use std::collections::HashMap;
@@ -148,12 +147,8 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     for selection in &field.node.selection_set.node.items {
                         if let Selection::Field(child_field) = &selection.node {
                             let child_name = child_field.node.name.node.as_str();
-                            to_return.push('\'');
                             if !self.g[endpoints.1].terminal_fields.contains(child_name) {
-                                to_return.push('@');
-                                to_return.push_str(child_name);
-                                to_return.push_str("'::text, (");
-
+                                SQL::nested_join_header(&mut to_return, child_name);
                                 let mut edges = self
                                     .g
                                     .neighbors_directed(

@@ -18,6 +18,7 @@ pub trait GraphQLQueryBuilder {
         foreign_key_name: &str,
         parent_field_name: &str,
     );
+    fn nested_join_header(s: &mut String, child_name: &str);
 }
 
 pub struct PostgresBuilder {}
@@ -89,6 +90,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str("__.\"id\"), ");
     }
     fn build_terminal_field_join(s: &mut String, field_name: &str, local_id: u8) {
+        s.push('\'');
         s.push_str(field_name);
         s.push_str("'::text, (__local_");
         s.push_str(&(local_id).to_string());
@@ -150,5 +152,10 @@ impl GraphQLQueryBuilder for PostgresBuilder {
             s.push_str(parent_field_name);
             s.push_str("\",\n");
         }
+    }
+    fn nested_join_header(s: &mut String, child_name: &str) {
+        s.push_str("\'@");
+        s.push_str(child_name);
+        s.push_str("'::text, (");
     }
 }
