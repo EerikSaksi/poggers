@@ -8,6 +8,7 @@ pub trait GraphQLQueryBuilder {
     fn single_query(s: &mut String, table_name: &str, id: i64);
     fn many_query(s: &mut String, table_name: &str, table_alias: TableAlias);
     fn table_alias(id: u8) -> TableAlias;
+    fn join_query(s: &mut String, local_id: u8, include_to_json: bool);
 }
 
 pub struct PostgresBuilder {}
@@ -51,5 +52,32 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str("\" as __local_0__ where ( __local_0__.\"id\" = ");
         s.push_str(&id.to_string());
         s.push_str(" )");
+    }
+    fn join_query(s: &mut String, local_id: u8, include_to_json: bool) {
+
+        //include_to_json is needed, as we only include the to_json in the SQL if this isnt
+        //a nested join. If this is a nested join then we need to omiit to_json.
+        //include_to_json is called with true from build_selection but with false if called
+        //recursively from this function (as that would be a nested join)
+        if include_to_json {
+            s.push_str(" to_json(\n (\n")
+        }
+        s.push_str(
+            "
+                        select coalesce(
+                          (
+                            select json_agg(__local_",
+        );
+
+        s.push_str(&(local_id - 1).to_string());
+        s.push_str(
+            "__.\"object\")
+                            from (
+                              select json_build_object(
+                                '__identifiers'::text,
+                                json_build_array(__local_",
+        );
+        s.push_str(&(local_id).to_string());
+        s.push_str("__.\"id\"), ");
     }
 }

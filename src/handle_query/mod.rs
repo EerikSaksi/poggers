@@ -49,7 +49,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
 
         //create a __local__ string that we can use to distinguish this selection, and increment
         //the local_id to ensure that this stays as unique
-
         let table_alias = SQL::table_alias(self.local_id);
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
@@ -101,7 +100,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         let mut to_return = String::new();
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
-
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     //this field is terminal
@@ -113,7 +111,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                             .g
                             .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
                             .detach();
-
                         to_return.push_str(
                             &self.build_foreign_field(selection, child_name, &mut edges, true),
                         );
@@ -146,31 +143,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 //endpoints.1 contains the current graphql types node index
                 let endpoints = self.g.edge_endpoints(edge).unwrap();
 
-                //include_to_json is needed, as we only include the to_json in the SQL if this isnt
-                //a nested join. If this is a nested join then we need to omiit to_json.
-                //include_to_json is called with true from build_selection but with false if called
-                //recursively from this function (as that would be a nested join)
-                if include_to_json {
-                    to_return.push_str(" to_json(\n (\n")
-                }
-                to_return.push_str(
-                    "
-                        select coalesce(
-                          (
-                            select json_agg(__local_",
-                );
-
-                to_return.push_str(&(self.local_id - 1).to_string());
-                to_return.push_str(
-                    "__.\"object\")
-                            from (
-                              select json_build_object(
-                                '__identifiers'::text,
-                                json_build_array(__local_",
-                );
-                to_return.push_str(&(self.local_id).to_string());
-                to_return.push_str("__.\"id\"), ");
-
+                SQL::join_query(&mut to_return, self.local_id, include_to_json);
                 if let Selection::Field(field) = &selection.node {
                     for selection in &field.node.selection_set.node.items {
                         if let Selection::Field(child_field) = &selection.node {
