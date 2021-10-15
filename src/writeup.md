@@ -1,28 +1,29 @@
 # Building schema
+
 GraphQL schemas can be considered like Menus for data. They let the client know what queries exist, what types these queries return, what fields types have, and how different types are related. I saw this as the first step to my project, as clients would need to know what they could fetch before I could properly test them. Instead of expecting a user of my software to manually write a schema which is compatible with their database, and to update it whenever their database updates, I will automatically generate it for a given database.
 
 To better illustrate what my goal is, here is a hypothetical database implementation:
 
 create table seller (
-	id integer primary key,
-	name varchar
+id integer primary key,
+name varchar
 );
 create table product (
-	id integer primary key,
-	listed_price float not null,
-	seller_id integer references seller(id)
+id integer primary key,
+listed_price float not null,
+seller_id integer references seller(id)
 );
 
 Sellers have a name and an id, and products have a name, a price and a foreign key referencing a seller. This would be these two tables as GraphQL types:
 
 type Seller {
-	id: Int!
-	name: String
+id: Int!
+name: String
 }
 type Product {
-	id: Int!
-	listedPrice: Float!
-	seller: Seller
+id: Int!
+listedPrice: Float!
+seller: Seller
 }
 
 These are pretty similar. GraphQL and Postgres use different data type names, e.g varchar vs String. GraphQL uses upper camel case for type names, and camel case for all variable names, whilst Postgres conventionally uses snake case for everything. GraphQL signals nullability with '!' next to the data type, whilst Postgres uses 'not null' next to the type. Finally, the GraphQL Product type refers to a seller by value, and not by seller_id.
@@ -70,14 +71,14 @@ I implemented a visitor design pattern which visited different selections of fie
 I used a test driven development in order to progressively add features
 
 # select all
+
 Initially no filter select all exercises
 
-The only data that this query required to work was the name of the table we select data from, and the fields that we want to select. I created a HashMap which translates 
+The only data that this query required to work was the name of the table we select data from, and the fields that we want to select. I created a HashMap which translates
 
 This was the easiest at all it required was formatting the table name and the fields we wanted to an SQL query. I did this by recursively traversing the fields. If the current field had children, the function was recursively called on all children, and the results were formatted into the parent query. If the current field had no children, they would simply return themselves as a select statement. I had to make sure that I converted all database fields from snake case back to camel case for GraphQL and vice versa.
 
-	This was also very simple as it only had a depth of one. This select only selected from one table and asked for the fields of this table. This query also did not need to know anything about the database or the GraphQL schema.
-
+    This was also very simple as it only had a depth of one. This select only selected from one table and asked for the fields of this table. This query also did not need to know anything about the database or the GraphQL schema.
 
 # Adding a query which selects a single item based on ID.
 
@@ -139,13 +140,13 @@ My implementation didn't yet generalize to a three way join. I realized that the
 
 '@foreignTables'::text,
 (
-	...
+...
 )
 
 ## non nested join
 
 to_json (
-		...
+...
 ) as "@foreignTables"
 
 In order to surround the query with the correct text, the query constructor needs to know if it's in a nested or non nested join. I decided to add a boolean parameter is_nested_join to the build_foreign_field function. Then this method surrounds the query conditionally based on the value of is_nested_join. NextI had to figure out when the boolean should be true and false.
@@ -155,76 +156,101 @@ build_selection is called on the root of the query. build_foreign_field would ma
 build_foreign_field is recursively called by itself to perform any nested joins. Logically, if we're in a build_foreign_field call, this means that any subsequent joins would be nested, so any recursive call will have is_nested_join be set as true
 
 Luckily, a three way join generalized to a six way join. Although I haven't tested a larger join, I have reason to believe that my implementation works for any joins with more than six tables, as the rules for any joins larger than two do not seem to change.
-# 
 
+#
 
 # refactoring
-All the logic related to query handling was being done in a single class. This became very uncomfortable to work with, as it was difficult to follow logic flows, remember what happens where etc. even though I wrote the code myself. I had considered separating different visitors in to different files/classes, but this didn't wouldn't actually address the original problem God Object problem. I needed more abstraction in the visitor in my implementation, so it would be easier to reason about the overall behaviour of the system, rather than focus on individual implmentations. I finally came up with a good idea: I should abstract away all the SQL building from the visitor. The visitor should still call functions related to building queries, but the visitor shouldn't need to know anything about the underlying query language or database protocol. I created a trait (equivalent to an interface in object oriented languages) named GraphQLQueryBuilder, and a struct which implemented this trait. I then added a struct field to the visitor, which had to be a GraphQLQueryBuilder (for now this has to be the Postgres one as it's the only one that implements it, but others may do so in the future). I then cut and paste SQL snippets from the visitor, added an apt name in the trait, and moved the cut code to this new function. The visitor would then call the GraphQLQueryBuilder's to append the SQL to this query instead of doing so itself. I would then run all tests, and if they passes git commit. After doing this for all snippets, I was able to extract all SQL away from the visitor. This lead to a very nice outcome. 
+
+All the logic related to query handling was being done in a single class. This became very uncomfortable to work with, as it was difficult to follow logic flows, remember what happens where etc. even though I wrote the code myself. I had considered separating different visitors in to different files/classes, but this didn't wouldn't actually address the original problem God Object problem. I needed more abstraction in the visitor in my implementation, so it would be easier to reason about the overall behaviour of the system, rather than focus on individual implmentations. I finally came up with a good idea: I should abstract away all the SQL building from the visitor. The visitor should still call functions related to building queries, but the visitor shouldn't need to know anything about the underlying query language or database protocol. I created a trait (equivalent to an interface in object oriented languages) named GraphQLQueryBuilder, and a struct which implemented this trait. I then added a struct field to the visitor, which had to be a GraphQLQueryBuilder (for now this has to be the Postgres one as it's the only one that implements it, but others may do so in the future). I then cut and paste SQL snippets from the visitor, added an apt name in the trait, and moved the cut code to this new function. The visitor would then call the GraphQLQueryBuilder's to append the SQL to this query instead of doing so itself. I would then run all tests, and if they passes git commit. After doing this for all snippets, I was able to extract all SQL away from the visitor. This lead to a very nice outcome.
 
 Prior to the refactoring, the visitor was about 270 lines long. This was shrunk down to only about 170 lines. The new SQL builder file was 177 lines. The total number of lines of code increased due to the functions definitions and method calls which weren't there before.
 
 # The benefits of this refactoring:
-	* Much easier to reason about how the visitor works and how the visitor uses information about the query, as there are no SQL implementation details
-	* The calls to the SQL builders are self documenting: for instance, it is much easier to understand that this line of code builds the query which selects a leaf (terminal nodes) data.
 
-		SQL::build_terminal_field(&mut s, field_name);
+    * Much easier to reason about how the visitor works and how the visitor uses information about the query, as there are no SQL implementation details
+    * The calls to the SQL builders are self documenting: for instance, it is much easier to understand that this line of code builds the query which selects a leaf (terminal nodes) data.
+    		SQL::build_terminal_field(&mut s, field_name);
 
-		rather than this:
+    		rather than this:
 
-		s.push_str("to_json((__local_0__.\"");
-		s.push_str(&field_name.to_case(Case::Snake));
-		s.push_str("\")) as \"");
-		s.push_str(field_name);
-		s.push_str("\",\n");
+    		s.push_str("to_json((__local_0__.\"");
+    		s.push_str(&field_name.to_case(Case::Snake));
+    		s.push_str("\")) as \"");
+    		s.push_str(field_name);
+    		s.push_str("\",\n");
+    * It was much easier to notice repeated SQL logic, to allow for function composition, less repetition and more reuse.
 
-	* This will make it much easier to support other database dialects. I will not need to implement another visitor, I will only need to implement the query building defined by the trait. I will probably need to change some of the function calls, as the trait (interface) function calls are defined based on Postgres, and not any other query language or database dialect. Adding support for another SQL dialect such as MYSQL or Oracle might be very feasible, and even some Graph databases such as MongoDB.
-
+    * This will make it much easier to support other database dialects. I will not need to implement another visitor, I will only need to implement the query building defined by the trait. I will probably need to change some of the function calls, as the trait (interface) function calls are defined based on Postgres, and not any other query language or database dialect. Adding support for another SQL dialect such as MYSQL or Oracle might be very feasible, and even some Graph databases such as MongoDB.
 
 # Many to one
+
 After doing this refactoring I decided to implement the many to one join. E.g instead of selecting employees for department, we select the department for every employee. Although SQL might not differentiate between one to many and many to one, due to the nested structure of GraphQL there is a difference.
 
 One to many
 query {
-	departments {
-		id
-		employee {
-			name
-		}
-	}
+departments {
+id
+employee {
+name
+}
+}
 }
 
 Example response for above
 
 {
-	"departments" [
-		"id": 1,
-		"employees" [
-			{"name": "Bob"},
-			{"name": "Rob"},
-		]
-	]
+"departments" [
+"id": 1,
+"employees" [
+{"name": "Bob"},
+{"name": "Rob"},
+]
+]
 }
 
-
 query {
-	employees {
-		name
-		department {
-			id
-		}
-	}
+employees {
+name
+department {
+id
+}
+}
 }
 
 Example response for above
 
 "employees": {
-	name: "Bob",
-	"department": {
-		id: 1
-	},
-	name: "Rob",
-	"department": {
-		id: 1
-	},
+name: "Bob",
+"department": {
+id: 1
+},
+name: "Rob",
+"department": {
+id: 1
+},
 }
+
+This was pretty easy to implement. Syntactically this was very similar to the one to many join, but without additional surroundings that one to many has
+
+many to one:
+select json_build_object(
+...  
+ workout_plan_id\" = **local_1**.\"id\")
+
+one to many
+
+    select coalesce(
+    	(
+
+    		select json_agg(__local_1__.\"object\")
+    			from (
+    				select json_build_object(
+    					...
+    				workout_plan_id\" = __local_1__.\"id\")
+    			),
+    		'[]'::json
+    	)
+    )
+
+There are separate methods for closing and opening a join query. It can be thought of as a Hamburger, you can't just put both together before you put food on the bottom bun. The join_query_header is like the bottom bun which is called when we first encounter a foreign join. We then add all the fillings (any table fields this table had) and the query to fetch any foreign fields values recursively. Only once those have been added, can we add the top bun (join_query_closer). I added an extra parameter to both header and closer, one_to_many. This tells the method whether it should add the extra wrapping or not. The one_to_many value is gotten from the edge weight connecting the two types in our schema graph.
 

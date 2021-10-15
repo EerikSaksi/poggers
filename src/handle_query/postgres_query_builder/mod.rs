@@ -17,7 +17,7 @@ pub trait GraphQLQueryBuilder {
         parent_field_name: &str,
     );
     fn nested_join_header(s: &mut String, child_name: &str);
-    fn many_to_one_join_header(s: &mut String, local_id: u8, include_to_json: bool);
+    fn many_to_one_join_header(s: &mut String, local_id: u8, include_to_json: bool, one_to_many: bool);
     fn many_to_one_join_closer(
         s: &mut String,
         local_id: u8,
@@ -25,6 +25,7 @@ pub trait GraphQLQueryBuilder {
         table_name: &str,
         foreign_key_name: &str,
         parent_field_name: &str,
+        one_to_many: bool,
     );
 }
 
@@ -139,9 +140,14 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(child_name);
         s.push_str("'::text, (");
     }
-    fn many_to_one_join_header(s: &mut String, local_id: u8, include_to_json: bool) {
+    fn many_to_one_join_header(s: &mut String, local_id: u8, include_to_json: bool, one_to_many: bool) {
         if include_to_json {
             s.push_str(" to_json(\n (\n")
+        }
+        if one_to_many {
+            s.push_str("select coalesce( ( select json_agg(");
+            s.push_str(&PostgresBuilder::table_alias(local_id));
+            s.push_str(".\"object\") from (");
         }
         s.push_str(" select json_build_object( '__identifiers'::text, json_build_array(");
         s.push_str(&PostgresBuilder::table_alias(local_id));
@@ -154,6 +160,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         table_name: &str,
         foreign_key_name: &str,
         parent_field_name: &str,
+        one_to_many: bool,
     ) {
         s.drain(s.len() - 2..s.len());
         s.push_str(" ) as object  ");
@@ -168,6 +175,11 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str("\" = ");
         s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(".\"id\") ) ) ");
+        if one_to_many {
+            s.push_str("order by ");
+            s.push_str(&PostgresBuilder::table_alias(local_id));
+            s.push_str(".\"id\" ASC");
+        }
         if include_to_json {
             s.push_str("as \"@");
             s.push_str(parent_field_name);

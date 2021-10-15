@@ -140,13 +140,8 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 //the start and end of this query, as well as the local_ids are different depending
                 //on if its one to many or many to one. Everything in the middle is the same so
                 //these arent the same methods
-                if self.g[edge].one_to_many {
-                    self.local_id += 2;
-                    SQL::join_query_header(&mut to_return, self.local_id, include_to_json);
-                } else {
-                    self.local_id += 1;
-                    SQL::many_to_one_join_header(&mut to_return, self.local_id, include_to_json);
-                }
+                self.local_id += 1;
+                SQL::many_to_one_join_header(&mut to_return, self.local_id, include_to_json, self.g[edge].one_to_many);
 
                 //we need a copy of this, as any further recursive calls would increment local_id
                 //leading to incorrect results
@@ -169,21 +164,29 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                                     )
                                     .detach();
                                 to_return.push_str(
-                                    &self.build_foreign_field( selection, child_name, &mut edges, false,),);
+                                    &self.build_foreign_field(
+                                        selection, child_name, &mut edges, false,
+                                    ),
+                                );
                             } else {
-                                SQL::build_terminal_field_join( &mut to_return, child_name,
+                                SQL::build_terminal_field_join(
+                                    &mut to_return,
+                                    child_name,
                                     self.local_id,
                                 );
                             }
                         }
                     }
                 }
-                if self.g[edge].one_to_many {
-                    SQL::join_query_closer( &mut to_return, local_id_copy, include_to_json, &self.g[endpoints.1].table_name, &self.g[edge].foreign_key_name, parent_field_name,);
-                } else {
-                    SQL::many_to_one_join_closer( &mut to_return, local_id_copy, include_to_json, &self.g[endpoints.1].table_name, &self.g[edge].foreign_key_name, parent_field_name,);
-                }
-                return to_return;
+                SQL::many_to_one_join_closer(
+                    &mut to_return,
+                    local_id_copy,
+                    include_to_json,
+                    &self.g[endpoints.1].table_name,
+                    &self.g[edge].foreign_key_name,
+                    parent_field_name,
+                    self.g[edge].one_to_many,
+                );
             }
         }
         panic!("{} endpoint not found found", parent_field_name)
