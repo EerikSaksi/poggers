@@ -1,6 +1,6 @@
 use super::*;
 use async_graphql_parser::Error;
-use petgraph::{data::Build, graph::DiGraph};
+use petgraph::graph::DiGraph;
 use std::{
     collections::{HashMap, HashSet},
     iter::FromIterator,
@@ -8,8 +8,8 @@ use std::{
 
 struct BuildGraphInput<'a> {
     table_name: &'a str,
-    query_info: Option<(String, QueryEdgeInfo)>,
-    terminal_fields: HashSet<String>,
+    query_info: Option<(&'a str, bool)>,
+    terminal_fields: Vec<&'a str>,
     edge_info: Option<GraphQLEdgeInfo>,
 }
 fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
@@ -25,7 +25,7 @@ fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
     {
         //add this node to the graph
         let node_index = g.add_node(GraphQLType {
-            terminal_fields,
+            terminal_fields: HashSet::from_iter(terminal_fields.iter().map(|s| s.to_string())),
             table_name: table_name.to_string(),
         });
 
@@ -35,7 +35,13 @@ fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
         }
 
         if let Some(query_info) = query_info {
-            query_to_type.insert(query_info.0, query_info.1);
+            query_to_type.insert(
+                query_info.0.to_string(),
+                QueryEdgeInfo {
+                    node_index,
+                    is_many: query_info.1,
+                },
+            );
         }
         previous_index = node_index;
     }
@@ -86,34 +92,13 @@ fn test_sql_equality(actual: Result<String, Error>, expected: &str) {
 
 #[test]
 fn many_select() {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+    let mut pogg = build_graph(vec![BuildGraphInput {
+        table_name: "exercise",
+        terminal_fields: vec!["id", "bodyPart", "exerciseType"],
+        query_info: Some(("exercises", true)),
+        edge_info: None,
+    }]);
 
-    let terminal_fields = HashSet::from_iter(
-        ["id", "bodyPart", "exerciseType"]
-            .iter()
-            .map(|s| s.to_string()),
-    );
-
-    let node_index = g.add_node(GraphQLType {
-        table_name: "exercise".to_string(),
-        terminal_fields,
-    });
-
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-    query_to_type.insert(
-        "exercises".to_string(),
-        QueryEdgeInfo {
-            is_many: true,
-            node_index,
-        },
-    );
-
-    let mut pogg = Poggers {
-        g,
-        query_to_type,
-        local_id: 0,
-        query_builder: PostgresBuilder {},
-    };
     let actual = pogg.build_root(
         "
             query{
