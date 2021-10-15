@@ -1,13 +1,50 @@
-use super::{GraphQLEdgeInfo, GraphQLType, Poggers, PostgresBuilder, QueryEdgeInfo};
+use super::*;
 use async_graphql_parser::Error;
-use petgraph::graph::DiGraph;
+use petgraph::{data::Build, graph::DiGraph};
 use std::{
     collections::{HashMap, HashSet},
     iter::FromIterator,
 };
 
-fn build_graph(tables: Vec<(&str, Vec<&str>)>) {
-    
+struct BuildGraphInput<'a> {
+    table_name: &'a str,
+    query_info: Option<(String, QueryEdgeInfo)>,
+    terminal_fields: HashSet<String>,
+    edge_info: Option<GraphQLEdgeInfo>,
+}
+fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+    let mut previous_index: NodeIndex<u32> = NodeIndex::new(0);
+    for BuildGraphInput {
+        terminal_fields,
+        query_info,
+        table_name,
+        edge_info,
+    } in inputs
+    {
+        //add this node to the graph
+        let node_index = g.add_node(GraphQLType {
+            terminal_fields,
+            table_name: table_name.to_string(),
+        });
+
+        //if we have info to connect the previous edge to this then do so
+        if let Some(edge_info) = edge_info {
+            g.add_edge(previous_index, node_index, edge_info);
+        }
+
+        if let Some(query_info) = query_info {
+            query_to_type.insert(query_info.0, query_info.1);
+        }
+        previous_index = node_index;
+    }
+    Poggers {
+        query_to_type,
+        local_id: 0,
+        query_builder: PostgresBuilder {},
+        g,
+    }
 }
 
 fn test_sql_equality(actual: Result<String, Error>, expected: &str) {
