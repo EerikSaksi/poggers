@@ -125,9 +125,9 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(".\"");
         s.push_str(foreign_key_name);
-        s.push_str("\" = __local_");
-        s.push_str(&(local_id - 2).to_string());
-        s.push_str("__.\"id\") order by __local_");
+        s.push_str("\" = ");
+        s.push_str(&PostgresBuilder::table_alias(local_id - 2));
+        s.push_str(".\"id\") order by __local_");
         s.push_str(&(local_id).to_string());
         s.push_str(
             "__.\"id\" ASC
