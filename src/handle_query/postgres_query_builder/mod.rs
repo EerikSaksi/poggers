@@ -83,12 +83,12 @@ impl GraphQLQueryBuilder for PostgresBuilder {
             "
                         select coalesce(
                           (
-                            select json_agg(__local_",
+                            select json_agg(",
         );
 
-        s.push_str(&(local_id - 1).to_string());
+        s.push_str(&PostgresBuilder::table_alias(local_id - 1));
         s.push_str(
-            "__.\"object\")
+            ".\"object\")
                             from (
                               select json_build_object(
                                 '__identifiers'::text,
