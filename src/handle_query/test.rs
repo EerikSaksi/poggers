@@ -128,31 +128,13 @@ fn many_select() {
 
 #[test]
 fn simple_query_with_filter() {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
 
-    let mut terminal_fields = HashSet::new();
-    terminal_fields.insert("bodyPart".to_string());
-
-    let node_index = g.add_node(GraphQLType {
-        table_name: "exercise".to_string(),
-        terminal_fields,
-    });
-
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-    query_to_type.insert(
-        "exercise".to_string(),
-        QueryEdgeInfo {
-            is_many: false,
-            node_index,
-        },
-    );
-
-    let mut pogg = Poggers {
-        g,
-        query_to_type,
-        local_id: 0,
-        query_builder: PostgresBuilder {},
-    };
+    let mut pogg = build_graph(vec![BuildGraphInput {
+        table_name: "exercise",
+        terminal_fields: vec!["bodyPart"],
+        query_info: Some(("exercise", false)),
+        edge_info: None,
+    }]);
 
     let actual = pogg.build_root(
         "
