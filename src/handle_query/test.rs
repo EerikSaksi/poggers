@@ -223,68 +223,35 @@ fn join() {
 
 #[test]
 fn three_way_join_multiple_fields() {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
 
-    let node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan".to_string(),
-        terminal_fields: HashSet::from_iter(
-            ["id", "appUserId", "updatedAt", "createdAt"]
-                .iter()
-                .map(|s| s.to_string()),
-        ),
-    });
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-    query_to_type.insert(
-        "workoutPlans".to_string(),
-        QueryEdgeInfo {
-            is_many: true,
-            node_index,
+    let mut pogg = build_graph(vec![
+        BuildGraphInput {
+            table_name: "workout_plan",
+            terminal_fields: vec!["id", "appUserId", "updatedAt", "createdAt"],
+            query_info: Some(("workoutPlans", true)),
+            edge_info: None,
         },
-    );
-
-    let day_node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan_day".to_string(),
-        terminal_fields: HashSet::from_iter(
-            ["id", "workoutPlanId", "name"]
-                .iter()
-                .map(|s| s.to_string()),
-        ),
-    });
-
-    g.add_edge(
-        node_index,
-        day_node_index,
-        GraphQLEdgeInfo {
-            one_to_many: true,
-            foreign_key_name: "workout_plan_id".to_string(),
-            graphql_field_name: "workoutPlanDays".to_string(),
+        BuildGraphInput {
+            table_name: "workout_plan_day",
+            terminal_fields: vec!["id", "workoutPlanId", "name"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: true,
+                foreign_key_name: "workout_plan_id".to_string(),
+                graphql_field_name: "workoutPlanDays".to_string(),
+            }),
         },
-    );
-
-    let exercise_node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan_exercise".to_string(),
-        terminal_fields: HashSet::from_iter(
-            ["id", "ordering", "sets", "reps", "workoutPlanDayId"]
-                .iter()
-                .map(|s| s.to_string()),
-        ),
-    });
-    g.add_edge(
-        day_node_index,
-        exercise_node_index,
-        GraphQLEdgeInfo {
-            one_to_many: true,
-            foreign_key_name: "workout_plan_day_id".to_string(),
-            graphql_field_name: "workoutPlanExercises".to_string(),
+        BuildGraphInput {
+            table_name: "workout_plan_exercise",
+            terminal_fields: vec!["id", "ordering", "sets", "reps", "workoutPlanDayId"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: true,
+                foreign_key_name: "workout_plan_day_id".to_string(),
+                graphql_field_name: "workoutPlanExercises".to_string(),
+            }),
         },
-    );
-
-    let mut pogg = Poggers {
-        g,
-        query_to_type,
-        local_id: 0,
-        query_builder: PostgresBuilder {},
-    };
+    ]);
     let actual = pogg.build_root(
         "
         query{
