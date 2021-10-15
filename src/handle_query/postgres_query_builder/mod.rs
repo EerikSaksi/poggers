@@ -92,10 +92,10 @@ impl GraphQLQueryBuilder for PostgresBuilder {
                             from (
                               select json_build_object(
                                 '__identifiers'::text,
-                                json_build_array(__local_",
+                                json_build_array(",
         );
-        s.push_str(&(local_id).to_string());
-        s.push_str("__.\"id\"), ");
+        s.push_str(&PostgresBuilder::table_alias(local_id));
+        s.push_str(".\"id\"), ");
     }
     fn join_query_closer(
         s: &mut String,
