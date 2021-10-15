@@ -72,7 +72,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 SQL::many_query(
                     &mut query_string,
                     &self.g[node_index].table_name,
-                    table_alias,
+                    &table_alias,
                 );
             } else {
                 match &field.node.arguments.get(0).unwrap().1.node {
@@ -147,7 +147,10 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     for selection in &field.node.selection_set.node.items {
                         if let Selection::Field(child_field) = &selection.node {
                             let child_name = child_field.node.name.node.as_str();
+                            //check if the child name is a terminal field
                             if !self.g[endpoints.1].terminal_fields.contains(child_name) {
+                                //if not construct a nested join by adding the header, and passing
+                                //the edges of this node to the child
                                 SQL::nested_join_header(&mut to_return, child_name);
                                 let mut edges = self
                                     .g

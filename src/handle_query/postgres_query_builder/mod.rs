@@ -1,14 +1,12 @@
 use convert_case::{Case, Casing};
 
-//use a table alias wrapper to prevent errors, as we take a lot of string arguments
-pub struct TableAlias(String);
 pub trait GraphQLQueryBuilder {
     fn build_terminal_field(s: &mut String, field_name: &str);
     fn build_terminal_field_join(s: &mut String, child_name: &str, local_id: u8);
     fn sql_query_header() -> String;
     fn single_query(s: &mut String, table_name: &str, id: i64);
-    fn many_query(s: &mut String, table_name: &str, table_alias: TableAlias);
-    fn table_alias(id: u8) -> TableAlias;
+    fn many_query(s: &mut String, table_name: &str, table_alias: &str);
+    fn table_alias(id: u8) -> String;
     fn join_query_header(s: &mut String, local_id: u8, include_to_json: bool);
     fn join_query_closer(
         s: &mut String,
@@ -30,6 +28,16 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(field_name);
         s.push_str("\",\n");
     }
+    fn build_terminal_field_join(s: &mut String, field_name: &str, local_id: u8) {
+        s.push('\'');
+        s.push_str(field_name);
+        s.push_str("'::text, (");
+        s.push_str(&PostgresBuilder::table_alias(local_id));  
+        s.push_str(".\"");
+        s.push_str(&field_name.to_case(Case::Snake));
+        s.push_str("\"),\n");
+    }
+
     fn sql_query_header() -> String {
         String::from(
             "select to_json(
@@ -38,23 +46,23 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         ",
         )
     }
-    fn many_query(s: &mut String, table_name: &str, table_alias: TableAlias) {
+    fn many_query(s: &mut String, table_name: &str, table_alias: &str) {
         s.push_str(" from ( select ");
-        s.push_str(&table_alias.0);
+        s.push_str(table_alias);
         s.push_str(".* from \"public\".\"");
         s.push_str(table_name);
         s.push_str("\" as  ");
-        s.push_str(&table_alias.0);
+        s.push_str(table_alias);
         s.push_str(" order by ");
-        s.push_str(&table_alias.0);
+        s.push_str(table_alias);
         s.push_str(".\"id\" ASC ) ");
-        s.push_str(&table_alias.0);
+        s.push_str(table_alias);
     }
-    fn table_alias(id: u8) -> TableAlias {
+    fn table_alias(id: u8) -> String {
         let mut local_string = String::from("__local_");
         local_string.push_str(&id.to_string());
         local_string.push_str("__");
-        TableAlias(local_string)
+        local_string
     }
     fn single_query(s: &mut String, table_name: &str, id: i64) {
         s.push_str(" from \"public\".\"");
@@ -88,15 +96,6 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         );
         s.push_str(&(local_id).to_string());
         s.push_str("__.\"id\"), ");
-    }
-    fn build_terminal_field_join(s: &mut String, field_name: &str, local_id: u8) {
-        s.push('\'');
-        s.push_str(field_name);
-        s.push_str("'::text, (__local_");
-        s.push_str(&(local_id).to_string());
-        s.push_str("__.\"");
-        s.push_str(&field_name.to_case(Case::Snake));
-        s.push_str("\"),\n");
     }
     fn join_query_closer(
         s: &mut String,
