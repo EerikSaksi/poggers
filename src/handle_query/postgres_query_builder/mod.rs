@@ -116,10 +116,10 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         );
 
         s.push_str(table_name);
-        s.push_str("\" as __local_");
-        s.push_str(&(local_id).to_string());
+        s.push_str("\" as ");
+        s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(
-            "__
+            "
                                 where (__local_",
         );
         s.push_str(&(local_id).to_string());
