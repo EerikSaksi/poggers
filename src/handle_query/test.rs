@@ -673,3 +673,138 @@ fn test_many_to_one() {
         ) __local_0__";
     test_sql_equality(actual, expected);
 }
+
+#[test]
+fn test_nested_many_to_one() {
+    let mut pogg = build_graph(vec![
+        BuildGraphInput {
+            table_name: "workout_plan",
+            terminal_fields: vec!["id", "name", "createdAt"],
+            query_info: Some(("workoutPlans", true)),
+            edge_info: None,
+        },
+        BuildGraphInput {
+            table_name: "workout_plan_day",
+            terminal_fields: vec!["name"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: true,
+                foreign_key_name: "workout_plan_id".to_string(),
+                graphql_field_name: "workoutPlanDays".to_string(),
+            }),
+        },
+        BuildGraphInput {
+            table_name: "workout_plan_exercise",
+            terminal_fields: vec!["exerciseId"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: true,
+                foreign_key_name: "workout_plan_day_id".to_string(),
+                graphql_field_name: "workoutPlanExercises".to_string(),
+            }),
+        },
+        BuildGraphInput {
+            table_name: "exercise",
+            terminal_fields: vec!["id", "bodyPart"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: false,
+                foreign_key_name: "exercise_id".to_string(),
+                graphql_field_name: "exercise".to_string(),
+            }),
+        },
+    ]);
+    let query = "
+        query{
+          workoutPlans{
+            id
+            name
+            createdAt
+            workoutPlanDays{
+              name
+              workoutPlanExercises{
+                exerciseId
+                exercise{
+                  id
+                  bodyPart
+                }
+              }
+            }
+          }
+        }";
+    let actual = pogg.build_root(query);
+    let expected = "
+        select to_json(
+          json_build_array(__local_0__.\"id\")
+        ) as \"__identifiers\",
+        to_json((__local_0__.\"id\")) as \"id\",
+        to_json((__local_0__.\"name\")) as \"name\",
+        to_json((__local_0__.\"created_at\")) as \"createdAt\",
+        to_json(
+          (
+            select coalesce(
+              (
+                select json_agg(__local_1__.\"object\")
+                from (
+                  select json_build_object(
+                    '__identifiers'::text,
+                    json_build_array(__local_2__.\"id\"),
+                    'name'::text,
+                    (__local_2__.\"name\"),
+                    '@workoutPlanExercises'::text,
+                    (
+                      select coalesce(
+                        (
+                          select json_agg(__local_3__.\"object\")
+                          from (
+                            select json_build_object(
+                              '__identifiers'::text,
+                              json_build_array(__local_4__.\"id\"),
+                              'exerciseId'::text,
+                              (__local_4__.\"exercise_id\"),
+                              '@exercise'::text,
+                              (
+                                select json_build_object(
+                                  '__identifiers'::text,
+                                  json_build_array(__local_5__.\"id\"),
+                                  'id'::text,
+                                  (__local_5__.\"id\"),
+                                  'bodyPart'::text,
+                                  (__local_5__.\"body_part\")
+                                ) as object
+                                from \"public\".\"exercise\" as __local_5__
+                                where (__local_4__.\"exercise_id\" = __local_5__.\"id\") 
+                              )
+                            ) as object
+                            from (
+                              select __local_4__.*
+                              from \"public\".\"workout_plan_exercise\" as __local_4__
+                              where (__local_4__.\"workout_plan_day_id\" = __local_2__.\"id\") 
+                              order by __local_4__.\"id\" ASC
+                            ) __local_4__
+                          ) as __local_3__
+                        ),
+                        '[]'::json
+                      )
+                    )
+                  ) as object
+                  from (
+                    select __local_2__.*
+                    from \"public\".\"workout_plan_day\" as __local_2__
+                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") 
+                    order by __local_2__.\"id\" ASC
+                  ) __local_2__
+                ) as __local_1__
+              ),
+              '[]'::json
+            )
+          )
+        ) as \"@workoutPlanDays\"
+        from (
+          select __local_0__.*
+          from \"public\".\"workout_plan\" as __local_0__
+          order by __local_0__.\"id\" ASC
+        ) __local_0__
+    ";
+    test_sql_equality(actual, expected);
+}

@@ -17,7 +17,7 @@ pub trait GraphQLQueryBuilder {
         parent_field_name: &str,
     );
     fn nested_join_header(s: &mut String, child_name: &str);
-    fn many_to_one_join_header(s: &mut String, local_id: u8);
+    fn many_to_one_join_header(s: &mut String, local_id: u8, include_to_json: bool);
     fn many_to_one_join_closer(
         s: &mut String,
         local_id: u8,
@@ -48,7 +48,9 @@ impl GraphQLQueryBuilder for PostgresBuilder {
     }
 
     fn sql_query_header() -> String {
-        String::from("select to_json( json_build_array(__local_0__.\"id\") ) as \"__identifiers\", ")
+        String::from(
+            "select to_json( json_build_array(__local_0__.\"id\") ) as \"__identifiers\", ",
+        )
     }
     fn many_query(s: &mut String, table_name: &str, table_alias: &str) {
         s.push_str(" from ( select ");
@@ -83,7 +85,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         if include_to_json {
             s.push_str(" to_json(\n (\n")
         }
-        s.push_str(" select coalesce( ( select json_agg(",);
+        s.push_str(" select coalesce( ( select json_agg(");
 
         s.push_str(&PostgresBuilder::table_alias(local_id - 1));
         s.push_str(
@@ -105,12 +107,12 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(" ) as object ");
         s.push_str("from ( select ");
         s.push_str(&PostgresBuilder::table_alias(local_id));
-        s.push_str( ".* from \"public\".\"",);
+        s.push_str(".* from \"public\".\"");
 
         s.push_str(table_name);
         s.push_str("\" as ");
         s.push_str(&PostgresBuilder::table_alias(local_id));
-        s.push_str( " where (",);
+        s.push_str(" where (");
         s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(".\"");
         s.push_str(foreign_key_name);
@@ -118,14 +120,14 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(&PostgresBuilder::table_alias(local_id - 2));
         s.push_str(".\"id\") order by ");
         s.push_str(&PostgresBuilder::table_alias(local_id));
-        s.push_str( ".\"id\" ASC ) ",
-        );
+        s.push_str(".\"id\" ASC ) ");
         s.push_str(&PostgresBuilder::table_alias(local_id));
-        s.push_str(" ) as ",
-        );
+        s.push_str(" ) as ");
         s.push_str(&PostgresBuilder::table_alias(local_id - 1));
-        s.push_str( " ), '[]'::json ) )
-                ");
+        s.push_str(
+            " ), '[]'::json ) )
+                ",
+        );
         if include_to_json {
             s.push_str(") as \"@");
             s.push_str(parent_field_name);
@@ -137,8 +139,11 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(child_name);
         s.push_str("'::text, (");
     }
-    fn many_to_one_join_header(s: &mut String, local_id: u8) {
-        s.push_str( "to_json( ( select json_build_object( '__identifiers'::text, json_build_array(");
+    fn many_to_one_join_header(s: &mut String, local_id: u8, include_to_json: bool) {
+        if include_to_json {
+            s.push_str(" to_json(\n (\n")
+        }
+        s.push_str(" select json_build_object( '__identifiers'::text, json_build_array(");
         s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(".\"id\"), ");
     }
@@ -162,9 +167,11 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(foreign_key_name);
         s.push_str("\" = ");
         s.push_str(&PostgresBuilder::table_alias(local_id));
-        s.push_str(".\"id\") ) ) as \"@");
-        s.push_str( parent_field_name);
-        s.push_str("\", ");
-
+        s.push_str(".\"id\") ) ) ");
+        if include_to_json {
+            s.push_str("as \"@");
+            s.push_str(parent_field_name);
+            s.push_str("\", ");
+        }
     }
 }

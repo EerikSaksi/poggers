@@ -145,7 +145,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     SQL::join_query_header(&mut to_return, self.local_id, include_to_json);
                 } else {
                     self.local_id += 1;
-                    SQL::many_to_one_join_header(&mut to_return, self.local_id);
+                    SQL::many_to_one_join_header(&mut to_return, self.local_id, include_to_json);
                 }
 
                 //we need a copy of this, as any further recursive calls would increment local_id
