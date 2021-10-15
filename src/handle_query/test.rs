@@ -96,7 +96,11 @@ fn many_select() {
         table_name: "exercise",
         terminal_fields: vec!["id", "bodyPart", "exerciseType"],
         query_info: Some(("exercises", true)),
-        edge_info: None,
+        edge_info: Some(GraphQLEdgeInfo {
+            one_to_many: true,
+            foreign_key_name: "workout_plan_id".to_string(),
+            graphql_field_name: "workoutPlanDays".to_string(),
+        }),
     }]);
 
     let actual = pogg.build_root(
@@ -128,7 +132,6 @@ fn many_select() {
 
 #[test]
 fn simple_query_with_filter() {
-
     let mut pogg = build_graph(vec![BuildGraphInput {
         table_name: "exercise",
         terminal_fields: vec!["bodyPart"],
@@ -156,6 +159,20 @@ fn simple_query_with_filter() {
 }
 #[test]
 fn join() {
+    let mut pogg = build_graph(vec![
+        BuildGraphInput {
+            table_name: "workout_plan",
+            terminal_fields: vec!["appUserId"],
+            query_info: Some(("workoutPlans", true)),
+            edge_info: None,
+        },
+        BuildGraphInput {
+            table_name: "workout_plan_days",
+            terminal_fields: vec!["workoutPlanId"],
+            query_info: None,
+            edge_info: None,
+        },
+    ]);
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
 
     let mut workout_plan_terminal_fields = HashSet::new();
