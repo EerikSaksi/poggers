@@ -205,6 +205,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 return to_return;
             }
         }
-        panic!("No endpoints found")
+        panic!("{} endpoint not found found", parent_field_name)
     }
 }
