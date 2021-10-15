@@ -96,11 +96,7 @@ fn many_select() {
         table_name: "exercise",
         terminal_fields: vec!["id", "bodyPart", "exerciseType"],
         query_info: Some(("exercises", true)),
-        edge_info: Some(GraphQLEdgeInfo {
-            one_to_many: true,
-            foreign_key_name: "workout_plan_id".to_string(),
-            graphql_field_name: "workoutPlanDays".to_string(),
-        }),
+        edge_info: None,
     }]);
 
     let actual = pogg.build_root(
@@ -167,53 +163,16 @@ fn join() {
             edge_info: None,
         },
         BuildGraphInput {
-            table_name: "workout_plan_days",
+            table_name: "workout_plan_day",
             terminal_fields: vec!["workoutPlanId"],
             query_info: None,
-            edge_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: true,
+                foreign_key_name: "workout_plan_id".to_string(),
+                graphql_field_name: "workoutPlanDays".to_string(),
+            }),
         },
     ]);
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
-
-    let mut workout_plan_terminal_fields = HashSet::new();
-    workout_plan_terminal_fields.insert("appUserId".to_string());
-
-    let node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan".to_string(),
-        terminal_fields: workout_plan_terminal_fields,
-    });
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-    query_to_type.insert(
-        "workoutPlans".to_string(),
-        QueryEdgeInfo {
-            is_many: true,
-            node_index,
-        },
-    );
-
-    let mut days_terminal_fields = HashSet::new();
-    days_terminal_fields.insert("workoutPlanId".to_string());
-    let day_node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan_day".to_string(),
-        terminal_fields: days_terminal_fields,
-    });
-
-    g.add_edge(
-        node_index,
-        day_node_index,
-        GraphQLEdgeInfo {
-            one_to_many: true,
-            foreign_key_name: "workout_plan_id".to_string(),
-            graphql_field_name: "workoutPlanDays".to_string(),
-        },
-    );
-
-    let mut pogg = Poggers {
-        g,
-        query_to_type,
-        local_id: 0,
-        query_builder: PostgresBuilder {},
-    };
     let actual = pogg.build_root(
         "
         query{
