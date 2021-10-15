@@ -613,57 +613,24 @@ fn test_arbitrary_depth_join() {
 
 #[test]
 fn test_many_to_one() {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
-
-    let node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan".to_string(),
-        terminal_fields: HashSet::from_iter(
-            ["id", "appUserId", "name"].iter().map(|s| s.to_string()),
-        ),
-    });
-    let day_node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan_day".to_string(),
-        terminal_fields: HashSet::from_iter(
-            ["workoutPlanId", "name"].iter().map(|s| s.to_string()),
-        ),
-    });
-
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-    query_to_type.insert(
-        "workoutPlanDays".to_string(),
-        QueryEdgeInfo {
-            is_many: true,
-            node_index: day_node_index,
+    let mut pogg = build_graph(vec![
+        BuildGraphInput {
+            table_name: "workout_plan_day",
+            terminal_fields: vec!["workoutPlanId", "name"],
+            query_info: Some(("workoutPlanDays", true)),
+            edge_info: None,
         },
-    );
-
-    g.add_edge(
-        day_node_index,
-        node_index,
-        GraphQLEdgeInfo {
-            one_to_many: false,
-            foreign_key_name: "workout_plan_id".to_string(),
-            graphql_field_name: "workoutPlan".to_string(),
+        BuildGraphInput {
+            table_name: "workout_plan",
+            terminal_fields: vec!["id", "appUserId", "name"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: false,
+                foreign_key_name: "workout_plan_id".to_string(),
+                graphql_field_name: "workoutPlan".to_string(),
+            }),
         },
-    );
-
-    let exercise_node_index = g.add_node(GraphQLType {
-        table_name: "workout_plan_exercise".to_string(),
-        terminal_fields: HashSet::from_iter(
-            ["id", "ordering", "sets", "reps", "workoutPlanDayId"]
-                .iter()
-                .map(|s| s.to_string()),
-        ),
-    });
-    g.add_edge(
-        day_node_index,
-        exercise_node_index,
-        GraphQLEdgeInfo {
-            one_to_many: true,
-            foreign_key_name: "workout_plan_day_id".to_string(),
-            graphql_field_name: "workoutPlanExercises".to_string(),
-        },
-    );
+    ]);
     let query = "
         query{
           workoutPlanDays{
@@ -676,13 +643,6 @@ fn test_many_to_one() {
             }
           }
         }";
-
-    let mut pogg = Poggers {
-        query_to_type,
-        g,
-        local_id: 0,
-        query_builder: PostgresBuilder {},
-    };
     let actual = pogg.build_root(query);
     let expected = "
         select to_json(
