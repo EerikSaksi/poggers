@@ -6,6 +6,10 @@ use std::{
     iter::FromIterator,
 };
 
+fn build_graph(tables: Vec<(&str, Vec<&str>)>) {
+    
+}
+
 fn test_sql_equality(actual: Result<String, Error>, expected: &str) {
     assert!(actual.is_ok());
 
