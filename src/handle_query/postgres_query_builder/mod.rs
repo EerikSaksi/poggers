@@ -149,7 +149,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
             s.push_str(foreign_key_name);
             s.push_str("\" = ");
             s.push_str(&PostgresBuilder::table_alias(local_id));
-            s.push_str(".\"id\" ");
+            s.push_str(".\"id\") ) ");
         }
         if include_to_json {
             s.push_str(") as \"@");
