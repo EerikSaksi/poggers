@@ -169,14 +169,9 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                                     )
                                     .detach();
                                 to_return.push_str(
-                                    &self.build_foreign_field(
-                                        selection, child_name, &mut edges, false,
-                                    ),
-                                );
+                                    &self.build_foreign_field( selection, child_name, &mut edges, false,),);
                             } else {
-                                SQL::build_terminal_field_join(
-                                    &mut to_return,
-                                    child_name,
+                                SQL::build_terminal_field_join( &mut to_return, child_name,
                                     self.local_id,
                                 );
                             }
@@ -184,23 +179,9 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     }
                 }
                 if self.g[edge].one_to_many {
-                    SQL::join_query_closer(
-                        &mut to_return,
-                        local_id_copy,
-                        include_to_json,
-                        &self.g[endpoints.1].table_name,
-                        &self.g[edge].foreign_key_name,
-                        parent_field_name,
-                    );
+                    SQL::join_query_closer( &mut to_return, local_id_copy, include_to_json, &self.g[endpoints.1].table_name, &self.g[edge].foreign_key_name, parent_field_name,);
                 } else {
-                    SQL::many_to_one_join_closer(
-                        &mut to_return,
-                        local_id_copy,
-                        include_to_json,
-                        &self.g[endpoints.1].table_name,
-                        &self.g[edge].foreign_key_name,
-                        parent_field_name,
-                    );
+                    SQL::many_to_one_join_closer( &mut to_return, local_id_copy, include_to_json, &self.g[endpoints.1].table_name, &self.g[edge].foreign_key_name, parent_field_name,);
                 }
                 return to_return;
             }
