@@ -108,10 +108,10 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         //remove last two chars
         s.drain(s.len() - 2..s.len());
         s.push_str(" ) as object ");
-        s.push_str("from ( select __local_");
-        s.push_str(&(local_id).to_string());
+        s.push_str("from ( select ");
+        s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(
-            "__.*
+            ".*
                            from \"public\".\"",
         );
 
