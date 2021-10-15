@@ -715,105 +715,105 @@ fn test_arbitrary_depth_join() {
     test_sql_equality(actual, expected);
 }
 
-//#[test]
-//fn test_many_to_one() {
-//    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
-//
-//    let node_index = g.add_node(GraphQLType {
-//        table_name: "workout_plan".to_string(),
-//        terminal_fields: HashSet::from_iter(
-//            ["id", "appUserId", "name"].iter().map(|s| s.to_string()),
-//        ),
-//    });
-//    let day_node_index = g.add_node(GraphQLType {
-//        table_name: "workout_plan_day".to_string(),
-//        terminal_fields: HashSet::from_iter(
-//            ["workoutPlanId", "name"].iter().map(|s| s.to_string()),
-//        ),
-//    });
-//
-//    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-//    query_to_type.insert(
-//        "workoutPlanDays".to_string(),
-//        QueryEdgeInfo {
-//            is_many: true,
-//            node_index: day_node_index,
-//        },
-//    );
-//
-//    g.add_edge(
-//        day_node_index,
-//        node_index,
-//        GraphQLEdgeInfo {
-//            one_to_many: false,
-//            foreign_key_name: "workout_plan_id".to_string(),
-//            graphql_field_name: "workoutPlan".to_string(),
-//        },
-//    );
-//
-//    let exercise_node_index = g.add_node(GraphQLType {
-//        table_name: "workout_plan_exercise".to_string(),
-//        terminal_fields: HashSet::from_iter(
-//            ["id", "ordering", "sets", "reps", "workoutPlanDayId"]
-//                .iter()
-//                .map(|s| s.to_string()),
-//        ),
-//    });
-//    g.add_edge(
-//        day_node_index,
-//        exercise_node_index,
-//        GraphQLEdgeInfo {
-//            one_to_many: true,
-//            foreign_key_name: "workout_plan_day_id".to_string(),
-//            graphql_field_name: "workoutPlanExercises".to_string(),
-//        },
-//    );
-//    let query = "
-//        query{
-//          workoutPlanDays{
-//            workoutPlanId
-//            name
-//            workoutPlan{
-//              id
-//              name
-//              appUserId
-//            }
-//          }
-//        }";
-//
-//    let mut pogg = Poggers {
-//        query_to_type,
-//        g,
-//        local_id: 0,
-//        query_builder: PostgresBuilder {},
-//    };
-//    let actual = pogg.build_root(query);
-//    let expected = "
-//        select to_json(
-//          json_build_array(__local_0__.\"id\")
-//        ) as \"__identifiers\",
-//        to_json((__local_0__.\"workout_plan_id\")) as \"workoutPlanId\",
-//        to_json((__local_0__.\"name\")) as \"name\",
-//        to_json(
-//          (
-//            select json_build_object(
-//              '__identifiers'::text,
-//              json_build_array(__local_1__.\"id\"),
-//              'id'::text,
-//              (__local_1__.\"id\"),
-//              'name'::text,
-//              (__local_1__.\"name\"),
-//              'appUserId'::text,
-//              (__local_1__.\"app_user_id\")
-//            ) as object
-//            from \"public\".\"workout_plan\" as __local_1__
-//            where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\") 
-//          )
-//        ) as \"@workoutPlan\"
-//        from (
-//          select __local_0__.*
-//          from \"public\".\"workout_plan_day\" as __local_0__
-//          order by __local_0__.\"id\" ASC
-//        ) __local_0__";
-//    test_sql_equality(actual, expected);
-//}
+#[test]
+fn test_many_to_one() {
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+
+    let node_index = g.add_node(GraphQLType {
+        table_name: "workout_plan".to_string(),
+        terminal_fields: HashSet::from_iter(
+            ["id", "appUserId", "name"].iter().map(|s| s.to_string()),
+        ),
+    });
+    let day_node_index = g.add_node(GraphQLType {
+        table_name: "workout_plan_day".to_string(),
+        terminal_fields: HashSet::from_iter(
+            ["workoutPlanId", "name"].iter().map(|s| s.to_string()),
+        ),
+    });
+
+    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+    query_to_type.insert(
+        "workoutPlanDays".to_string(),
+        QueryEdgeInfo {
+            is_many: true,
+            node_index: day_node_index,
+        },
+    );
+
+    g.add_edge(
+        day_node_index,
+        node_index,
+        GraphQLEdgeInfo {
+            one_to_many: false,
+            foreign_key_name: "workout_plan_id".to_string(),
+            graphql_field_name: "workoutPlan".to_string(),
+        },
+    );
+
+    let exercise_node_index = g.add_node(GraphQLType {
+        table_name: "workout_plan_exercise".to_string(),
+        terminal_fields: HashSet::from_iter(
+            ["id", "ordering", "sets", "reps", "workoutPlanDayId"]
+                .iter()
+                .map(|s| s.to_string()),
+        ),
+    });
+    g.add_edge(
+        day_node_index,
+        exercise_node_index,
+        GraphQLEdgeInfo {
+            one_to_many: true,
+            foreign_key_name: "workout_plan_day_id".to_string(),
+            graphql_field_name: "workoutPlanExercises".to_string(),
+        },
+    );
+    let query = "
+        query{
+          workoutPlanDays{
+            workoutPlanId
+            name
+            workoutPlan{
+              id
+              name
+              appUserId
+            }
+          }
+        }";
+
+    let mut pogg = Poggers {
+        query_to_type,
+        g,
+        local_id: 0,
+        query_builder: PostgresBuilder {},
+    };
+    let actual = pogg.build_root(query);
+    let expected = "
+        select to_json(
+          json_build_array(__local_0__.\"id\")
+        ) as \"__identifiers\",
+        to_json((__local_0__.\"workout_plan_id\")) as \"workoutPlanId\",
+        to_json((__local_0__.\"name\")) as \"name\",
+        to_json(
+          (
+            select json_build_object(
+              '__identifiers'::text,
+              json_build_array(__local_1__.\"id\"),
+              'id'::text,
+              (__local_1__.\"id\"),
+              'name'::text,
+              (__local_1__.\"name\"),
+              'appUserId'::text,
+              (__local_1__.\"app_user_id\")
+            ) as object
+            from \"public\".\"workout_plan\" as __local_1__
+            where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\") 
+          )
+        ) as \"@workoutPlan\"
+        from (
+          select __local_0__.*
+          from \"public\".\"workout_plan_day\" as __local_0__
+          order by __local_0__.\"id\" ASC
+        ) __local_0__";
+    test_sql_equality(actual, expected);
+}

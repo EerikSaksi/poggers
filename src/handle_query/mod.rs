@@ -132,17 +132,26 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
                 let mut to_return = String::new();
-                self.local_id += 2;
-
-                //we need a copy of this, as any further recursive calls would increment local_id
-                //leading to incorrect results
-                let local_id_copy = self.local_id;
 
                 //endpoints is a tuple where endpoints.0 contains the parent nodeindex, and
                 //endpoints.1 contains the current graphql types node index
                 let endpoints = self.g.edge_endpoints(edge).unwrap();
 
-                SQL::join_query_header(&mut to_return, self.local_id, include_to_json);
+                //the start and end of this query, as well as the local_ids are different depending
+                //on if its one to many or many to one. Everything in the middle is the same so
+                //these arent the same methods
+                if self.g[edge].one_to_many {
+                    self.local_id += 2;
+                    SQL::join_query_header(&mut to_return, self.local_id, include_to_json);
+                } else {
+                    self.local_id += 1;
+                    SQL::many_to_one_join_header(&mut to_return, self.local_id);
+                }
+
+                //we need a copy of this, as any further recursive calls would increment local_id
+                //leading to incorrect results
+                let local_id_copy = self.local_id;
+
                 if let Selection::Field(field) = &selection.node {
                     for selection in &field.node.selection_set.node.items {
                         if let Selection::Field(child_field) = &selection.node {
@@ -174,14 +183,25 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                         }
                     }
                 }
-                SQL::join_query_closer(
-                    &mut to_return,
-                    local_id_copy,
-                    include_to_json,
-                    &self.g[endpoints.1].table_name,
-                    &self.g[edge].foreign_key_name,
-                    parent_field_name,
-                );
+                if self.g[edge].one_to_many {
+                    SQL::join_query_closer(
+                        &mut to_return,
+                        local_id_copy,
+                        include_to_json,
+                        &self.g[endpoints.1].table_name,
+                        &self.g[edge].foreign_key_name,
+                        parent_field_name,
+                    );
+                } else {
+                    SQL::many_to_one_join_closer(
+                        &mut to_return,
+                        local_id_copy,
+                        include_to_json,
+                        &self.g[endpoints.1].table_name,
+                        &self.g[edge].foreign_key_name,
+                        parent_field_name,
+                    );
+                }
                 return to_return;
             }
         }

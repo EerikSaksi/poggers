@@ -17,6 +17,15 @@ pub trait GraphQLQueryBuilder {
         parent_field_name: &str,
     );
     fn nested_join_header(s: &mut String, child_name: &str);
+    fn many_to_one_join_header(s: &mut String, local_id: u8);
+    fn many_to_one_join_closer(
+        s: &mut String,
+        local_id: u8,
+        include_to_json: bool,
+        table_name: &str,
+        foreign_key_name: &str,
+        parent_field_name: &str,
+    );
 }
 
 pub struct PostgresBuilder {}
@@ -32,7 +41,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push('\'');
         s.push_str(field_name);
         s.push_str("'::text, (");
-        s.push_str(&PostgresBuilder::table_alias(local_id));  
+        s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(".\"");
         s.push_str(&field_name.to_case(Case::Snake));
         s.push_str("\"),\n");
@@ -131,16 +140,16 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(
             ".\"id\" ASC
-                              ) __local_",
+                              ) ",
         );
-        s.push_str(&(local_id).to_string());
+        s.push_str(&PostgresBuilder::table_alias(local_id));
         s.push_str(
-            "__
-                            ) as __local_",
+            "
+                            ) as ",
         );
-        s.push_str(&(local_id - 1).to_string());
+        s.push_str(&PostgresBuilder::table_alias(local_id - 1));
         s.push_str(
-            "__ ),
+            " ),
                           '[]'::json
                         )
                     )
@@ -156,5 +165,47 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str("\'@");
         s.push_str(child_name);
         s.push_str("'::text, (");
+    }
+    fn many_to_one_join_header(s: &mut String, local_id: u8) {
+        s.push_str(
+            "to_json(
+          (
+            select json_build_object(
+              '__identifiers'::text,
+              json_build_array(",
+        );
+        s.push_str(&PostgresBuilder::table_alias(local_id));
+        s.push_str(".\"id\"), ");
+        /*
+
+            where (__local_0__.\"workout_plan_id\" = __local_1__.\"id\")
+          )
+        ) as \"@workoutPlan\"";
+        */
+    }
+    fn many_to_one_join_closer(
+        s: &mut String,
+        local_id: u8,
+        include_to_json: bool,
+        table_name: &str,
+        foreign_key_name: &str,
+        parent_field_name: &str,
+    ) {
+        s.drain(s.len() - 2..s.len());
+        s.push_str(" ) as object  ");
+        s.push_str("from \"public\".\"");
+        s.push_str(table_name);
+        s.push_str("\" as ");
+        s.push_str(&PostgresBuilder::table_alias(local_id));
+        s.push_str(" where (");
+        s.push_str(&PostgresBuilder::table_alias(local_id - 1));
+        s.push_str(".\"");
+        s.push_str(foreign_key_name);
+        s.push_str("\" = ");
+        s.push_str(&PostgresBuilder::table_alias(local_id));
+        s.push_str(".\"id\") ) ) as \"@");
+        s.push_str( parent_field_name);
+        s.push_str("\", ");
+
     }
 }
