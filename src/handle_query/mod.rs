@@ -140,7 +140,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 //the start and end of this query, as well as the local_ids are different depending
                 //on if its one to many or many to one. Everything in the middle is the same so
                 //these arent the same methods
-                self.local_id = SQL::many_to_one_join_header(
+                self.local_id = SQL::join_head(
                     &mut to_return,
                     self.local_id,
                     include_to_json,
@@ -182,7 +182,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                         }
                     }
                 }
-                SQL::many_to_one_join_closer(
+                SQL::join_tail(
                     &mut to_return,
                     local_id_copy,
                     include_to_json,

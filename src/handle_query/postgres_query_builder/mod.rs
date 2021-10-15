@@ -8,13 +8,8 @@ pub trait GraphQLQueryBuilder {
     fn many_query(s: &mut String, table_name: &str, table_alias: &str);
     fn table_alias(id: u8) -> String;
     fn nested_join_header(s: &mut String, child_name: &str);
-    fn many_to_one_join_header(
-        s: &mut String,
-        local_id: u8,
-        include_to_json: bool,
-        one_to_many: bool,
-    ) -> u8;
-    fn many_to_one_join_closer(
+    fn join_head(s: &mut String, local_id: u8, include_to_json: bool, one_to_many: bool) -> u8;
+    fn join_tail(
         s: &mut String,
         local_id: u8,
         include_to_json: bool,
@@ -79,12 +74,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(child_name);
         s.push_str("'::text, ( ");
     }
-    fn many_to_one_join_header(
-        s: &mut String,
-        mut local_id: u8,
-        include_to_json: bool,
-        one_to_many: bool,
-    ) -> u8 {
+    fn join_head(s: &mut String, mut local_id: u8, include_to_json: bool, one_to_many: bool) -> u8 {
         if include_to_json {
             s.push_str(" to_json(\n (\n")
         }
@@ -101,7 +91,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(".\"id\"), ");
         local_id
     }
-    fn many_to_one_join_closer(
+    fn join_tail(
         s: &mut String,
         local_id: u8,
         include_to_json: bool,
