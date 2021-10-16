@@ -144,6 +144,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
                 &PostgresBuilder::table_alias(local_id - 1),
                 &PostgresBuilder::table_alias(local_id),
             );
+            s.push_str(") ) ");
         }
         if include_to_json {
             s.push_str(") as \"@");
