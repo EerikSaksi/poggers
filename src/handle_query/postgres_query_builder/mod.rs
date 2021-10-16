@@ -14,9 +14,15 @@ pub trait GraphQLQueryBuilder {
         local_id: u8,
         include_to_json: bool,
         table_name: &str,
-        foreign_key_name: &str,
+        foreign_keys: &Vec<(String, String)>,
         parent_field_name: &str,
         one_to_many: bool,
+    );
+    fn join_by_foreign_keys(
+        s: &mut String,
+        foreign_keys: &Vec<(String, String)>,
+        left_table: &str,
+        right_table: &str,
     );
 }
 
@@ -96,7 +102,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         local_id: u8,
         include_to_json: bool,
         table_name: &str,
-        foreign_key_name: &str,
+        foreign_keys: &Vec<(String, String)>,
         parent_field_name: &str,
         one_to_many: bool,
     ) {
@@ -108,17 +114,16 @@ impl GraphQLQueryBuilder for PostgresBuilder {
             s.push_str("( select ");
             s.push_str(&PostgresBuilder::table_alias(local_id));
             s.push_str(".* from \"public\".\"");
-
             s.push_str(table_name);
             s.push_str("\" as ");
             s.push_str(&PostgresBuilder::table_alias(local_id));
-            s.push_str(" where (");
-            s.push_str(&PostgresBuilder::table_alias(local_id));
-            s.push_str(".\"");
-            s.push_str(foreign_key_name);
-            s.push_str("\" = ");
-            s.push_str(&PostgresBuilder::table_alias(local_id - 2));
-            s.push_str(".\"id\") order by ");
+            PostgresBuilder::join_by_foreign_keys(
+                s,
+                foreign_keys,
+                &PostgresBuilder::table_alias(local_id),
+                &PostgresBuilder::table_alias(local_id - 2),
+            );
+            s.push_str(") order by ");
             s.push_str(&PostgresBuilder::table_alias(local_id));
             s.push_str(".\"id\" ASC ) ");
             s.push_str(&PostgresBuilder::table_alias(local_id));
@@ -133,18 +138,35 @@ impl GraphQLQueryBuilder for PostgresBuilder {
             s.push_str(table_name);
             s.push_str("\" as ");
             s.push_str(&PostgresBuilder::table_alias(local_id));
-            s.push_str(" where (");
-            s.push_str(&PostgresBuilder::table_alias(local_id - 1));
-            s.push_str(".\"");
-            s.push_str(foreign_key_name);
-            s.push_str("\" = ");
-            s.push_str(&PostgresBuilder::table_alias(local_id));
-            s.push_str(".\"id\") ) ");
+            PostgresBuilder::join_by_foreign_keys(
+                s,
+                foreign_keys,
+                &PostgresBuilder::table_alias(local_id - 1),
+                &PostgresBuilder::table_alias(local_id),
+            );
         }
         if include_to_json {
             s.push_str(") as \"@");
             s.push_str(parent_field_name);
             s.push_str("\", ");
+        }
+    }
+    fn join_by_foreign_keys(
+        s: &mut String,
+        foreign_keys: &Vec<(String, String)>,
+        left_table: &str,
+        right_table: &str,
+    ) {
+        for fk in foreign_keys {
+            s.push_str(" where (");
+            s.push_str(left_table);
+            s.push_str(".\"");
+            s.push_str(&fk.0);
+            s.push_str("\" = ");
+            s.push_str(right_table);
+            s.push_str(".\"");
+            s.push_str(&fk.1);
+            s.push('\"');
         }
     }
 }

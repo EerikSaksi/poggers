@@ -17,11 +17,15 @@ fn assert_some_edge_eq(expected: &GraphQLEdgeInfo, edges: &[Edge<GraphQLEdgeInfo
         let GraphQLEdgeInfo {
             graphql_field_name,
             one_to_many,
-            foreign_key_name,
+            foreign_keys,
         } = &edge.weight;
         if graphql_field_name == &expected.graphql_field_name
             && one_to_many == &expected.one_to_many
-            && foreign_key_name == &expected.foreign_key_name
+            && foreign_keys.len() == expected.foreign_keys.len()
+            && foreign_keys
+                .iter()
+                .zip(&expected.foreign_keys)
+                .all(|(a, b)| a.0 == b.0 && a.1 == b.1)
         {
             return;
         }
