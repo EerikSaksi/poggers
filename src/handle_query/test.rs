@@ -1,6 +1,6 @@
 use super::*;
 use async_graphql_parser::Error;
-use petgraph::graph::DiGraph;
+use petgraph::{data::Build, graph::DiGraph};
 use std::{
     collections::{HashMap, HashSet},
     iter::FromIterator,
@@ -27,7 +27,7 @@ fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
         let node_index = g.add_node(GraphQLType {
             terminal_fields: HashSet::from_iter(terminal_fields.iter().map(|s| s.to_string())),
             primary_keys: vec!["id".to_string()],
-            table_name : table_name.to_string(),
+            table_name: table_name.to_string(),
         });
 
         //if we have info to connect the previous edge to this then do so
@@ -608,18 +608,18 @@ fn test_arbitrary_depth_join() {
 fn test_many_to_one() {
     let mut pogg = build_graph(vec![
         BuildGraphInput {
-            table_name: "workout_plan_day",
-            terminal_fields: vec!["workoutPlanId", "name"],
-            query_info: Some(("workoutPlanDays", true)),
-            edge_info: None,
-        },
-        BuildGraphInput {
             table_name: "workout_plan",
             terminal_fields: vec!["id", "appUserId", "name"],
             query_info: None,
+            edge_info: None,
+        },
+        BuildGraphInput {
+            table_name: "workout_plan_day",
+            terminal_fields: vec!["workoutPlanId", "name"],
+            query_info: Some(("workoutPlanDays", true)),
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec!["workout_plan_id".to_string()],
-                graphql_field_name: ("workoutPlan".to_string(), "id".to_string()),
+                graphql_field_name: ("workoutPlanDays".to_string(), "workoutPlan".to_string()),
             }),
         },
     ]);
@@ -693,16 +693,30 @@ fn test_nested_many_to_one() {
                 graphql_field_name: ("workoutPlanExercises".to_string(), "id".to_string()),
             }),
         },
-        BuildGraphInput {
-            table_name: "exercise",
-            terminal_fields: vec!["id", "bodyPart"],
-            query_info: None,
-            edge_info: Some(GraphQLEdgeInfo {
-                foreign_keys: vec!["exercise_id".to_string()],
-                graphql_field_name: ("exercise".to_string(), "id".to_string()),
-            }),
-        },
     ]);
+
+
+    //manually add exercise to the graph, and draw a directed edge from workout_plan_exercise to
+    //exercise, specifying they are joined through exercise_id -> id
+    let exercise_node_index = pogg.g.add_node(GraphQLType {
+        table_name: "exercise".to_string(),
+        terminal_fields: HashSet::from_iter(["id", "bodyPart"].iter().map(|s| s.to_string())),
+        primary_keys: vec!["id".to_string()],
+    });
+    let workout_exercise_node_index = pogg
+        .g
+        .node_indices()
+        .find(|index| &pogg.g[*index].table_name == "workout_plan_exercise")
+        .unwrap();
+    pogg.g.add_edge(
+        workout_exercise_node_index,
+        exercise_node_index,
+        GraphQLEdgeInfo {
+            graphql_field_name: ("workoutPlanExercises".to_string(), "exercise".to_string()),
+            foreign_keys: vec!["exercise_id".to_string()],
+        },
+    );
+
     let query = "
         query{
           workoutPlans{
