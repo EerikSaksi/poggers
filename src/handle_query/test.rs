@@ -26,6 +26,7 @@ fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
         //add this node to the graph
         let node_index = g.add_node(GraphQLType {
             terminal_fields: HashSet::from_iter(terminal_fields.iter().map(|s| s.to_string())),
+            primary_keys: vec!["id".to_string()],
             table_name: table_name.to_string(),
         });
 
@@ -167,9 +168,8 @@ fn join() {
             terminal_fields: vec!["workoutPlanId"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanDays".to_string(),
+                foreign_keys: vec!["workout_plan_id".to_string()],
+                graphql_field_name: ("workoutPlanDays".to_string(), "workoutPlan".to_string()),
             }),
         },
     ]);
@@ -235,9 +235,8 @@ fn three_way_join_multiple_fields() {
             terminal_fields: vec!["id", "workoutPlanId", "name"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanDays".to_string(),
+                foreign_keys: vec!["workout_plan_id".to_string()],
+                graphql_field_name: ("workoutPlanDays".to_string(), "".to_string()),
             }),
         },
         BuildGraphInput {
@@ -245,9 +244,8 @@ fn three_way_join_multiple_fields() {
             terminal_fields: vec!["id", "ordering", "sets", "reps", "workoutPlanDayId"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_day_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanExercises".to_string(),
+                foreign_keys: vec!["workout_plan_day_id".to_string()],
+                graphql_field_name: ("workoutPlanExercises".to_string(), "".to_string()),
             }),
         },
     ]);
@@ -364,9 +362,8 @@ fn test_arbitrary_depth_join() {
             terminal_fields: vec!["id", "workoutPlanId", "name"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanDays".to_string(),
+                foreign_keys: vec!["workout_plan_id".to_string()],
+                graphql_field_name: ("workoutPlanDays".to_string(), "id".to_string()),
             }),
         },
         BuildGraphInput {
@@ -374,9 +371,8 @@ fn test_arbitrary_depth_join() {
             terminal_fields: vec!["id", "ordering", "sets", "reps", "workoutPlanDayId"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_day_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanExercises".to_string(),
+                foreign_keys: vec!["workout_plan_day_id".to_string()],
+                graphql_field_name: ("workoutPlanExercises".to_string(), "id".to_string()),
             }),
         },
         BuildGraphInput {
@@ -384,9 +380,8 @@ fn test_arbitrary_depth_join() {
             terminal_fields: vec!["id", "one", "two", "three"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_exercise_id".to_string(), "id".to_string())],
-                graphql_field_name: "table1s".to_string(),
+                foreign_keys: vec!["workout_plan_exercise_id".to_string()],
+                graphql_field_name: ("table1s".to_string(), "id".to_string()),
             }),
         },
         BuildGraphInput {
@@ -394,9 +389,8 @@ fn test_arbitrary_depth_join() {
             terminal_fields: vec!["id", "four", "five", "six"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("table1_id".to_string(), "id".to_string())],
-                graphql_field_name: "table2s".to_string(),
+                foreign_keys: vec!["table1_id".to_string()],
+                graphql_field_name: ("table2s".to_string(), "id".to_string()),
             }),
         },
         BuildGraphInput {
@@ -404,9 +398,8 @@ fn test_arbitrary_depth_join() {
             terminal_fields: vec!["id", "seven", "eight", "nine"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("table2_id".to_string(), "id".to_string())],
-                graphql_field_name: "table3s".to_string(),
+                foreign_keys: vec!["table2_id".to_string()],
+                graphql_field_name: ("table3s".to_string(), "id".to_string())
             }),
         },
     ]);
@@ -625,9 +618,8 @@ fn test_many_to_one() {
             terminal_fields: vec!["id", "appUserId", "name"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: false,
-                foreign_keys: vec![("workout_plan_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlan".to_string(),
+                foreign_keys: vec!["workout_plan_id".to_string()],
+                graphql_field_name: ("workoutPlan".to_string(), "id".to_string())
             }),
         },
     ]);
@@ -688,9 +680,8 @@ fn test_nested_many_to_one() {
             terminal_fields: vec!["name"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanDays".to_string(),
+                foreign_keys: vec!["workout_plan_id".to_string()],
+                graphql_field_name: ("workoutPlanDays".to_string(), "id".to_string())
             }),
         },
         BuildGraphInput {
@@ -698,9 +689,8 @@ fn test_nested_many_to_one() {
             terminal_fields: vec!["exerciseId"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: true,
-                foreign_keys: vec![("workout_plan_day_id".to_string(), "id".to_string())],
-                graphql_field_name: "workoutPlanExercises".to_string(),
+                foreign_keys: vec!["workout_plan_day_id".to_string()],
+                graphql_field_name: ("workoutPlanExercises".to_string(), "id".to_string())
             }),
         },
         BuildGraphInput {
@@ -708,7 +698,6 @@ fn test_nested_many_to_one() {
             terminal_fields: vec!["id", "bodyPart"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                one_to_many: false,
                 foreign_keys: vec![("exercise_id".to_string(), "id".to_string())],
                 graphql_field_name: "exercise".to_string(),
             }),
@@ -876,7 +865,7 @@ fn test_nested_many_to_one() {
 //                    )
 //                    and (
 //                      __local_2__.\"parent_table_id_two\" = __local_0__.\"id_two\"
-//                    ) 
+//                    )
 //                  ) __local_2__
 //                ) as __local_1__
 //              ),

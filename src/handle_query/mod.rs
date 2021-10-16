@@ -169,7 +169,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             local_id_copy,
             include_to_json,
             &self.g[node_index].table_name,
-            (&self.g[edge].foreign_keys),
+            (&self.g[edge].foreign_keys, &self.g[node_index].primary_keys),
             json_parent_key,
             one_to_many,
         );
@@ -179,7 +179,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         node_index: NodeIndex<u32>,
         field_name: &str,
     ) -> (EdgeIndex<u32>, bool) {
-        let incoming_edges = self
+        let mut incoming_edges = self
             .g
             .neighbors_directed(node_index, petgraph::EdgeDirection::Incoming)
             .detach();
@@ -192,7 +192,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             }
         }
 
-        let outgoing_edges = self
+        let mut outgoing_edges = self
             .g
             .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
             .detach();
@@ -205,4 +205,5 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         }
         panic!("Should've found edge");
     }
+
 }

@@ -14,13 +14,13 @@ pub trait GraphQLQueryBuilder {
         local_id: u8,
         include_to_json: bool,
         table_name: &str,
-        foreign_keys: &Vec<(String, String)>,
+        foreign_keys: (&Vec<String>, &Vec<String>),
         parent_field_name: &str,
         one_to_many: bool,
     );
     fn join_by_foreign_keys(
         s: &mut String,
-        foreign_keys: &Vec<(String, String)>,
+        foreign_keys: (&Vec<String>, &Vec<String>),
         left_table: &str,
         right_table: &str,
     );
@@ -102,7 +102,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         local_id: u8,
         include_to_json: bool,
         table_name: &str,
-        foreign_keys: &Vec<(String, String)>,
+        foreign_keys: (&Vec<String>, &Vec<String>),
         parent_field_name: &str,
         one_to_many: bool,
     ) {
@@ -154,11 +154,11 @@ impl GraphQLQueryBuilder for PostgresBuilder {
     }
     fn join_by_foreign_keys(
         s: &mut String,
-        foreign_keys: &Vec<(String, String)>,
+        foreign_keys: (&Vec<String>, &Vec<String>),
         left_table: &str,
         right_table: &str,
     ) {
-        for fk in foreign_keys {
+        for fk in foreign_keys.0.iter().zip(foreign_keys.1) {
             s.push_str(" where (");
             s.push_str(left_table);
             s.push_str(".\"");
