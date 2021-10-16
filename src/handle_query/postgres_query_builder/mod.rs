@@ -7,7 +7,7 @@ pub trait GraphQLQueryBuilder {
     fn single_query(s: &mut String, table_name: &str, id: i64);
     fn many_query(s: &mut String, table_name: &str, table_alias: &str);
     fn table_alias(id: u8) -> String;
-    fn nested_join_header(s: &mut String, child_name: &str);
+    fn nested_join_head(s: &mut String, child_name: &str);
     fn join_head(s: &mut String, local_id: u8, include_to_json: bool, one_to_many: bool) -> u8;
     fn join_tail(
         s: &mut String,
@@ -69,7 +69,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(&id.to_string());
         s.push_str(" )");
     }
-    fn nested_join_header(s: &mut String, child_name: &str) {
+    fn nested_join_head(s: &mut String, child_name: &str) {
         s.push_str("\'@");
         s.push_str(child_name);
         s.push_str("'::text, ( ");

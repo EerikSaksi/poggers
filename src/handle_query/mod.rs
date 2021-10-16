@@ -159,7 +159,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                             if !self.g[endpoints.1].terminal_fields.contains(child_name) {
                                 //if not construct a nested join by adding the header, and passing
                                 //the edges of this node to the child
-                                SQL::nested_join_header(&mut to_return, child_name);
+                                SQL::nested_join_head(&mut to_return, child_name);
                                 let mut edges = self
                                     .g
                                     .neighbors_directed(
