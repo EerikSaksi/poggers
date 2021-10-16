@@ -25,7 +25,7 @@
       "configuration": {
         "request": "launch",
         "program": "${programName}",
-        "args": ["handle_query::test::three_way_join_multiple_fields"]
+        "args": ["handle_query::test::test_many_to_one"]
       },
       "breakpoints": {
         "exception": {
