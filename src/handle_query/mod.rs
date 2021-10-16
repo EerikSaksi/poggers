@@ -44,7 +44,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-        let mut s = SQL::sql_query_header();
+        let mut query_string = SQL::sql_query_header();
 
         //create a __local__ string that we can use to distinguish this selection, and increment
         //the local_id to ensure that this stays as unique
@@ -65,13 +65,19 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 node_index = query_type.node_index;
             }
 
-            self.build_selection(&mut s, selection_set.node.items.get(0).unwrap(), node_index);
+            query_string.push_str(
+                &self.build_selection(selection_set.node.items.get(0).unwrap(), node_index),
+            );
             if is_many {
-                SQL::many_query(&mut s, &self.g[node_index].table_name, &table_alias);
+                SQL::many_query(
+                    &mut query_string,
+                    &self.g[node_index].table_name,
+                    &table_alias,
+                );
             } else {
                 match &field.node.arguments.get(0).unwrap().1.node {
                     Value::Number(num) => SQL::single_query(
-                        &mut s,
+                        &mut query_string,
                         &self.g[node_index].table_name,
                         num.as_i64().unwrap(),
                     ),
@@ -82,15 +88,15 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             panic!("First selection_set item isn't a field");
         }
         self.local_id += 1;
-        s
+        query_string
     }
 
     fn build_selection(
         &mut self,
-        s: &mut String,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
-    ) {
+    ) -> String {
+        let mut to_return = String::new();
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             for selection in &field.node.selection_set.node.items {
@@ -98,31 +104,35 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     //this field is terminal
                     let child_name = child_field.node.name.node.as_str();
                     if self.g[node_index].terminal_fields.contains(child_name) {
-                        SQL::build_terminal_field(s, child_name);
+                        SQL::build_terminal_field(&mut to_return, child_name);
                     } else {
                         let mut edges = self
                             .g
                             .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
                             .detach();
-                        self.build_foreign_field(s, selection, child_name, &mut edges, true);
+                        to_return.push_str(
+                            &self.build_foreign_field(selection, child_name, &mut edges, true),
+                        );
                     }
                 }
             }
         }
-        s.drain(s.len() - 2..s.len());
+        to_return.drain(to_return.len() - 2..to_return.len());
+        to_return
     }
 
     fn build_foreign_field(
         &mut self,
-        s: &mut String,
         selection: &Positioned<Selection>,
         parent_field_name: &str,
         parent_edges: &mut WalkNeighbors<u32>,
         include_to_json: bool,
-    ) {
+    ) -> String {
         while let Some(edge) = parent_edges.next_edge(&self.g) {
             //found the edge which corresponds to this field
             if self.g[edge].graphql_field_name == parent_field_name {
+                let mut to_return = String::new();
+
                 //endpoints is a tuple where endpoints.0 contains the parent nodeindex, and
                 //endpoints.1 contains the current graphql types node index
                 let endpoints = self.g.edge_endpoints(edge).unwrap();
@@ -130,8 +140,12 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 //the start and end of this query, as well as the local_ids are different depending
                 //on if its one to many or many to one. Everything in the middle is the same so
                 //these arent the same methods
-                self.local_id =
-                    SQL::join_head(s, self.local_id, include_to_json, self.g[edge].one_to_many);
+                self.local_id = SQL::join_head(
+                    &mut to_return,
+                    self.local_id,
+                    include_to_json,
+                    self.g[edge].one_to_many,
+                );
 
                 //we need a copy of this, as any further recursive calls would increment local_id
                 //leading to incorrect results
@@ -145,7 +159,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                             if !self.g[endpoints.1].terminal_fields.contains(child_name) {
                                 //if not construct a nested join by adding the header, and passing
                                 //the edges of this node to the child
-                                SQL::nested_join_head(s, child_name);
+                                SQL::nested_join_head(&mut to_return, child_name);
                                 let mut edges = self
                                     .g
                                     .neighbors_directed(
@@ -153,17 +167,23 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                                         petgraph::EdgeDirection::Outgoing,
                                     )
                                     .detach();
-                                self.build_foreign_field(
-                                    s, selection, child_name, &mut edges, false,
+                                to_return.push_str(
+                                    &self.build_foreign_field(
+                                        selection, child_name, &mut edges, false,
+                                    ),
                                 );
                             } else {
-                                SQL::build_terminal_field_join(s, child_name, self.local_id);
+                                SQL::build_terminal_field_join(
+                                    &mut to_return,
+                                    child_name,
+                                    self.local_id,
+                                );
                             }
                         }
                     }
                 }
                 SQL::join_tail(
-                    s,
+                    &mut to_return,
                     local_id_copy,
                     include_to_json,
                     &self.g[endpoints.1].table_name,
@@ -171,6 +191,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     parent_field_name,
                     self.g[edge].one_to_many,
                 );
+                return to_return;
             }
         }
         panic!("{} endpoint not found found", parent_field_name)

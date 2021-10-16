@@ -290,4 +290,40 @@ task_to_employee = {
 graphql_field_name will always be different for the two edges. one_to_many will always be true for the parent and false for the child. The foreign keys vector will always be the same for the two, but each tuple pair will be flipped. I figured a better way to do this would be to draw an edge from the child to the parent table. This would allow us to get rid of the one_to_many field, as the directionality of the relation could be simply implied by the directionality in the Graph. foreign_keys could be stored from the childs perspective (e.g ("employee_guid", "guid")). When constructing the where clause of the join, we would need to flip the pairs prior depending on if the edge was outgoing or incoming. Finally we would need to change graphql_field_name to store two strings. When trying to find the corresponding edge for a non terminal field, we would first check our outgoing edges for any string who's right tuple value matches (any parent table we may refer to). If no match was found, we should then check the incoming edges left value (any child table referring to us).
 
 
+When creating the test for composite primary keys/foreign keys, I realized that the start of each query which has so far been constant changed. The start of the query has to know the primary keys of the root table. If we had the query selecting id_one and id_two for a table whose primary key was (id_one, id_two) the header would be as follows:
+
+query {
+	parentTable {
+		idOne
+		idTwo
+	}
+}
+
+
+select to_json(
+  json_build_array(
+    __local_0__.\"id_one\",
+    __local_0__.\"id_two\"
+  )
+) as \"__identifiers\",
+
+This means that we need to know the primary keys of all tables regardless of if they have any foreign fields. This was also another way to avoid duplicate data. Each node could store its primary keys in a vector, and any child referring to it would store its corresponding foreign key names in the same order 
+
+e.g
+parent_table_node = {
+	table_name: "parent_table",
+	...,
+	primary_keys: ["id_one", "id_two"]
+}
+
+
+# the edge of a child table connecting to this parent might be like so:
+child_to_parent = {
+		//left to right join is parent, right to left children
+    graphql_field_names: ("parent", "children"),
+    pub foreign_keys: ["parent_id_one", "parent_id_two"],
+}
+When joining we could simply zip the childs foreign keys with the parents primary keys.
+
+
 
