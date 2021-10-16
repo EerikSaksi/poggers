@@ -27,12 +27,12 @@ fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
         let node_index = g.add_node(GraphQLType {
             terminal_fields: HashSet::from_iter(terminal_fields.iter().map(|s| s.to_string())),
             primary_keys: vec!["id".to_string()],
-            table_name: table_name.to_string(),
+            table_name : table_name.to_string(),
         });
 
         //if we have info to connect the previous edge to this then do so
         if let Some(edge_info) = edge_info {
-            g.add_edge(previous_index, node_index, edge_info);
+            g.add_edge(node_index, previous_index, edge_info);
         }
 
         if let Some(query_info) = query_info {
@@ -399,7 +399,7 @@ fn test_arbitrary_depth_join() {
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec!["table2_id".to_string()],
-                graphql_field_name: ("table3s".to_string(), "id".to_string())
+                graphql_field_name: ("table3s".to_string(), "id".to_string()),
             }),
         },
     ]);
@@ -619,7 +619,7 @@ fn test_many_to_one() {
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec!["workout_plan_id".to_string()],
-                graphql_field_name: ("workoutPlan".to_string(), "id".to_string())
+                graphql_field_name: ("workoutPlan".to_string(), "id".to_string()),
             }),
         },
     ]);
@@ -681,7 +681,7 @@ fn test_nested_many_to_one() {
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec!["workout_plan_id".to_string()],
-                graphql_field_name: ("workoutPlanDays".to_string(), "id".to_string())
+                graphql_field_name: ("workoutPlanDays".to_string(), "id".to_string()),
             }),
         },
         BuildGraphInput {
@@ -690,7 +690,7 @@ fn test_nested_many_to_one() {
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec!["workout_plan_day_id".to_string()],
-                graphql_field_name: ("workoutPlanExercises".to_string(), "id".to_string())
+                graphql_field_name: ("workoutPlanExercises".to_string(), "id".to_string()),
             }),
         },
         BuildGraphInput {
@@ -698,8 +698,8 @@ fn test_nested_many_to_one() {
             terminal_fields: vec!["id", "bodyPart"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
-                foreign_keys: vec![("exercise_id".to_string(), "id".to_string())],
-                graphql_field_name: "exercise".to_string(),
+                foreign_keys: vec!["exercise_id".to_string()],
+                graphql_field_name: ("exercise".to_string(), "id".to_string()),
             }),
         },
     ]);

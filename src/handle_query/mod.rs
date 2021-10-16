@@ -96,6 +96,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     //this field is terminal
+
                     let child_name = child_field.node.name.node.as_str();
                     if self.g[node_index].terminal_fields.contains(child_name) {
                         SQL::build_terminal_field(s, child_name);
@@ -124,9 +125,9 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         let node_index = {
             let endpoints = self.g.edge_endpoints(edge).unwrap();
             if one_to_many {
-                endpoints.1
-            } else {
                 endpoints.0
+            } else {
+                endpoints.1
             }
         };
 
@@ -143,6 +144,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
+                    let a = &self.g[node_index].table_name;
                     //check if the child name is a terminal field
                     if !self.g[node_index].terminal_fields.contains(child_name) {
                         //if not construct a nested join by adding the header, and passing
@@ -187,6 +189,8 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         //find child referring to this parent (doing this way first as I think child -> parent
         //joins are a bit more common)
         while let Some(edge) = incoming_edges.next_edge(&self.g) {
+            let a = &self.g[edge].graphql_field_name.0;
+            
             if self.g[edge].graphql_field_name.0 == field_name {
                 return (edge, true);
             }
@@ -203,7 +207,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 return (edge, false);
             }
         }
-        panic!("Should've found edge");
+        panic!("Shouldve found edge");
     }
-
 }
