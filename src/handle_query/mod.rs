@@ -187,7 +187,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     local_id_copy,
                     include_to_json,
                     &self.g[endpoints.1].table_name,
-                    &self.g[edge].foreign_key_name,
+                    &self.g[edge].foreign_keys,
                     parent_field_name,
                     self.g[edge].one_to_many,
                 );

@@ -47,7 +47,7 @@ fn check_single_connection() {
     assert_some_edge_eq(
         &GraphQLEdgeInfo {
             one_to_many: true,
-            foreign_key_name: "parent_table_id".to_string(),
+            foreign_keys: vec![("id".to_string(), "parent_table_id".to_string())],
             graphql_field_name: "parentTables".to_string(),
         },
         g.raw_edges(),
@@ -55,7 +55,7 @@ fn check_single_connection() {
     assert_some_edge_eq(
         &GraphQLEdgeInfo {
             one_to_many: false,
-            foreign_key_name: "parent_table_id".to_string(),
+            foreign_keys: vec![("parent_table_id".to_string(), "id".to_string())],
             graphql_field_name: "parentTable".to_string(),
         },
         g.raw_edges(),

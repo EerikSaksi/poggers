@@ -19,7 +19,7 @@ pub struct GraphQLType {
 pub struct GraphQLEdgeInfo {
     pub graphql_field_name: String,
     pub one_to_many: bool,
-    pub foreign_key_name: String,
+    pub foreign_keys: Vec<(String, String)>,
 }
 
 pub struct QueryEdgeInfo {
@@ -71,7 +71,7 @@ pub fn create(database_url: &str) -> Poggers<PostgresBuilder> {
                 GraphQLEdgeInfo {
                     one_to_many: false,
                     graphql_field_name: foreign_table_name.clone().to_camel_case(),
-                    foreign_key_name: column_name.to_string(),
+                    foreign_keys: vec![(column_name.to_string(), "id".to_string())],
                 },
             );
 
@@ -82,7 +82,7 @@ pub fn create(database_url: &str) -> Poggers<PostgresBuilder> {
                 GraphQLEdgeInfo {
                     one_to_many: true,
                     graphql_field_name: foreign_table_name.to_camel_case().to_plural(),
-                    foreign_key_name: column_name.to_string(),
+                    foreign_keys: vec![("id".to_string(), column_name.to_string())],
                 },
             );
             query_to_type.insert(
