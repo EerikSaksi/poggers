@@ -5,25 +5,25 @@ GraphQL schemas can be considered like Menus for data. They let the client know 
 To better illustrate what my goal is, here is a hypothetical database implementation:
 
 create table seller (
-id integer primary key,
-name varchar
+	id integer primary key,
+	name varchar
 );
 create table product (
-id integer primary key,
-listed_price float not null,
-seller_id integer references seller(id)
+	id integer primary key,
+	listed_price float not null,
+	seller_id integer references seller(id)
 );
 
 Sellers have a name and an id, and products have a name, a price and a foreign key referencing a seller. This would be these two tables as GraphQL types:
 
 type Seller {
-id: Int!
-name: String
+	id: Int!
+	name: String
 }
 type Product {
-id: Int!
-listedPrice: Float!
-seller: Seller
+	id: Int!
+	listedPrice: Float!
+	seller: Seller
 }
 
 These are pretty similar. GraphQL and Postgres use different data type names, e.g varchar vs String. GraphQL uses upper camel case for type names, and camel case for all variable names, whilst Postgres conventionally uses snake case for everything. GraphQL signals nullability with '!' next to the data type, whilst Postgres uses 'not null' next to the type. Finally, the GraphQL Product type refers to a seller by value, and not by seller_id.
@@ -100,12 +100,12 @@ https://colab.research.google.com/drive/1JcsPot2k_03IYVcFG-ifNNiW0EeHjXqo
 One downside of this implementation is slight loss in readability. Both the Juniper parser and the async GraphQL parser store the positions of the fields (row and column). This data is irrelevant to me. The Juniper parser defines it like so:
 
 pub struct Field<'a, T: Text<'a>> {
-pub position: Pos,
-pub alias: Option<T::Value>,
-pub name: T::Value,
-pub arguments: Vec<(T::Value, Value<'a, T>)>,
-pub directives: Vec<Directive<'a, T>>,
-pub selection_set: SelectionSet<'a, T>,
+	pub position: Pos,
+	pub alias: Option<T::Value>,
+	pub name: T::Value,
+	pub arguments: Vec<(T::Value, Value<'a, T>)>,
+	pub directives: Vec<Directive<'a, T>>,
+	pub selection_set: SelectionSet<'a, T>,
 }
 
 In this case, the position is simply a field that I don't currently need, much like alias, name and directives.
@@ -113,13 +113,13 @@ In this case, the position is simply a field that I don't currently need, much l
 In async_graphql_parser however, every document element is wrapped in generic Positioned struct:
 
 pub struct Positioned<T: ?Sized> {
-pub pos: Pos,
-pub node: T,
+	pub pos: Pos,
+	pub node: T,
 }
 As an example, this struct represents the root of the GraphQL query
 
 pub struct SelectionSet {
-pub items: Vec<Positioned<Selection>>,
+	pub items: Vec<Positioned<Selection>>,
 }
 
 What this means is that when iterating over the queries I need to call e.g item.node.name and not just item.name. This isn't the end of the world, but can make for some ugly one liners, e.g:
@@ -140,13 +140,13 @@ My implementation didn't yet generalize to a three way join. I realized that the
 
 '@foreignTables'::text,
 (
-...
+	...
 )
 
 ## non nested join
 
 to_json (
-...
+	...
 ) as "@foreignTables"
 
 In order to surround the query with the correct text, the query constructor needs to know if it's in a nested or non nested join. I decided to add a boolean parameter is_nested_join to the build_foreign_field function. Then this method surrounds the query conditionally based on the value of is_nested_join. NextI had to figure out when the boolean should be true and false.
@@ -188,46 +188,46 @@ After doing this refactoring I decided to implement the many to one join. E.g in
 
 One to many
 query {
-departments {
-id
-employee {
-name
-}
-}
+	departments {
+		id
+		employee {
+		name
+		}
+	}
 }
 
 Example response for above
 
 {
-"departments" [
-"id": 1,
-"employees" [
-{"name": "Bob"},
-{"name": "Rob"},
-]
-]
+	"departments" [
+		"id": 1,
+		"employees" [
+			{"name": "Bob"},
+			{"name": "Rob"},
+		]
+	]
 }
 
 query {
-employees {
-name
-department {
-id
-}
-}
+	employees {
+		name
+		department {
+			id
+		}
+	}
 }
 
 Example response for above
 
 "employees": {
-name: "Bob",
-"department": {
-id: 1
-},
-name: "Rob",
-"department": {
-id: 1
-},
+	"name": "Bob",
+	"department": {
+		id: 1
+	},
+	"name": "Rob",
+	"department": {
+		id: 1
+	},
 }
 
 This was pretty easy to implement. Syntactically this was very similar to the one to many join, but without additional surroundings that one to many has
@@ -253,4 +253,41 @@ one to many
     )
 
 There are separate methods for closing and opening a join query. It can be thought of as a Hamburger, you can't just put both together before you put food on the bottom bun. The join_query_header is like the bottom bun which is called when we first encounter a foreign join. We then add all the fillings (any table fields this table had) and the query to fetch any foreign fields values recursively. Only once those have been added, can we add the top bun (join_query_closer). I added an extra parameter to both header and closer, one_to_many. This tells the method whether it should add the extra wrapping or not. The one_to_many value is gotten from the edge weight connecting the two types in our schema graph.
+
+
+# 16/10
+I realized that my tests didn't actually cover joins which don't occur as the last selection. The joins selections are supposed to have ,\n at the end of them, but as they were always the last selection they never need commas. This is an interesting example of a corner case not being testes for accidentally. I seemed to be aware of this problem, I intentionally left two spaces at the end of each join for tests to pass (as the last comma is removed) but seemed to forgot why the two last characters were being removed.
+
+Prior, I only stored the foreign key name of the child table. I always assumed that the parent tables primary key was called id. This was always the case in my tests, so all tests passed. In reality, primary keys can be other than id, and they can be composite. In order to address this, I turned the type of the foreign key data from String to a list of tuple pairs where each tuples left value represents the left tables key name, and each tuples right value is that tables corresponding right value. 
+
+E.g for the following table
+
+create table employee(
+		guid integer
+);
+create table assigned_task(
+		employee_guid integer references employee(guid)
+);
+
+For the outgoing edge from employee, the edge should store the foreign key vector [("guid", "employee_guid")], and the assigned_task's outgoing edge should store [("guid", "employee_guid")].
+
+As I was implementing this, I realized that I was storing a lot of duplicate data. This could lead to potential bugs (e.g any updates would have to happen in two places) and increased memory usage. If child_table references parent_table, they both reference one another, but with different edge data. For the example above, the edge weights would be 
+
+
+
+employee_to_task = {
+    graphql_field_name: "assigned_tasks",
+    pub one_to_many: true,
+    pub foreign_keys: [("guid", "employee_guid")],
+}
+
+task_to_employee = {
+    graphql_field_name: "employee",
+    pub one_to_many: false,
+    pub foreign_keys: [("employee_guid", "guid")],
+}
+
+graphql_field_name will always be different for the two edges. one_to_many will always be true for the parent and false for the child. The foreign keys vector will always be the same for the two, but each tuple pair will be flipped. I figured a better way to do this would be to draw an edge from the child to the parent table. This would allow us to get rid of the one_to_many field, as the directionality of the relation could be simply implied by the directionality in the Graph. foreign_keys could be stored from the childs perspective (e.g ("employee_guid", "guid")). When constructing the where clause of the join, we would need to flip the pairs prior depending on if the edge was outgoing or incoming. Finally we would need to change graphql_field_name to store two strings. When trying to find the corresponding edge for a non terminal field, we would first check our outgoing edges for any string who's right tuple value matches (any parent table we may refer to). If no match was found, we should then check the incoming edges left value (any child table referring to us).
+
+
 
