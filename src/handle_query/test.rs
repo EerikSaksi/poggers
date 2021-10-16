@@ -808,3 +808,87 @@ fn test_nested_many_to_one() {
     ";
     test_sql_equality(actual, expected);
 }
+
+#[test]
+fn composite_foreign_key() {
+    let mut pogg = build_graph(vec![
+        BuildGraphInput {
+            table_name: "parent_table",
+            terminal_fields: vec!["idOne", "idTwo"],
+            query_info: Some(("parentTables", true)),
+            edge_info: None,
+        },
+        BuildGraphInput {
+            table_name: "child_table",
+            terminal_fields: vec!["name", "parentTableIdOne", "parentTableIdTwo"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                one_to_many: true,
+                foreign_keys: vec![
+                    ("parent_table_id_one".to_string(), "id_one".to_string()),
+                    ("parent_table_id_two".to_string(), "id_two".to_string()),
+                ],
+                graphql_field_name: "childTablesByParentTableIdOneAndParentTableIdTwo".to_string(),
+            }),
+        },
+    ]);
+    let query = "
+        query{
+          parentTables {
+            idOne
+            idTwo
+            childTablesByParentTableIdOneAndParentTableIdTwo{
+              name
+              parentTableIdOne
+              parentTableIdTwo
+            }
+          }
+        }";
+    let actual = pogg.build_root(query);
+    let expected = "
+        select to_json(
+          json_build_array(
+            __local_0__.\"id_one\",
+            __local_0__.\"id_two\"
+          )
+        ) as \"__identifiers\",
+        to_json((__local_0__.\"id_one\")) as \"idOne\",
+        to_json((__local_0__.\"id_two\")) as \"idTwo\",
+        to_json(
+          (
+            select coalesce(
+              (
+                select json_agg(__local_1__.\"object\")
+                from (
+                  select json_build_object(
+                    'name'::text,
+                    (__local_2__.\"name\"),
+                    'parentTableIdOne'::text,
+                    (__local_2__.\"parent_table_id_one\"),
+                    'parentTableIdTwo'::text,
+                    (__local_2__.\"parent_table_id_two\")
+                  ) as object
+                  from (
+                    select __local_2__.*
+                    from \"public\".\"child_table\" as __local_2__
+                    where (
+                      __local_2__.\"parent_table_id_one\" = __local_0__.\"id_one\"
+                    )
+                    and (
+                      __local_2__.\"parent_table_id_two\" = __local_0__.\"id_two\"
+                    ) 
+                  ) __local_2__
+                ) as __local_1__
+              ),
+              '[]'::json
+            )
+          )
+        ) as \"@childTablesByParentTableIdOneAndParentTableIdTwo\"
+        from (
+          select __local_0__.*
+          from \"public\".\"parent_table\" as __local_0__
+          order by __local_0__.\"id_one\" ASC,
+          __local_0__.\"id_two\" ASC
+        ) __local_0__";
+    test_sql_equality(actual, expected);
+}
