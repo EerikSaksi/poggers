@@ -44,10 +44,11 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-        let mut s = SQL::sql_query_header();
 
         //create a __local__ string that we can use to distinguish this selection
         let table_alias = SQL::table_alias(self.local_id);
+
+        let mut s = String::new();
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
@@ -63,6 +64,8 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 is_many = query_type.is_many;
                 node_index = query_type.node_index;
             }
+
+            SQL::sql_query_header(&mut s, &self.g[node_index].primary_keys);
 
             self.build_selection(&mut s, selection_set.node.items.get(0).unwrap(), node_index);
             if is_many {
@@ -118,7 +121,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         selection: &Positioned<Selection>,
         edge: EdgeIndex<u32>,
         one_to_many: bool,
-        include_to_json: bool,
+        is_nested_join: bool,
         json_parent_key: &str,
     ) {
         //when we have a one_to_many relationship, the node_index is stored on the right (left
@@ -133,8 +136,8 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         };
 
         //create a join head and return the new local id. The local id is only incremented by one
-        //for many_to_one but by two for one_to_many 
-        self.local_id = SQL::join_head(s, self.local_id, include_to_json, one_to_many);
+        //for many_to_one but by two for one_to_many
+        self.local_id = SQL::join_head(s, self.local_id, is_nested_join, one_to_many);
 
         //we need a copy of this, as any further recursive calls would increment local_id, and we
         //don't know by how much as we dont know the depth and the nature of the joins
@@ -147,15 +150,13 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
 
                     //check if the child name is a terminal field
                     if self.g[node_index].terminal_fields.contains(child_name) {
-
                         SQL::build_terminal_field_join(s, child_name, self.local_id);
-
                     } else {
                         //find the corresponding edge like in build_selection
                         let (edge, one_to_many) =
                             self.find_edge_and_endpoints(node_index, child_name);
                         SQL::nested_join_head(s, child_name);
-                        
+
                         //dont include to_json as we're already in a nested join
                         self.build_foreign_field(
                             s,
@@ -172,7 +173,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         SQL::join_tail(
             s,
             local_id_copy,
-            include_to_json,
+            is_nested_join,
             &self.g[node_index].table_name,
             (&self.g[edge].foreign_keys, &self.g[node_index].primary_keys),
             json_parent_key,
@@ -185,21 +186,20 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         field_name: &str,
     ) -> (EdgeIndex<u32>, bool) {
         //given a node, find an edge for which the edges weight's graphql_field_name = field_name.
-            //Case 1: This edge was found in incoming edges. This means that a child table is refering
-            //to this parent_table in the database. In that case this relation is one_to_many
-            
-            //Case 2: This edge was found in outgoing edges. This means that the current graphql
-            //type is a child table referring to a parent, making this a many to one relationship. 
+        //Case 1: This edge was found in incoming edges. This means that a child table is refering
+        //to this parent_table in the database. In that case this relation is one_to_many
 
-            //Case 3: No edge found, unrecoverable error. This is only possible if the query
-            //validation wasn't done properly or we're accidentally searching for a terminal field
-            //as a foreign one. Either problem in schema representation or programming error
+        //Case 2: This edge was found in outgoing edges. This means that the current graphql
+        //type is a child table referring to a parent, making this a many to one relationship.
+
+        //Case 3: No edge found, unrecoverable error. This is only possible if the query
+        //validation wasn't done properly or we're accidentally searching for a terminal field
+        //as a foreign one. Either problem in schema representation or programming error
 
         let mut incoming_edges = self
             .g
             .neighbors_directed(node_index, petgraph::EdgeDirection::Incoming)
             .detach();
-
 
         //check if there is some child table referring to us. The left hand graphql_field_name is
         //the child tables field name, and the right hand is the parent tables field name. Since
@@ -215,7 +215,8 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
             .detach();
 
-        //check if we're referring to 
+        //check if we're referring to some parent. Opposite to the incoming edges, read the right
+        //most graphql_field_name tuple value (parent field name)
         while let Some(edge) = outgoing_edges.next_edge(&self.g) {
             if self.g[edge].graphql_field_name.1 == field_name {
                 return (edge, false);

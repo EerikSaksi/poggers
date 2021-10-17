@@ -184,40 +184,6 @@ fn join() {
           }
         }",
     );
-    let expected = "
-        select to_json(
-          json_build_array(__local_0__.\"id\")
-        ) as \"__identifiers\",
-        to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
-        to_json(
-          (
-            select coalesce(
-              (
-                select json_agg(__local_1__.\"object\")
-                from (
-                  select json_build_object(
-                    '__identifiers'::text,
-                    json_build_array(__local_2__.\"id\"),
-                    'workoutPlanId'::text,
-                    (__local_2__.\"workout_plan_id\")
-                  ) as object
-                  from (
-                    select __local_2__.*
-                    from \"public\".\"workout_plan_day\" as __local_2__
-                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") 
-                    order by __local_2__.\"id\" ASC
-                  ) __local_2__
-                ) as __local_1__
-              ),
-              '[]'::json
-            )
-          )
-        ) as \"@workoutPlanDays\"
-        from (
-          select __local_0__.*
-          from \"public\".\"workout_plan\" as __local_0__
-          order by __local_0__.\"id\" ASC
-        ) __local_0__";
     test_sql_equality(actual, expected);
 }
 
@@ -695,7 +661,6 @@ fn test_nested_many_to_one() {
         },
     ]);
 
-
     //manually add exercise to the graph, and draw a directed edge from workout_plan_exercise to
     //exercise, specifying they are joined through exercise_id -> id
     let exercise_node_index = pogg.g.add_node(GraphQLType {
@@ -812,86 +777,129 @@ fn test_nested_many_to_one() {
     test_sql_equality(actual, expected);
 }
 
-//#[test]
-//fn composite_foreign_key() {
-//    let mut pogg = build_graph(vec![
-//        BuildGraphInput {
-//            table_name: "parent_table",
-//            terminal_fields: vec!["idOne", "idTwo"],
-//            query_info: Some(("parentTables", true)),
-//            edge_info: None,
-//        },
-//        BuildGraphInput {
-//            table_name: "child_table",
-//            terminal_fields: vec!["name", "parentTableIdOne", "parentTableIdTwo"],
-//            query_info: None,
-//            edge_info: Some(GraphQLEdgeInfo {
-//                one_to_many: true,
-//                foreign_keys: vec![
-//                    ("parent_table_id_one".to_string(), "id_one".to_string()),
-//                    ("parent_table_id_two".to_string(), "id_two".to_string()),
-//                ],
-//                graphql_field_name: "childTablesByParentTableIdOneAndParentTableIdTwo".to_string(),
-//            }),
-//        },
-//    ]);
-//    let query = "
-//        query{
-//          parentTables {
-//            idOne
-//            idTwo
-//            childTablesByParentTableIdOneAndParentTableIdTwo{
-//              name
-//              parentTableIdOne
-//              parentTableIdTwo
-//            }
-//          }
-//        }";
-//    let actual = pogg.build_root(query);
-//    let expected = "
-//        select to_json(
-//          json_build_array(
-//            __local_0__.\"id_one\",
-//            __local_0__.\"id_two\"
-//          )
-//        ) as \"__identifiers\",
-//        to_json((__local_0__.\"id_one\")) as \"idOne\",
-//        to_json((__local_0__.\"id_two\")) as \"idTwo\",
-//        to_json(
-//          (
-//            select coalesce(
-//              (
-//                select json_agg(__local_1__.\"object\")
-//                from (
-//                  select json_build_object(
-//                    'name'::text,
-//                    (__local_2__.\"name\"),
-//                    'parentTableIdOne'::text,
-//                    (__local_2__.\"parent_table_id_one\"),
-//                    'parentTableIdTwo'::text,
-//                    (__local_2__.\"parent_table_id_two\")
-//                  ) as object
-//                  from (
-//                    select __local_2__.*
-//                    from \"public\".\"child_table\" as __local_2__
-//                    where (
-//                      __local_2__.\"parent_table_id_one\" = __local_0__.\"id_one\"
-//                    )
-//                    and (
-//                      __local_2__.\"parent_table_id_two\" = __local_0__.\"id_two\"
-//                    )
-//                  ) __local_2__
-//                ) as __local_1__
-//              ),
-//              '[]'::json
-//            )
-//          )
-//        ) as \"@childTablesByParentTableIdOneAndParentTableIdTwo\"
-//        from (
-//          select __local_0__.*
-//          from \"public\".\"parent_table\" as __local_0__
-//          order by __local_0__.\"id_one\" ASC,
-//          __local_0__.\"id_two\" ASC
-//        ) __local_0__";
-//    test_sql_equality(actual, expected);
-//}
+#[test]
+fn composite_foreign_key() {
+    let mut pogg = build_graph(vec![
+        BuildGraphInput {
+            table_name: "parent_table",
+            terminal_fields: vec!["idOne", "idTwo"],
+            query_info: Some(("parentTables", true)),
+            edge_info: None,
+        },
+        BuildGraphInput {
+            table_name: "child_table",
+            terminal_fields: vec!["name", "parentTableIdOne", "parentTableIdTwo"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                foreign_keys: vec![
+                    "parent_table_id_one".to_string(),
+                    "parent_table_id_two".to_string(),
+                ],
+                graphql_field_name: (
+                    "childTablesByParentTableIdOneAndParentTableIdTwo".to_string(),
+                    "parentTable".to_string(),
+                ),
+            }),
+        },
+    ]);
+    let parent_table_node_index = pogg
+        .g
+        .node_indices()
+        .find(|index| &pogg.g[*index].table_name == "parent_table")
+        .unwrap();
+    //by default set as primary key which we do not want
+    pogg.g[parent_table_node_index].primary_keys =
+        ["id_one", "id_two"].iter().map(|s| s.to_string()).collect();
+    let query = "
+        query{
+          parentTables {
+            idOne
+            idTwo
+            childTablesByParentTableIdOneAndParentTableIdTwo{
+              id
+              name
+              parentTableIdOne
+              parentTableIdTwo
+              babyTables{
+                babyName
+                childTableId
+              }
+            }
+          }
+        }";
+    let actual = pogg.build_root(query);
+    let expected = "
+        select to_json(
+          json_build_array(
+            __local_0__.\"id_one\",
+            __local_0__.\"id_two\"
+          )
+        ) as \"__identifiers\",
+        to_json((__local_0__.\"id_one\")) as \"idOne\",
+        to_json((__local_0__.\"id_two\")) as \"idTwo\",
+        to_json(
+          (
+            select coalesce(
+              (
+                select json_agg(__local_1__.\"object\")
+                from (
+                  select json_build_object(
+                    '__identifiers'::text,
+                    json_build_array(__local_2__.\"id\"),
+                    'id'::text,
+                    (__local_2__.\"id\"),
+                    'name'::text,
+                    (__local_2__.\"name\"),
+                    'parentTableIdOne'::text,
+                    (__local_2__.\"parent_table_id_one\"),
+                    'parentTableIdTwo'::text,
+                    (__local_2__.\"parent_table_id_two\"),
+                    '@babyTables'::text,
+                    (
+                      select coalesce(
+                        (
+                          select json_agg(__local_3__.\"object\")
+                          from (
+                            select json_build_object(
+                              'babyName'::text,
+                              (__local_4__.\"baby_name\"),
+                              'childTableId'::text,
+                              (__local_4__.\"child_table_id\")
+                            ) as object
+                            from (
+                              select __local_4__.*
+                              from \"public\".\"baby_table\" as __local_4__
+                              where (__local_4__.\"child_table_id\" = __local_2__.\"id\") and (TRUE) and (TRUE)
+                            ) __local_4__
+                          ) as __local_3__
+                        ),
+                        '[]'::json
+                      )
+                    )
+                  ) as object
+                  from (
+                    select __local_2__.*
+                    from \"public\".\"child_table\" as __local_2__
+                    where (
+                      __local_2__.\"parent_table_id_one\" = __local_0__.\"id_one\"
+                    )
+                    and (
+                      __local_2__.\"parent_table_id_two\" = __local_0__.\"id_two\"
+                    ) and (TRUE) and (TRUE)
+                    order by __local_2__.\"id\" ASC
+                  ) __local_2__
+                ) as __local_1__
+              ),
+              '[]'::json
+            )
+          )
+        ) as \"@childTablesByParentTableIdOneAndParentTableIdTwo\"
+        from (
+          select __local_0__.*
+          from \"public\".\"parent_table\" as __local_0__
+          where (TRUE) and (TRUE)
+          order by __local_0__.\"id_one\" ASC,
+          __local_0__.\"id_two\" ASC
+        ) __local_0__";
+    test_sql_equality(actual, expected);
+}

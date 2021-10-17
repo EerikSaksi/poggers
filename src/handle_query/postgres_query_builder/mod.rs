@@ -3,16 +3,16 @@ use convert_case::{Case, Casing};
 pub trait GraphQLQueryBuilder {
     fn build_terminal_field(s: &mut String, field_name: &str);
     fn build_terminal_field_join(s: &mut String, child_name: &str, local_id: u8);
-    fn sql_query_header() -> String;
+    fn sql_query_header(s: &mut String, primary_keys: &Vec<String>);
     fn single_query(s: &mut String, table_name: &str, id: i64);
     fn many_query(s: &mut String, table_name: &str, table_alias: &str);
     fn table_alias(id: u8) -> String;
     fn nested_join_head(s: &mut String, child_name: &str);
-    fn join_head(s: &mut String, local_id: u8, include_to_json: bool, one_to_many: bool) -> u8;
+    fn join_head(s: &mut String, local_id: u8, is_nested_join: bool, one_to_many: bool) -> u8;
     fn join_tail(
         s: &mut String,
         local_id: u8,
-        include_to_json: bool,
+        is_nested_join: bool,
         table_name: &str,
         foreign_keys: (&Vec<String>, &Vec<String>),
         parent_field_name: &str,
@@ -45,10 +45,17 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str("\"),\n");
     }
 
-    fn sql_query_header() -> String {
-        String::from(
-            "select to_json( json_build_array(__local_0__.\"id\") ) as \"__identifiers\", ",
-        )
+    fn sql_query_header(s: &mut String, primary_keys: &Vec<String>) {
+        s.push_str("select to_json( json_build_array(");
+        for pk in primary_keys {
+            s.push_str("__local_0__.\"");
+            s.push_str(&pk);
+            s.push_str("\", ");
+        }
+
+        //remove last comma
+        s.drain(s.len() - 2..s.len());
+        s.push_str(") ) as \"__identifiers\", ")
     }
     fn many_query(s: &mut String, table_name: &str, table_alias: &str) {
         s.push_str(" from ( select ");
@@ -80,8 +87,8 @@ impl GraphQLQueryBuilder for PostgresBuilder {
         s.push_str(child_name);
         s.push_str("'::text, ( ");
     }
-    fn join_head(s: &mut String, mut local_id: u8, include_to_json: bool, one_to_many: bool) -> u8 {
-        if include_to_json {
+    fn join_head(s: &mut String, mut local_id: u8, is_nested_join: bool, one_to_many: bool) -> u8 {
+        if is_nested_join {
             s.push_str(" to_json(\n (\n")
         }
         if one_to_many {
@@ -100,7 +107,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
     fn join_tail(
         s: &mut String,
         local_id: u8,
-        include_to_json: bool,
+        is_nested_join: bool,
         table_name: &str,
         foreign_keys: (&Vec<String>, &Vec<String>),
         parent_field_name: &str,
@@ -146,7 +153,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
             );
             s.push_str(") )  ");
         }
-        if include_to_json {
+        if is_nested_join {
             s.push_str(") as \"@");
             s.push_str(parent_field_name);
             s.push_str("\", ");
