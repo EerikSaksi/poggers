@@ -177,13 +177,47 @@ fn join() {
         "
         query{
           workoutPlans{
-            appUserId
             workoutPlanDays{
               workoutPlanId
             }
+            appUserId
           }
         }",
     );
+    let expected = "select to_json(
+          json_build_array(__local_0__.\"id\")
+        ) as \"__identifiers\",
+        to_json(
+          (
+            select coalesce(
+              (
+                select json_agg(__local_1__.\"object\")
+                from (
+                  select json_build_object(
+                    '__identifiers'::text,
+                    json_build_array(__local_2__.\"id\"),
+                    'workoutPlanId'::text,
+                    (__local_2__.\"workout_plan_id\")
+                  ) as object
+                  from (
+                    select __local_2__.*
+                    from \"public\".\"workout_plan_day\" as __local_2__
+                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") 
+                    order by __local_2__.\"id\" ASC
+                  ) __local_2__
+                ) as __local_1__
+              ),
+              '[]'::json
+            )
+          )
+        ) as \"@workoutPlanDays\",
+        to_json((__local_0__.\"app_user_id\")) as \"appUserId\"
+        from (
+          select __local_0__.*
+          from \"public\".\"workout_plan\" as __local_0__
+          order by __local_0__.\"id\" ASC
+        ) __local_0__";
+
     test_sql_equality(actual, expected);
 }
 
@@ -788,7 +822,7 @@ fn composite_foreign_key() {
         },
         BuildGraphInput {
             table_name: "child_table",
-            terminal_fields: vec!["name", "parentTableIdOne", "parentTableIdTwo"],
+            terminal_fields: vec!["id", "name", "parentTableIdOne", "parentTableIdTwo"],
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec![
@@ -798,6 +832,18 @@ fn composite_foreign_key() {
                 graphql_field_name: (
                     "childTablesByParentTableIdOneAndParentTableIdTwo".to_string(),
                     "parentTable".to_string(),
+                ),
+            }),
+        },
+        BuildGraphInput {
+            table_name: "baby_table",
+            terminal_fields: vec!["babyName", "childTableId"],
+            query_info: None,
+            edge_info: Some(GraphQLEdgeInfo {
+                foreign_keys: vec!["child_table_id".to_string()],
+                graphql_field_name: (
+                    "babyTables".to_string(),
+                    "childTable".to_string(),
                 ),
             }),
         },
@@ -828,12 +874,10 @@ fn composite_foreign_key() {
           }
         }";
     let actual = pogg.build_root(query);
+    println!("{}", actual.as_ref().unwrap());
     let expected = "
         select to_json(
-          json_build_array(
-            __local_0__.\"id_one\",
-            __local_0__.\"id_two\"
-          )
+          json_build_array(__local_0__.\"id_one\", __local_0__.\"id_two\")
         ) as \"__identifiers\",
         to_json((__local_0__.\"id_one\")) as \"idOne\",
         to_json((__local_0__.\"id_two\")) as \"idTwo\",
@@ -869,7 +913,7 @@ fn composite_foreign_key() {
                             from (
                               select __local_4__.*
                               from \"public\".\"baby_table\" as __local_4__
-                              where (__local_4__.\"child_table_id\" = __local_2__.\"id\") and (TRUE) and (TRUE)
+                              where (__local_4__.\"child_table_id\" = __local_2__.\"id\") 
                             ) __local_4__
                           ) as __local_3__
                         ),
@@ -885,7 +929,7 @@ fn composite_foreign_key() {
                     )
                     and (
                       __local_2__.\"parent_table_id_two\" = __local_0__.\"id_two\"
-                    ) and (TRUE) and (TRUE)
+                    ) 
                     order by __local_2__.\"id\" ASC
                   ) __local_2__
                 ) as __local_1__
@@ -897,7 +941,6 @@ fn composite_foreign_key() {
         from (
           select __local_0__.*
           from \"public\".\"parent_table\" as __local_0__
-          where (TRUE) and (TRUE)
           order by __local_0__.\"id_one\" ASC,
           __local_0__.\"id_two\" ASC
         ) __local_0__";

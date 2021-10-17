@@ -33,11 +33,6 @@ pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
             where cols.table_schema = 'public'
             order by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable
             ;
-
-
-
-
-
 ",
         &[],
     )?;

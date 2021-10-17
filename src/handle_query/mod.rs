@@ -222,6 +222,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 return (edge, false);
             }
         }
-        panic!("Shouldve found edge");
+        panic!("Shouldve found edge {}", field_name);
     }
 }
