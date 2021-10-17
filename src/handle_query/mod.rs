@@ -46,8 +46,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
         let mut s = SQL::sql_query_header();
 
-        //create a __local__ string that we can use to distinguish this selection, and increment
-        //the local_id to ensure that this stays as unique
+        //create a __local__ string that we can use to distinguish this selection
         let table_alias = SQL::table_alias(self.local_id);
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
@@ -96,11 +95,13 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     //this field is terminal
-
                     let child_name = child_field.node.name.node.as_str();
                     if self.g[node_index].terminal_fields.contains(child_name) {
                         SQL::build_terminal_field(s, child_name);
                     } else {
+                        //if its not terminal, this field must be some foreign field. Search the nodes
+                        //edges for the edge that corresponds to this graphql field, and whether its a
+                        //one to many or many to one relation
                         let (edge, one_to_many) =
                             self.find_edge_and_endpoints(node_index, child_name);
                         self.build_foreign_field(s, selection, edge, one_to_many, true, child_name);
@@ -131,13 +132,12 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             }
         };
 
-        //the start and end of this query, as well as the local_ids are different depending
-        //on if its one to many or many to one. Everything in the middle is the same so
-        //these arent the same methods
+        //create a join head and return the new local id. The local id is only incremented by one
+        //for many_to_one but by two for one_to_many 
         self.local_id = SQL::join_head(s, self.local_id, include_to_json, one_to_many);
 
-        //we need a copy of this, as any further recursive calls would increment local_id
-        //leading to incorrect results
+        //we need a copy of this, as any further recursive calls would increment local_id, and we
+        //don't know by how much as we dont know the depth and the nature of the joins
         let local_id_copy = self.local_id;
 
         if let Selection::Field(field) = &selection.node {
@@ -146,12 +146,17 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     let child_name = child_field.node.name.node.as_str();
 
                     //check if the child name is a terminal field
-                    if !self.g[node_index].terminal_fields.contains(child_name) {
-                        //if not construct a nested join by adding the header, and passing
-                        //the edges of this node to the child
+                    if self.g[node_index].terminal_fields.contains(child_name) {
+
+                        SQL::build_terminal_field_join(s, child_name, self.local_id);
+
+                    } else {
+                        //find the corresponding edge like in build_selection
                         let (edge, one_to_many) =
                             self.find_edge_and_endpoints(node_index, child_name);
                         SQL::nested_join_head(s, child_name);
+                        
+                        //dont include to_json as we're already in a nested join
                         self.build_foreign_field(
                             s,
                             selection,
@@ -160,8 +165,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                             false,
                             child_name,
                         );
-                    } else {
-                        SQL::build_terminal_field_join(s, child_name, self.local_id);
                     }
                 }
             }
@@ -181,13 +184,26 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         node_index: NodeIndex<u32>,
         field_name: &str,
     ) -> (EdgeIndex<u32>, bool) {
+        //given a node, find an edge for which the edges weight's graphql_field_name = field_name.
+            //Case 1: This edge was found in incoming edges. This means that a child table is refering
+            //to this parent_table in the database. In that case this relation is one_to_many
+            
+            //Case 2: This edge was found in outgoing edges. This means that the current graphql
+            //type is a child table referring to a parent, making this a many to one relationship. 
+
+            //Case 3: No edge found, unrecoverable error. This is only possible if the query
+            //validation wasn't done properly or we're accidentally searching for a terminal field
+            //as a foreign one. Either problem in schema representation or programming error
+
         let mut incoming_edges = self
             .g
             .neighbors_directed(node_index, petgraph::EdgeDirection::Incoming)
             .detach();
 
-        //find child referring to this parent (doing this way first as I think child -> parent
-        //joins are a bit more common)
+
+        //check if there is some child table referring to us. The left hand graphql_field_name is
+        //the child tables field name, and the right hand is the parent tables field name. Since
+        //we're looking for a child field we're accessing the left most value
         while let Some(edge) = incoming_edges.next_edge(&self.g) {
             if self.g[edge].graphql_field_name.0 == field_name {
                 return (edge, true);
@@ -199,7 +215,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
             .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
             .detach();
 
-        //try to find ourselves referring to a parent
+        //check if we're referring to 
         while let Some(edge) = outgoing_edges.next_edge(&self.g) {
             if self.g[edge].graphql_field_name.1 == field_name {
                 return (edge, false);
