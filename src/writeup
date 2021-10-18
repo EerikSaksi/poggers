@@ -326,4 +326,5 @@ child_to_parent = {
 When joining we could simply zip the childs foreign keys with the parents primary keys.
 
 
-
+Implement a server side json builder, but ensure that there are rows in the tables, each parent has 1k, each child has 1k, each baby has 1k.
+SQL json query vs non json query

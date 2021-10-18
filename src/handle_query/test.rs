@@ -841,10 +841,7 @@ fn composite_foreign_key() {
             query_info: None,
             edge_info: Some(GraphQLEdgeInfo {
                 foreign_keys: vec!["child_table_id".to_string()],
-                graphql_field_name: (
-                    "babyTables".to_string(),
-                    "childTable".to_string(),
-                ),
+                graphql_field_name: ("babyTables".to_string(), "childTable".to_string()),
             }),
         },
     ]);
