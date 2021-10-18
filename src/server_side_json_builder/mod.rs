@@ -35,22 +35,22 @@ pub fn build_json_server_side() -> Result<String, postgres::Error> {
     for row in res {
         let new_id: i32 = row.get(0);
         if new_id != last_id {
-            to_return.push_str("\n}\n]\n{{\n  \"id\": ");
+            to_return.push_str("  ]\n},\n{\n  \"id\": ");
             to_return.push_str(&new_id.to_string());
 
             to_return.push_str("  \"name\": ");
             let name: &str = row.get(1);
             to_return.push_str(&name.to_string());
 
-            to_return.push_str("\n  \"appUserId\": ");
+            to_return.push_str(",\n  \"appUserId\": ");
             let col: i32 = row.get(2);
             to_return.push_str(&col.to_string());
 
-            to_return.push_str("\n  \"createdAt\": ");
+            to_return.push_str(",\n  \"createdAt\": ");
             let col: chrono::DateTime<Utc> = row.get(3);
             to_return.push_str(&col.to_string());
 
-            to_return.push_str("\n  \"updatedAt\": ");
+            to_return.push_str(",\n  \"updatedAt\": ");
             let col: chrono::DateTime<Utc> = row.get(4);
             to_return.push_str(&col.to_string());
 
@@ -60,12 +60,12 @@ pub fn build_json_server_side() -> Result<String, postgres::Error> {
 
         let day_id: i32 = row.get(5);
         if day_id % 1000 <= 2 {
-            to_return.push_str("{\n  \"id\":");
+            to_return.push_str("    {\n      \"id\":");
             to_return.push_str(&day_id.to_string());
             let workout_plan_id: i32 = row.get(6);
-            to_return.push_str(",\n  workoutPlanId: ");
+            to_return.push_str(",\n      workoutPlanId: ");
             to_return.push_str(&workout_plan_id.to_string());
-            to_return.push_str("\n  },\n");
+            to_return.push_str("\n    },\n");
         }
     }
     println!("build_json_server_side: {:.2?}", before.elapsed());
