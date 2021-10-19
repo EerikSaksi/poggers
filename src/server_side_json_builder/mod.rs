@@ -1,6 +1,7 @@
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
 use postgres::{Client, NoTls};
 use std::time::Instant;
+mod handle_query;
 pub fn setup_fixtures() -> Result<(), postgres::Error> {
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
 
@@ -59,31 +60,27 @@ pub fn build_json_server_side() -> Result<String, postgres::Error> {
         }
 
         let day_id: i32 = row.get(5);
-        if day_id % 1000 <= 2 {
-            to_return.push_str("    {\n      \"id\":");
-            to_return.push_str(&day_id.to_string());
-            let workout_plan_id: i32 = row.get(6);
-            to_return.push_str(",\n      workoutPlanId: ");
-            to_return.push_str(&workout_plan_id.to_string());
-            to_return.push_str("\n    },\n");
-        }
+        to_return.push_str("    {\n      \"id\":");
+        to_return.push_str(&day_id.to_string());
+        let workout_plan_id: i32 = row.get(6);
+        to_return.push_str(",\n      workoutPlanId: ");
+        to_return.push_str(&workout_plan_id.to_string());
+        to_return.push_str("\n    },\n");
     }
     println!("build_json_server_side: {:.2?}", before.elapsed());
     Ok(to_return)
 }
 
-pub fn postgraphile_query() -> Result<(), postgres::Error> {
+pub fn postgraphile_query() -> Result<String, postgres::Error> {
     let before = Instant::now();
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
     let query = "
-        select to_json(
-          json_build_array(__local_0__.\"id\")
-        ) as \"__identifiers\",
-        to_json((__local_0__.\"id\")) as \"id\",
-        to_json((__local_0__.\"name\")) as \"name\",
-        to_json((__local_0__.\"app_user_id\")) as \"appUserId\",
-        to_json((__local_0__.\"created_at\")) as \"createdAt\",
-        to_json((__local_0__.\"updated_at\")) as \"updatedAt\",
+        select
+        to_json((__local_0__.\"id\"))::text as \"id\",
+        to_json((__local_0__.\"name\"))::text as \"name\",
+        to_json((__local_0__.\"app_user_id\"))::text as \"appUserId\",
+        to_json((__local_0__.\"created_at\"))::text as \"createdAt\",
+        to_json((__local_0__.\"updated_at\"))::text as \"updatedAt\",
         to_json(
           (
             select coalesce(
@@ -109,7 +106,7 @@ pub fn postgraphile_query() -> Result<(), postgres::Error> {
               '[]'::json
             )
           )
-        ) as \"@workoutPlanDays\"
+        )::text as \"@workoutPlanDays\"
         from (
           select __local_0__.*
           from \"public\".\"workout_plan\" as __local_0__
@@ -117,7 +114,17 @@ pub fn postgraphile_query() -> Result<(), postgres::Error> {
           order by __local_0__.\"id\" ASC
         ) __local_0__
     ";
-    client.query(query, &[]).unwrap();
+    let res = client.query(query, &[])?;
+    let mut s = String::new();
+    println!("{}", res.len());
+    for row in res {
+        s.push_str("{{");
+        for col in row.columns() {
+            let val: String = row.get(col.name());
+            s.push_str(&format!("\t{}: {},", col.name(), val));
+        }
+        s.push_str("\n}}");
+    }
     println!("postgraphile_query {:.2?}", before.elapsed());
-    Ok(())
+    Ok(s)
 }
