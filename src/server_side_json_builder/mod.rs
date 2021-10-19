@@ -1,31 +1,42 @@
-use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
+use crate::server_side_json_builder::handle_query::TableQueryInfos;
+use chrono::Utc;
 use postgres::{Client, NoTls};
 use std::time::Instant;
 mod handle_query;
-pub fn setup_fixtures() -> Result<(), postgres::Error> {
-    let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
 
-    client.query("delete from workout_plan", &[])?;
-    client.query("delete from app_user", &[])?;
-    client.query(
-        "insert into app_user(id, username, password) values(1, 'Bobby tables', '123')",
-        &[],
-    )?;
-
-    let mut day_id = 1;
-    for workout_plan_id in 0..1000 {
-        println!("{}", workout_plan_id);
-        client.query(
-            "insert into workout_plan(id, app_user_id, name) overriding system value values($1, 1, 'Doesnt matter')",
-            &[&workout_plan_id],
-        )?;
-        for _ in 0..1000 {
-            client.query("insert into workout_plan_day(name, id, workout_plan_id) overriding system value values('Also doesnt matter', $1, $2)", &[&day_id, &workout_plan_id])?;
-            day_id += 1;
+fn build_query_from_ranges(table_infos: Vec<TableQueryInfos>) -> String {
+    let mut selects = String::from("SELECT ");
+    let mut joins = String::from("FROM ");
+    let mut groups = String::from("GROUP BY ");
+    let prev_primary_keys: (&str, Option<Vec<String>>) = None;
+    for (
+        i,
+        TableQueryInfos {
+            fields,
+            primary_keys,
+            table_name,
+        },
+    ) in table_infos.iter().enumerate()
+    {
+        for field in fields {
+            selects.push_str("__");
+            selects.push_str(i.to_string());
+            selects.push('.');
+            selects.push_str(field);
+            selects.push_str(", ");
+        }
+        selects.drain(selects.len() - 2..selects.len());
+        match prev_primary_keys {
+            Some((prev_table_name, pks)) => {
+                &joins.push_str([
+                                "JOIN ", &table_name, " ON " , prev_table_name, ".", pks.get(0), 
+                ].concat());
+            }
+            None => panic!(),
         }
     }
-    Ok(())
 }
+
 pub fn build_json_server_side() -> Result<String, postgres::Error> {
     let before = Instant::now();
     let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
@@ -70,61 +81,19 @@ pub fn build_json_server_side() -> Result<String, postgres::Error> {
     println!("build_json_server_side: {:.2?}", before.elapsed());
     Ok(to_return)
 }
-
-pub fn postgraphile_query() -> Result<String, postgres::Error> {
-    let before = Instant::now();
-    let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
-    let query = "
-        select
-        to_json((__local_0__.\"id\"))::text as \"id\",
-        to_json((__local_0__.\"name\"))::text as \"name\",
-        to_json((__local_0__.\"app_user_id\"))::text as \"appUserId\",
-        to_json((__local_0__.\"created_at\"))::text as \"createdAt\",
-        to_json((__local_0__.\"updated_at\"))::text as \"updatedAt\",
-        to_json(
-          (
-            select coalesce(
-              (
-                select json_agg(__local_1__.\"object\")
-                from (
-                  select json_build_object(
-                    '__identifiers'::text,
-                    json_build_array(__local_2__.\"id\"),
-                    'id'::text,
-                    (__local_2__.\"id\"),
-                    'workoutPlanId'::text,
-                    (__local_2__.\"workout_plan_id\")
-                  ) as object
-                  from (
-                    select __local_2__.*
-                    from \"public\".\"workout_plan_day\" as __local_2__
-                    where (__local_2__.\"workout_plan_id\" = __local_0__.\"id\") and (TRUE) and (TRUE)
-                    order by __local_2__.\"id\" ASC
-                  ) __local_2__
-                ) as __local_1__
-              ),
-              '[]'::json
-            )
-          )
-        )::text as \"@workoutPlanDays\"
-        from (
-          select __local_0__.*
-          from \"public\".\"workout_plan\" as __local_0__
-          where (TRUE) and (TRUE)
-          order by __local_0__.\"id\" ASC
-        ) __local_0__
-    ";
-    let res = client.query(query, &[])?;
-    let mut s = String::new();
-    println!("{}", res.len());
-    for row in res {
-        s.push_str("{{");
-        for col in row.columns() {
-            let val: String = row.get(col.name());
-            s.push_str(&format!("\t{}: {},", col.name(), val));
-        }
-        s.push_str("\n}}");
-    }
-    println!("postgraphile_query {:.2?}", before.elapsed());
-    Ok(s)
+#[test]
+fn basic_one_way_join() {
+    let query_column_ranges: Vec<TableQueryInfos> = vec![
+        TableQueryInfos {
+            fields: vec!["parent_one, parent_two, parent_three"],
+            primary_keys: vec!["id"],
+            table_name: "parent_table",
+        },
+        TableQueryInfos {
+            fields: vec!["child_one, child_two, child_three"],
+            primary_keys: vec!["id"],
+            table_name: "child_table",
+        },
+    ];
+    build_query_from_ranges(query_column_ranges);
 }

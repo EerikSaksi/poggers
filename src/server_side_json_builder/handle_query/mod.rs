@@ -13,9 +13,10 @@ pub struct Poggers {
     pub local_id: u8,
 }
 
-pub struct SchemaInfo {
-    pub field_range: Range<i32>,
-    pub primary_keys: Range<i32>,
+pub struct TableQueryInfos<'a> {
+    pub fields: Vec<&'a str>,
+    pub primary_keys: Vec<&'a str>,
+    pub table_name: &'a str,
 }
 
 #[allow(dead_code)]
@@ -43,10 +44,8 @@ impl Poggers {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-        //create a __local__ string that we can use to distinguish this selection
-        let table_alias = SQL::table_alias(self.local_id);
 
-        let mut s = String::new();
+        let mut s = String::from("SELECT ");
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
@@ -66,18 +65,6 @@ impl Poggers {
             SQL::sql_query_header(&mut s, &self.g[node_index].primary_keys);
 
             self.build_selection(&mut s, selection_set.node.items.get(0).unwrap(), node_index);
-            if is_many {
-                SQL::many_query(&mut s, &self.g[node_index].table_name, &table_alias);
-            } else {
-                match &field.node.arguments.get(0).unwrap().1.node {
-                    Value::Number(num) => SQL::single_query(
-                        &mut s,
-                        &self.g[node_index].table_name,
-                        num.as_i64().unwrap(),
-                    ),
-                    _ => println!("Didn't get Value::Number"),
-                }
-            }
         } else {
             panic!("First selection_set item isn't a field");
         }
