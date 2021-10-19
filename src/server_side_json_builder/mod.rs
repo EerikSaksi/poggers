@@ -1,99 +1,181 @@
-use crate::server_side_json_builder::handle_query::TableQueryInfos;
-use chrono::Utc;
-use postgres::{Client, NoTls};
-use std::time::Instant;
-mod handle_query;
+#[cfg(test)]
+#[path = "./test.rs"]
+mod test;
+use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
+use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
+use async_graphql_parser::{parse_query, Positioned};
+use convert_case::{Case, Casing};
+use petgraph::graph::DiGraph;
+use petgraph::prelude::{EdgeIndex, NodeIndex};
+use std::collections::HashMap;
 
-//fn build_query_from_ranges(table_infos: Vec<TableQueryInfos>) -> String {
-//    let mut selects = String::from("SELECT ");
-//    let mut joins = String::from("FROM ");
-//    let mut groups = String::from("GROUP BY ");
-//    let prev_primary_keys: (&str, Option<Vec<String>>) = None;
-//    for (
-//        i,
-//        TableQueryInfos {
-//            fields,
-//            primary_keys,
-//            table_name,
-//        },
-//    ) in table_infos.iter().enumerate()
-//    {
-//        for field in fields {
-//            selects.push_str("__");
-//            selects.push_str(i.to_string());
-//            selects.push('.');
-//            selects.push_str(field);
-//            selects.push_str(", ");
-//        }
-//        selects.drain(selects.len() - 2..selects.len());
-//        match prev_primary_keys {
-//            Some((prev_table_name, pks)) => {
-//                &joins.push_str([
-//                                "JOIN ", &table_name, " ON " , prev_table_name, ".", pks.get(0), 
-//                ].concat());
-//            }
-//            None => panic!(),
-//        }
-//    }
-//}
-//
-//pub fn build_json_server_side() -> Result<String, postgres::Error> {
-//    let before = Instant::now();
-//    let mut client = Client::connect("postgres://eerik:Postgrizzly@localhost:5432/rpgym", NoTls)?;
-//    let res = client.query("select workout_plan.id as wp_id, workout_plan.name, workout_plan.app_user_id, workout_plan.created_at, workout_plan.updated_at, workout_plan_day.id as wpd_id, workout_plan_id from workout_plan join workout_plan_day on workout_plan_day.workout_plan_id = workout_plan.id group by wp_id, wpd_id", &[])?;
-//
-//    let mut to_return = String::from("workoutPlans: [\n\t");
-//    let mut last_id = -1;
-//    for row in res {
-//        let new_id: i32 = row.get(0);
-//        if new_id != last_id {
-//            to_return.push_str("  ]\n},\n{\n  \"id\": ");
-//            to_return.push_str(&new_id.to_string());
-//
-//            to_return.push_str("  \"name\": ");
-//            let name: &str = row.get(1);
-//            to_return.push_str(&name.to_string());
-//
-//            to_return.push_str(",\n  \"appUserId\": ");
-//            let col: i32 = row.get(2);
-//            to_return.push_str(&col.to_string());
-//
-//            to_return.push_str(",\n  \"createdAt\": ");
-//            let col: chrono::DateTime<Utc> = row.get(3);
-//            to_return.push_str(&col.to_string());
-//
-//            to_return.push_str(",\n  \"updatedAt\": ");
-//            let col: chrono::DateTime<Utc> = row.get(4);
-//            to_return.push_str(&col.to_string());
-//
-//            to_return.push_str(",\n  \"workoutPlanDays\": [\n");
-//            last_id = new_id;
-//        }
-//
-//        let day_id: i32 = row.get(5);
-//        to_return.push_str("    {\n      \"id\":");
-//        to_return.push_str(&day_id.to_string());
-//        let workout_plan_id: i32 = row.get(6);
-//        to_return.push_str(",\n      workoutPlanId: ");
-//        to_return.push_str(&workout_plan_id.to_string());
-//        to_return.push_str("\n    },\n");
-//    }
-//    println!("build_json_server_side: {:.2?}", before.elapsed());
-//    Ok(to_return)
-//}
-//#[test]
-//fn basic_one_way_join() {
-//    let query_column_ranges: Vec<TableQueryInfos> = vec![
-//        TableQueryInfos {
-//            fields: vec!["parent_one, parent_two, parent_three"],
-//            primary_keys: vec!["id"],
-//            table_name: "parent_table",
-//        },
-//        TableQueryInfos {
-//            fields: vec!["child_one, child_two, child_three"],
-//            primary_keys: vec!["id"],
-//            table_name: "child_table",
-//        },
-//    ];
-//    build_query_from_ranges(query_column_ranges);
-//}
+pub struct ServerSidePoggers {
+    pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    pub query_to_type: HashMap<String, QueryEdgeInfo>,
+    pub local_id: u8,
+}
+
+pub struct TableQueryInfos<'a> {
+    pub fields: Vec<&'a str>,
+    pub primary_keys: Vec<&'a str>,
+    pub table_name: &'a str,
+}
+
+#[allow(dead_code)]
+impl ServerSidePoggers {
+    pub fn new(
+        g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+        query_to_type: HashMap<String, QueryEdgeInfo>,
+    ) -> ServerSidePoggers {
+        ServerSidePoggers {
+            g,
+            query_to_type,
+            local_id: 0,
+        }
+    }
+
+    pub fn build_root(&mut self, query: &str) -> Result<String, async_graphql_parser::Error> {
+        let ast = parse_query::<&str>(query)?;
+        match ast.operations {
+            DocumentOperations::Single(Positioned { node, pos: _ }) => {
+                Ok(self.visit_query(node.selection_set))
+            }
+            DocumentOperations::Multiple(_) => {
+                panic!("DocumentOperations::Multiple(operation)")
+            }
+        }
+    }
+    fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
+        let mut s = String::from("SELECT ");
+
+        if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
+            let node_index;
+
+            //we need to wrap this so that query_type is dropped, and copy out the is_many and
+            //node_index fields to satisfy the borrow checker
+            {
+                let query_type = self
+                    .query_to_type
+                    .get(field.node.name.node.as_str())
+                    .unwrap();
+                node_index = query_type.node_index;
+            }
+            let mut from_s = String::from("FROM ");
+            from_s.push_str(&self.g[node_index].table_name);
+            from_s.push_str(" as __local_0__");
+            self.local_id += 1;
+            self.build_selection(
+                &mut s,
+                &mut from_s,
+                selection_set.node.items.get(0).unwrap(),
+                node_index,
+            );
+        } else {
+            panic!("First selection_set item isn't a field");
+        }
+        self.local_id += 1;
+        s
+    }
+
+    fn build_selection(
+        &mut self,
+        s: &mut String,
+        from_s: &mut String,
+        selection: &Positioned<Selection>,
+        node_index: NodeIndex<u32>,
+    ) {
+        if let Selection::Field(field) = &selection.node {
+            //first we recursively get all queries from the children
+            for selection in &field.node.selection_set.node.items {
+                if let Selection::Field(child_field) = &selection.node {
+                    //this field is terminal
+                    let child_name = child_field.node.name.node.as_str();
+                    if self.g[node_index].terminal_fields.contains(child_name) {
+                        s.push_str(&child_name.to_case(Case::Snake));
+                        s.push_str(", ");
+                    } else {
+                        let parent_alias = ServerSidePoggers::table_alias(self.local_id);
+                        self.local_id += 1;
+                        let child_alias = ServerSidePoggers::table_alias(self.local_id);
+                        from_s.push_str(" JOIN ");
+                        from_s.push_str(&child_alias);
+
+                        //if its not terminal, this field must be some foreign field. Search the nodes
+                        //edges for the edge that corresponds to this graphql field, and whether its a
+                        //one to many or many to one relation
+                        let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
+                        for (pk, fk) in self.g[node_index]
+                            .primary_keys
+                            .iter()
+                            .zip(&self.g[edge].foreign_keys)
+                        {
+                            from_s.push_str(&parent_alias);
+                            from_s.push('.');
+                            from_s.push_str(pk);
+
+                            from_s.push_str(" = ");
+
+                            from_s.push_str(&child_alias);
+                            from_s.push('.');
+                            from_s.push_str(fk);
+                        }
+                        self.build_selection(
+                            s,
+                            from_s,
+                            selection,
+                            self.g.edge_endpoints(edge).unwrap().0,
+                        );
+                    }
+                }
+            }
+        }
+        s.drain(s.len() - 2..s.len());
+    }
+    fn find_edge_and_endpoints(
+        &self,
+        node_index: NodeIndex<u32>,
+        field_name: &str,
+    ) -> (EdgeIndex<u32>, bool) {
+        //given a node, find an edge for which the edges weight's graphql_field_name = field_name.
+        //Case 1: This edge was found in incoming edges. This means that a child table is refering
+        //to this parent_table in the database. In that case this relation is one_to_many
+
+        //Case 2: This edge was found in outgoing edges. This means that the current graphql
+        //type is a child table referring to a parent, making this a many to one relationship.
+
+        //Case 3: No edge found, unrecoverable error. This is only possible if the query
+        //validation wasn't done properly or we're accidentally searching for a terminal field
+        //as a foreign one. Either problem in schema representation or programming error
+
+        let mut incoming_edges = self
+            .g
+            .neighbors_directed(node_index, petgraph::EdgeDirection::Incoming)
+            .detach();
+
+        //check if there is some child table referring to us. The left hand graphql_field_name is
+        //the child tables field name, and the right hand is the parent tables field name. Since
+        //we're looking for a child field we're accessing the left most value
+        while let Some(edge) = incoming_edges.next_edge(&self.g) {
+            if self.g[edge].graphql_field_name.0 == field_name {
+                return (edge, true);
+            }
+        }
+
+        let mut outgoing_edges = self
+            .g
+            .neighbors_directed(node_index, petgraph::EdgeDirection::Outgoing)
+            .detach();
+
+        //check if we're referring to some parent. Opposite to the incoming edges, read the right
+        //most graphql_field_name tuple value (parent field name)
+        while let Some(edge) = outgoing_edges.next_edge(&self.g) {
+            if self.g[edge].graphql_field_name.1 == field_name {
+                return (edge, false);
+            }
+        }
+        panic!("Shouldve found edge {}", field_name);
+    }
+    fn table_alias(local_id: u8) -> String {
+        ["__local_", &local_id.to_string(), "__"].concat()
+    }
+}
