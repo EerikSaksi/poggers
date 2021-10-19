@@ -1,13 +1,12 @@
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
-use async_graphql_value::Value;
+use convert_case::{Case, Casing};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-use std::ops::Range;
 
-pub struct Poggers {
+pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
@@ -20,12 +19,12 @@ pub struct TableQueryInfos<'a> {
 }
 
 #[allow(dead_code)]
-impl Poggers {
+impl ServerSidePoggers {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
         query_to_type: HashMap<String, QueryEdgeInfo>,
-    ) -> Poggers {
-        Poggers {
+    ) -> ServerSidePoggers {
+        ServerSidePoggers {
             g,
             query_to_type,
             local_id: 0,
@@ -44,7 +43,6 @@ impl Poggers {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-
         let mut s = String::from("SELECT ");
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
@@ -61,10 +59,16 @@ impl Poggers {
                 is_many = query_type.is_many;
                 node_index = query_type.node_index;
             }
-
-            SQL::sql_query_header(&mut s, &self.g[node_index].primary_keys);
-
-            self.build_selection(&mut s, selection_set.node.items.get(0).unwrap(), node_index);
+            let mut from_s = String::from("FROM ");
+            from_s.push_str(&self.g[node_index].table_name);
+            from_s.push_str(" as __local_0__");
+            self.local_id += 1;
+            self.build_selection(
+                &mut s,
+                &mut from_s,
+                selection_set.node.items.get(0).unwrap(),
+                node_index,
+            );
         } else {
             panic!("First selection_set item isn't a field");
         }
@@ -75,6 +79,7 @@ impl Poggers {
     fn build_selection(
         &mut self,
         s: &mut String,
+        from_s: &mut String,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
     ) {
@@ -85,85 +90,41 @@ impl Poggers {
                     //this field is terminal
                     let child_name = child_field.node.name.node.as_str();
                     if self.g[node_index].terminal_fields.contains(child_name) {
-                        SQL::build_terminal_field(s, child_name);
+                        s.push_str(&child_name.to_case(Case::Snake));
+                        s.push_str(", ");
                     } else {
+                        let parent_alias = ServerSidePoggers::table_alias(self.local_id);
+                        self.local_id += 1;
+                        let child_alias = ServerSidePoggers::table_alias(self.local_id);
+                        from_s.push_str(" JOIN ");
+                        from_s.push_str(&child_alias);
+
                         //if its not terminal, this field must be some foreign field. Search the nodes
                         //edges for the edge that corresponds to this graphql field, and whether its a
                         //one to many or many to one relation
                         let (edge, one_to_many) =
                             self.find_edge_and_endpoints(node_index, child_name);
-                        self.build_foreign_field(s, selection, edge, one_to_many, true, child_name);
+                        for (pk, fk) in self.g[node_index]
+                            .primary_keys
+                            .iter()
+                            .zip(&self.g[edge].foreign_keys)
+                        {
+                            from_s.push_str(&parent_alias);
+                            from_s.push('.');
+                            from_s.push_str(pk);
+
+                            from_s.push_str(" = ");
+
+                            from_s.push_str(&child_alias);
+                            from_s.push('.');
+                            from_s.push_str(fk);
+                            self.build_selection(&mut s, &mut from_s, selection, node_index);
+                        }
                     }
                 }
             }
         }
         s.drain(s.len() - 2..s.len());
-    }
-
-    fn build_foreign_field(
-        &mut self,
-        s: &mut String,
-        selection: &Positioned<Selection>,
-        edge: EdgeIndex<u32>,
-        one_to_many: bool,
-        is_nested_join: bool,
-        json_parent_key: &str,
-    ) {
-        //when we have a one_to_many relationship, the node_index is stored on the right (left
-        //source right destination) otherwise on the left
-        let node_index = {
-            let endpoints = self.g.edge_endpoints(edge).unwrap();
-            if one_to_many {
-                endpoints.0
-            } else {
-                endpoints.1
-            }
-        };
-
-        //create a join head and return the new local id. The local id is only incremented by one
-        //for many_to_one but by two for one_to_many
-        self.local_id = SQL::join_head(s, self.local_id, is_nested_join, one_to_many);
-
-        //we need a copy of this, as any further recursive calls would increment local_id, and we
-        //don't know by how much as we dont know the depth and the nature of the joins
-        let local_id_copy = self.local_id;
-
-        if let Selection::Field(field) = &selection.node {
-            for selection in &field.node.selection_set.node.items {
-                if let Selection::Field(child_field) = &selection.node {
-                    let child_name = child_field.node.name.node.as_str();
-
-                    //check if the child name is a terminal field
-                    if self.g[node_index].terminal_fields.contains(child_name) {
-                        SQL::build_terminal_field_join(s, child_name, self.local_id);
-                    } else {
-                        //find the corresponding edge like in build_selection
-                        let (edge, one_to_many) =
-                            self.find_edge_and_endpoints(node_index, child_name);
-                        SQL::nested_join_head(s, child_name);
-
-                        //dont include to_json as we're already in a nested join
-                        self.build_foreign_field(
-                            s,
-                            selection,
-                            edge,
-                            one_to_many,
-                            false,
-                            child_name,
-                        );
-                    }
-                }
-            }
-        }
-        SQL::join_tail(
-            s,
-            local_id_copy,
-            is_nested_join,
-            &self.g[node_index].table_name,
-            (&self.g[edge].foreign_keys, &self.g[node_index].primary_keys),
-            json_parent_key,
-            one_to_many,
-        );
     }
     fn find_edge_and_endpoints(
         &self,
@@ -208,5 +169,8 @@ impl Poggers {
             }
         }
         panic!("Shouldve found edge {}", field_name);
+    }
+    fn table_alias(local_id: u8) -> String {
+        ["__local_", &local_id.to_string(), "__"].concat()
     }
 }
