@@ -46,7 +46,8 @@ impl ServerSidePoggers {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-        let mut s = String::from("SELECT ");
+        let mut cols = String::new();
+        let mut from_s = String::from(" FROM ");
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
@@ -60,76 +61,72 @@ impl ServerSidePoggers {
                     .unwrap();
                 node_index = query_type.node_index;
             }
-            let mut from_s = String::from("FROM ");
             from_s.push_str(&self.g[node_index].table_name);
-            from_s.push_str(" as __local_0__");
-            self.local_id += 1;
+            from_s.push_str(" AS __local_0__");
             self.build_selection(
-                &mut s,
+                &mut cols,
                 &mut from_s,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
             );
+            cols.drain(cols.len() - 2..cols.len());
         } else {
             panic!("First selection_set item isn't a field");
         }
-        self.local_id += 1;
-        s
+        ["SELECT ", &cols, &from_s, " GROUP BY ", &cols].concat()
     }
 
     fn build_selection(
         &mut self,
-        s: &mut String,
+        cols: &mut String,
         from_s: &mut String,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
     ) {
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
+            //this field is terminal
+            let parent_alias = ServerSidePoggers::table_alias(self.local_id);
+            let child_alias = ServerSidePoggers::table_alias(self.local_id + 1);
+            self.local_id += 1;
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
-                    //this field is terminal
                     let child_name = child_field.node.name.node.as_str();
+
                     if self.g[node_index].terminal_fields.contains(child_name) {
-                        s.push_str(&child_name.to_case(Case::Snake));
-                        s.push_str(", ");
+                        cols.push_str(
+                            &[&parent_alias, ".", &child_name.to_case(Case::Snake), ", "].concat(),
+                        );
                     } else {
-                        let parent_alias = ServerSidePoggers::table_alias(self.local_id);
-                        self.local_id += 1;
-                        let child_alias = ServerSidePoggers::table_alias(self.local_id);
+                        let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
+                        let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
+
                         from_s.push_str(" JOIN ");
+                        from_s.push_str(&self.g[child_node_index].table_name);
+                        from_s.push_str(" AS ");
                         from_s.push_str(&child_alias);
+                        from_s.push_str(" ON ");
 
                         //if its not terminal, this field must be some foreign field. Search the nodes
                         //edges for the edge that corresponds to this graphql field, and whether its a
                         //one to many or many to one relation
-                        let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
                         for (pk, fk) in self.g[node_index]
                             .primary_keys
                             .iter()
                             .zip(&self.g[edge].foreign_keys)
                         {
-                            from_s.push_str(&parent_alias);
-                            from_s.push('.');
-                            from_s.push_str(pk);
-
+                            let parent_pk = [&parent_alias, ".", pk].concat();
+                            from_s.push_str(&parent_pk);
                             from_s.push_str(" = ");
-
                             from_s.push_str(&child_alias);
                             from_s.push('.');
                             from_s.push_str(fk);
                         }
-                        self.build_selection(
-                            s,
-                            from_s,
-                            selection,
-                            self.g.edge_endpoints(edge).unwrap().0,
-                        );
+                        self.build_selection(cols, from_s, selection, child_node_index);
                     }
                 }
             }
         }
-        s.drain(s.len() - 2..s.len());
     }
     fn find_edge_and_endpoints(
         &self,

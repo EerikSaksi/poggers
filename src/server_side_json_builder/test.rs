@@ -45,7 +45,7 @@ fn one_way_join() {
     let plan_node = g.add_node(GraphQLType {
         table_name: "workout_plan".to_string(),
         primary_keys: vec!["id".to_string()],
-        terminal_fields: HashSet::from_iter(["appUserId"].iter().map(|s| s.to_string())),
+        terminal_fields: HashSet::from_iter(["id", "name"].iter().map(|s| s.to_string())),
     });
 
     let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
@@ -60,7 +60,9 @@ fn one_way_join() {
     let day_node = g.add_node(GraphQLType {
         table_name: "workout_plan_day".to_string(),
         primary_keys: vec!["workoutPlanId".to_string()],
-        terminal_fields: HashSet::from_iter(["workoutPlanId"].iter().map(|s| s.to_string())),
+        terminal_fields: HashSet::from_iter(
+            ["workoutPlanId", "name"].iter().map(|s| s.to_string()),
+        ),
     });
 
     g.add_edge(
@@ -81,14 +83,16 @@ fn one_way_join() {
         "
         query{
           workoutPlans{
-            appUserId
+            id 
+            name
             workoutPlanDays{
               workoutPlanId
+              name
             }
           }
         }",
     );
-    let expected =  "SELECT __local_0__.app_user_id, __local_1__.workout_plan_id FROM workout_plan as __local_0__ join workout_plan_day as __local_1__ on __local_0__.id = __local_1__.workout_plan_id group by __local_0__.app_user_id, __local_1__.workout_plan_id ";
+    let expected =  "SELECT __local_0__.id, __local_0__.name, __local_1__.workout_plan_id, __local_1__.name FROM workout_plan AS __local_0__ JOIN workout_plan_day AS __local_1__ ON __local_0__.id = __local_1__.workout_plan_id GROUP BY __local_0__.id, __local_0__.name, __local_1__.workout_plan_id, __local_1__.name";
 
     test_sql_equality(actual, expected);
 }
