@@ -61,7 +61,9 @@ fn one_way_join() {
         table_name: "workout_plan_day".to_string(),
         primary_keys: vec!["workoutPlanId".to_string()],
         terminal_fields: HashSet::from_iter(
-            ["workoutPlanId", "name", "id"].iter().map(|s| s.to_string()),
+            ["workoutPlanId", "name", "id"]
+                .iter()
+                .map(|s| s.to_string()),
         ),
     });
 
@@ -83,7 +85,6 @@ fn one_way_join() {
         "
         query{
           workoutPlans{
-            id 
             name
             workoutPlanDays{
               workoutPlanId
@@ -93,6 +94,6 @@ fn one_way_join() {
           }
         }",
     );
-    let expected =  "SELECT __table_0__.id as __t0_c0__, __table_0__.name as __t0_c1__, __table_1__.workout_plan_id as __t1_c0__, __table_1__.name as __t1_c1__, __table_1__.id as __t1_c2__ FROM workout_plan AS __table_0__ JOIN workout_plan_day AS __table_1__ ON __table_0__.id = __table_1__.workout_plan_id ORDER BY __table_0__.id";
+    let expected =  "SELECT __table_0__.name as __t0_c0__, __table_0__.id AS __t0_pk0__, __table_1__.workout_plan_id as __t1_c0__, __table_1__.name as __t1_c1__, __table_1__.id as __t1_c2__ FROM workout_plan AS __table_0__ JOIN workout_plan_day AS __table_1__ ON __table_0__.id = __table_1__.workout_plan_id ORDER BY __table_0__.id";
     test_sql_equality(actual, expected);
 }

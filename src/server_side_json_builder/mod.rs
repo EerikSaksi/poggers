@@ -1,3 +1,4 @@
+mod rows_to_json;
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
@@ -13,12 +14,6 @@ pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
-}
-
-pub struct TableQueryInfos<'a> {
-    pub fields: Vec<&'a str>,
-    pub primary_keys: Vec<&'a str>,
-    pub table_name: &'a str,
 }
 
 #[allow(dead_code)]
@@ -142,10 +137,11 @@ impl ServerSidePoggers {
                         //if its not terminal, this field must be some foreign field. Search the nodes
                         //edges for the edge that corresponds to this graphql field, and whether its a
                         //one to many or many to one relation
-                        for (pk, fk) in self.g[node_index]
+                        for (i, (pk, fk)) in self.g[node_index]
                             .primary_keys
                             .iter()
                             .zip(&self.g[edge].foreign_keys)
+                            .enumerate()
                         {
                             let parent_pk = [&current_alias, ".", pk].concat();
                             from.push_str(&parent_pk);
@@ -153,6 +149,13 @@ impl ServerSidePoggers {
                             from.push_str(&child_alias);
                             from.push('.');
                             from.push_str(fk);
+                            select.push_str(&parent_pk);
+                            select.push_str(" AS ");
+                            select.push_str(" __t");
+                            select.push_str(&id_copy.to_string());
+                            select.push_str("_pk");
+                            select.push_str(&i.to_string());
+                            select.push_str("__, ");
                         }
                         self.build_selection(select, from, order_by, selection, child_node_index);
                     }
