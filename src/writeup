@@ -338,12 +338,70 @@ How building JSON worked for the following query:
 This returned the rows like so
 --------------------------------------
 | parent_id | parent_name | child_id | 
-| 0         | Bob         | 1        |
-| 0         | Bob         | 2        |
-| 0         | Bob         | 3        |
-| 0         | Bob         | 4        |
-| 1         | Karl        | 11       |
-| 1         | Karl        | 12       |
-| 2         | Alice       | 25       |
-
+| 1         | Bob         | 1        |
+| 1         | Bob         | 2        |
+| 1         | Bob         | 3        |
+| 1         | Bob         | 4        |
+| 2         | Karl        | 11       |
+| 2         | Karl        | 12       |
+| 3         | Alice       | 25       |
 --------------------------------------
+
+The key point is that if e.g the parent_id of the rows change from 1 to 2, we will encounter all children with parent_id 2 until parent_id changes again. By leveraging this I was able to make a one pass over the rows, and simply concatenate to the end of the string on each row. 
+
+Here is the rough sudo code for building a response to 
+
+query {
+	parentTables {
+		id 
+		parentName
+		childTables {
+			id
+		}
+	}
+}
+
+def rows_to_json(rows):
+	prev_parent_id = -1
+
+	//add the parent fields of the first row, and the id of the first child
+	s = "
+		parentTables: [
+			{
+				id: ${rows[0].id},
+				parentName: ${rows[0].parent_name},
+				childTables: [
+					id: ${rows[0].child_id},
+				
+	"
+	s += 
+	for row in rows[1:]:
+			if row.parent_id != prev_parent_id:
+				#close the childTables field of parentTables
+				s += "\n]"
+
+				#then close this parentTable, and add a comma
+				s += "},\n"
+
+				#create new object for this new row and add fields to it, 
+				#and the first child, like we did with the first child
+				s += "
+				{
+					id: ${row.id},
+					parentName: ${row.parent_name},
+					childTables: [
+						id: ${row.child_id},
+				"
+			#otherwise if still same parent just keep concatenating to childTables list
+			else: 
+				s += "id: ${row.child_id},"
+
+			prev_parent_id = row.parent_id;
+
+  #close final parentTable's childTables
+	s += "\n]"
+  #then that parentTable
+	s += "\n}"
+  #then parentTables (root)
+	s += "\n}"
+	return s
