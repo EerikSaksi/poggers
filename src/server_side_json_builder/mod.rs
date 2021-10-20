@@ -46,8 +46,9 @@ impl ServerSidePoggers {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-        let mut cols = String::new();
-        let mut from_s = String::from(" FROM ");
+        let mut select = String::from("SELECT ");
+        let mut from = String::from(" FROM ");
+        let mut order_by = String::new();
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
@@ -61,51 +62,82 @@ impl ServerSidePoggers {
                     .unwrap();
                 node_index = query_type.node_index;
             }
-            from_s.push_str(&self.g[node_index].table_name);
-            from_s.push_str(" AS __local_0__");
+            from.push_str(&self.g[node_index].table_name);
+            from.push_str(" AS __table_0__");
             self.build_selection(
-                &mut cols,
-                &mut from_s,
+                &mut select,
+                &mut from,
+                &mut order_by,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
             );
-            cols.drain(cols.len() - 2..cols.len());
         } else {
             panic!("First selection_set item isn't a field");
         }
-        ["SELECT ", &cols, &from_s, " GROUP BY ", &cols].concat()
+
+        //we don't necessarily need to order (e.g if no joins) so check if there are any fields to
+        //order and only then concat " ORDER BY " and the orderable column
+        select.drain(select.len() - 2..select.len());
+        match order_by.is_empty() {
+            true => [select, from].concat(),
+            false => {
+                order_by.drain(order_by.len() - 2..order_by.len());
+                [&select, &from, " ORDER BY ", &order_by].concat()
+            }
+        }
     }
 
     fn build_selection(
         &mut self,
-        cols: &mut String,
-        from_s: &mut String,
+        select: &mut String,
+        from: &mut String,
+        order_by: &mut String,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
     ) {
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             //this field is terminal
-            let parent_alias = ServerSidePoggers::table_alias(self.local_id);
-            let child_alias = ServerSidePoggers::table_alias(self.local_id + 1);
-            self.local_id += 1;
+            let id_copy = self.local_id;
+            let current_alias = ServerSidePoggers::table_alias(self.local_id);
+
+            let mut col_index = 0;
+            let mut encountered_join = false;
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
-
+                    let column_name =
+                        &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
                     if self.g[node_index].terminal_fields.contains(child_name) {
-                        cols.push_str(
-                            &[&parent_alias, ".", &child_name.to_case(Case::Snake), ", "].concat(),
-                        );
+                        select.push_str(column_name);
+                        select.push_str(" as __t");
+                        select.push_str(&id_copy.to_string());
+                        select.push_str("_c");
+                        select.push_str(&col_index.to_string());
+                        select.push_str("__, ");
+                        col_index += 1;
                     } else {
+                        //if we have a child join then we need to order the parent by its primary
+                        //key to allow us to capture all children for the parent when iterating
+                        if !encountered_join {
+                            encountered_join = true;
+                            for pk in &self.g[node_index].primary_keys {
+                                order_by.push_str(&current_alias);
+                                order_by.push('.');
+                                order_by.push_str(&pk);
+                                order_by.push_str(", ");
+                            }
+                        }
+                        let child_alias = ServerSidePoggers::table_alias(self.local_id + 1);
+                        self.local_id += 1;
                         let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
                         let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
 
-                        from_s.push_str(" JOIN ");
-                        from_s.push_str(&self.g[child_node_index].table_name);
-                        from_s.push_str(" AS ");
-                        from_s.push_str(&child_alias);
-                        from_s.push_str(" ON ");
+                        from.push_str(" JOIN ");
+                        from.push_str(&self.g[child_node_index].table_name);
+                        from.push_str(" AS ");
+                        from.push_str(&child_alias);
+                        from.push_str(" ON ");
 
                         //if its not terminal, this field must be some foreign field. Search the nodes
                         //edges for the edge that corresponds to this graphql field, and whether its a
@@ -115,14 +147,14 @@ impl ServerSidePoggers {
                             .iter()
                             .zip(&self.g[edge].foreign_keys)
                         {
-                            let parent_pk = [&parent_alias, ".", pk].concat();
-                            from_s.push_str(&parent_pk);
-                            from_s.push_str(" = ");
-                            from_s.push_str(&child_alias);
-                            from_s.push('.');
-                            from_s.push_str(fk);
+                            let parent_pk = [&current_alias, ".", pk].concat();
+                            from.push_str(&parent_pk);
+                            from.push_str(" = ");
+                            from.push_str(&child_alias);
+                            from.push('.');
+                            from.push_str(fk);
                         }
-                        self.build_selection(cols, from_s, selection, child_node_index);
+                        self.build_selection(select, from, order_by, selection, child_node_index);
                     }
                 }
             }
@@ -173,6 +205,6 @@ impl ServerSidePoggers {
         panic!("Shouldve found edge {}", field_name);
     }
     fn table_alias(local_id: u8) -> String {
-        ["__local_", &local_id.to_string(), "__"].concat()
+        ["__table_", &local_id.to_string(), "__"].concat()
     }
 }
