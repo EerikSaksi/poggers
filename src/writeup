@@ -328,3 +328,22 @@ When joining we could simply zip the childs foreign keys with the parents primar
 
 Implement a server side json builder, but ensure that there are rows in the tables, each parent has 1k, each child has 1k, each baby has 1k.
 SQL json query vs non json query
+
+I implemented a server side json builder, and the results were pretty promising. This builder wasn't generalized, and only worked for this particular query, but the results were pretty promising. A query which doesn't require that the data is in JSON format performs about 4 times faster than one which is returned in the expected json format. For this non generalized implementation, building the million rows took about 0.6 seconds, resulting in a total of 1.2 seconds runtime, compared to the previous 2.5 seconds in runtime. It is worth noting that in the previous implementation about 2.3 seconds were taken by the database, and the remaining runtime by my implementation. This means that my implmentation distributes the load much better. 
+
+How building JSON worked for the following query:
+	select parent.id, parent.parent_name, child.child_name from parent join child on parent.id = child.parent_id order by parent_id.
+
+
+This returned the rows like so
+--------------------------------------
+| parent_id | parent_name | child_id | 
+| 0         | Bob         | 1        |
+| 0         | Bob         | 2        |
+| 0         | Bob         | 3        |
+| 0         | Bob         | 4        |
+| 1         | Karl        | 11       |
+| 1         | Karl        | 12       |
+| 2         | Alice       | 25       |
+
+--------------------------------------
