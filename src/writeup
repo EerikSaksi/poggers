@@ -362,7 +362,6 @@ query {
 }
 
 def rows_to_json(rows):
-	prev_parent_id = -1
 
 	//add the parent fields of the first row, and the id of the first child
 	s = "
@@ -374,7 +373,7 @@ def rows_to_json(rows):
 					id: ${rows[0].child_id},
 				
 	"
-	s += 
+	prev_parent_id = rows[0].id
 	for row in rows[1:]:
 			if row.parent_id != prev_parent_id:
 				#close the childTables field of parentTables
@@ -405,3 +404,115 @@ def rows_to_json(rows):
   #then parentTables (root)
 	s += "\n}"
 	return s
+
+For the rows I showed above, this would return:
+{
+	"parentTables": [
+		{
+				"id": 1,
+				"name": "Bob",
+				"childTables": [
+					{"id": 1},
+					{"id": 2},
+					{"id": 3},
+					{"id": 4},
+				]
+		},
+		{
+				"id": 2,
+				"name": "Karl",
+				"childTables": [
+					{"id": 11},
+					{"id": 12},
+				]
+		},
+		{
+			"id": 3,
+			"name": "Alice",
+			"childTables": [
+				{"id": 25},
+			]
+		}
+	] 
+}
+
+
+Generalizing this algorithm:
+My prior implementation only required visiting the query and then executing the query that the visitor generated. The new implementation has two stages: 
+		1. Iterate over the query, leveraging information about the database and GraphQL schema, in order to generate the query
+		2. Run the query, and use the context provided by the visitor in order to correctly create the rows.
+
+Implementing step 1:
+		I could reuse all of the visitor logic that I had used before. This new implementation also needed to perform joins and select the correct fields from the correct tables, but with a different SQL syntax. Here is the rough sudocode. The implementation uses the metadata extracted from the database to e.g determine if a field is terminal or the foreign/primary keys of tables.
+
+build_sql(query_root): 
+	select = "SELECT "
+	from = null
+	order_by = " ORDER BY "
+	build_field(query_root, select, from, order_by)
+	return select + from + order_by
+
+build_field(field, select, from, order_by):
+	for child_field in field.children:
+		if child_field is terminal:
+			select += "{table}.{field}, "
+		else if child_field is join:
+			#this might be a join or the first table we select from
+			if !from:
+				from = " FROM {table_name} "
+
+			#add join to this child
+			from += "JOIN {child_table} on {table_name}.{primary_key} = {child_table}.{child_fk} "
+
+      #since this parent has a child we want to sort parents by their primary key, so that all the children will be grouped
+			order_by += "{parent_table_name}.{parent_primary_key}, "
+
+      #recursively call build_field on this child so that it can select all its fields, and perform any joins it needs to do
+			build_field(child_field, select, from, order_by)
+
+Whenever a terminal field is encountered, it is added as a column to be selected by appending to the "select" string. Otherwise, if a field is foreign field, we need to add the foreign table to the "from" string, alongside a join which joins the parent and foreign table together. Although not shown, the join works for compound primary and foreign keys. As we want the children to be clustered by their parent, we also want to order the children by the parent primary key. There may be multiple order_by calls if we have multiple joins.
+
+Aliasing columns
+
+There may be naming conflicts between tables which share the same column names. In addition, I thought it would be helpful if the JSON builder didn't need to know the names of database columns and tables. I decided to use the following syntax for aliasing columns:
+
+
+
+select parent.id as __t0_c0__, parent.parent_name __t0_c1__, child.child_name __t1_c0__
+
+The number followed by the indicates the table index, and the number followed by the c indicates the column index. The table index is always incremented when a new table is encountered, and the column index is always incremented when a new column for that table is encountered. This helps to guarantee that there are no collisions (which something like random string generation might not guarantee). I also select primary keys even if they are not requested in the following format
+
+select parent.id as __t0_pk0__
+
+This aliasing allows us to operate our JSON builder without any knowledge about the database or the columns that it has. By passing an array of tuples, where the nth tuple value indicates tn's number of columns, and the second tuple value indicates tn's number of primary keys
+
+e.g for the previous example, we would return the following vector to the JSON builder:
+
+table_cols = [(2, 1), (1, 0)]
+We are selecting two cols from t0 (parent_table) which has one primary key (__t0_pk0__), whilst the second table (child_table) only selects one column (name) and although it has a primary key, we aren't interested in it, as we don't need to group child_table by id.
+
+
+Assume that for this case there are non composite indexes. It doesn't complicate the program much but just makes it more readable (table_cols also doesn't store the number of pks)
+table_cols = [2, 1]
+
+def build_rows():
+#run the generated query
+	rows = postgres.query(build_sql(query_root))
+
+	let prev_pks = null;
+	let table_index = 0
+	s = ""
+	for i in rows[1:]:
+		#move up and close objects while parent is changed 
+		while 0 < table_index && rows[i - 1].['__t${table_index}_pk0__'] !=  rows[i].['__t${table_index}_pk0__']:
+			table_index -= 1 
+			s += "\n]\n}"
+
+		#we need to move back down to the lowest level possible (e.g if we have a three way join and we moved from the lowest to the second lowest, because the primary keys of the second lowest changed, we need to get the selected field of this second lowest and then add the lowest level to this new object
+		temp_table_index = table_index
+		while temp_table_index < len(table_cols): 
+			for col_index in table_cols[temp_table_index]:
+				#for every col that was selected select that from this table
+				s += row["__t${temp_table_index}_c${col_index}__"]
+
+This code wouldn't actually produce the format in JSON as expected, but it would fetch the data values of the correct rows in the correct order. The formatting logic is pretty boring and easy to understand. The JSON builder does need to know the JSON keys of the rows it's selecting (otherwise it. But this is as simple as passing an array of the GQL fields. I just thought these wouldn't help understand the logic by which the correct fields are selected and we move up and down on the join hierarchy
