@@ -2,7 +2,6 @@ use postgres::{Client, NoTls, Row};
 
 pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect(database_url, NoTls)?;
-    //https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys
     let query_res = client.query(
         "
             select cols.table_name, cols.column_name,  data_type, foreign_keys.foreign_table_name,
@@ -11,34 +10,41 @@ pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
                 when 'YES' then ''
             end as nullable
             from information_schema.columns as cols left join
+            --https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys (I added the group by because the code doesn't work for multiple constraints with the same name across tables)
             (
                 SELECT
-                    tc.table_schema source_table_schema, 
-                    tc.table_name source_table_name, 
-                    kcu.column_name as source_column_name, 
-                    ccu.table_schema AS foreign_table_schema,
-                    ccu.table_name AS foreign_table_name,
-                    ccu.column_name AS foreign_column_name 
-                FROM 
-                    information_schema.table_constraints AS tc 
-                    JOIN information_schema.key_column_usage AS kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                      AND tc.table_schema = kcu.table_schema
-                    JOIN information_schema.constraint_column_usage AS ccu
-                      ON ccu.constraint_name = tc.constraint_name
-                      AND ccu.table_schema = tc.table_schema
-                WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public' and ccu.table_schema = 'public'
+                  tc.table_schema,
+                  tc.constraint_name,
+                  tc.table_name,
+                  kcu.column_name,
+                  ccu.table_schema AS foreign_table_schema,
+                  ccu.table_name AS foreign_table_name,
+                  ccu.column_name AS foreign_column_name
+                FROM
+                  information_schema.table_constraints AS tc
+                  JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
+                  AND tc.table_schema = kcu.table_schema
+                  JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
+                  AND ccu.table_schema = tc.table_schema
+                WHERE
+                  tc.constraint_type = 'FOREIGN KEY'
+                group by
+                  tc.table_schema,
+                  tc.table_name,
+                  kcu.column_name,
+                  ccu.table_schema,
+                  ccu.table_name,
+                  ccu.column_name,
+                  tc.constraint_name
             ) as foreign_keys
-            on foreign_keys.source_column_name = column_name and foreign_keys.source_table_name = cols.table_name
+            on foreign_keys.column_name = cols.column_name and foreign_keys.table_name = cols.table_name
             where cols.table_schema = 'public'
-            order by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable
-            ;
+            order by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable;
 ",
         &[],
     )?;
     Ok(query_res)
 }
-
 
 #[allow(dead_code)]
 pub fn read_type_information() -> Result<Vec<Row>, postgres::Error> {

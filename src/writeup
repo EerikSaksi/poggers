@@ -516,3 +516,6 @@ def build_rows():
 				s += row["__t${temp_table_index}_c${col_index}__"]
 
 This code wouldn't actually produce the format in JSON as expected, but it would fetch the data values of the correct rows in the correct order. The formatting logic is pretty boring and easy to understand. The JSON builder does need to know the JSON keys of the rows it's selecting (otherwise it. But this is as simple as passing an array of the GQL fields. I just thought these wouldn't help understand the logic by which the correct fields are selected and we move up and down on the join hierarchy
+
+Using diesel
+Rust has a powerful ORM library called Diesel. This library is compile time: it has no overhead, and it will not allow a program to compile if it could throw a database error. This seemed really attractive, as it e.g had a query which introspects your database. The downside of using Diesel is that in order to propely integrate it, all my code would also need to compile time. All the logic related to generating queries and processing JSON, generating GraphQL etc. would also need to happen at compile time, rather than working on data structure representations of the schema and query at runtime. Writing macros is very difficult as it's metaprogramming (coding to create code) which would only add another layer to this complex project.
