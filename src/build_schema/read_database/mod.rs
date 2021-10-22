@@ -4,7 +4,7 @@ pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect(database_url, NoTls)?;
     let query_res = client.query(
         "
-            select cols.table_name, cols.column_name,  data_type, foreign_keys.foreign_table_name,
+            select cols.table_name, cols.column_name,  data_type, foreign_keys.foreign_table_name, foreign_keys.foreign_column_name,
             case is_nullable
                 when 'NO' then '!'
                 when 'YES' then ''

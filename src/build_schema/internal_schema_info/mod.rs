@@ -6,7 +6,7 @@ use crate::handle_query::postgres_query_builder::PostgresBuilder;
 use crate::handle_query::Poggers;
 use inflector::Inflector;
 use petgraph::graph::DiGraph;
-use petgraph::prelude::NodeIndex;
+use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -34,59 +34,45 @@ pub fn create(database_url: &str) -> Poggers<PostgresBuilder> {
 
     for current_row in read_database::read_tables(database_url).unwrap().iter() {
         let table_name: String = current_row.get("table_name");
+        let parent_table_name: Option<String> = current_row.get("foreign_table_name");
         let column_name: String = current_row.get("column_name");
-        let foreign_table_name: Option<String> = current_row.get("foreign_table_name");
-        //let nullable: &str = current_row.get("nullable");
 
-        //add this table as a node if no such node
+        if let Some(parent_table_name) = parent_table_name {
+            let child_index = find_or_create_node(&mut g, &table_name);
+            let parent_index = find_or_create_node(&mut g, &parent_table_name);
 
-        if let Some(foreign_table_name) = foreign_table_name {
-            //unwrap as we inserted this node if it was missing right above
-            //we dont know about the foreign table
-            let parent_index_optional = g.node_indices().find(|i| g[*i].table_name == table_name);
-            let parent_index = match parent_index_optional {
-                Some(index) => index,
-                None => g.add_node(GraphQLType {
-                    terminal_fields: HashSet::new(),
-                    table_name: table_name.clone(),
-                    primary_keys: vec!["id".to_string()],
-                }),
+            let edge = match g.find_edge(child_index, parent_index) {
+                Some(e) => e,
+                None => g.add_edge(
+                    child_index,
+                    parent_index,
+                    GraphQLEdgeInfo {
+                        graphql_field_name: (
+                            table_name.to_camel_case().to_plural(),
+                            parent_table_name.to_camel_case(),
+                        ),
+                        foreign_keys: vec![],
+                    },
+                ),
             };
-            let child_index_optional = g
-                .node_indices()
-                .find(|i| g[*i].table_name == foreign_table_name);
-
-            //either return the index we found or insert and return the index of that new item
-            let child_index = match child_index_optional {
-                Some(foreign_index) => foreign_index,
-                None => g.add_node(GraphQLType {
-                    terminal_fields: HashSet::new(),
-                    table_name: foreign_table_name.clone(),
-                    primary_keys: vec!["id".to_string()],
-                }),
-            };
-
-            //create one to many relationship
-            g.add_edge(
-                child_index,
+            let parent_column_name: String = current_row.get("foreign_column_name");
+            handle_foreign_key(
+                &mut g,
                 parent_index,
-                GraphQLEdgeInfo {
-                    graphql_field_name: (
-                        foreign_table_name.to_camel_case().to_plural(),
-                        table_name.to_camel_case(),
-                    ),
-                    foreign_keys: vec![column_name.to_string()],
-                },
+                edge,
+                &parent_column_name,
+                &column_name,
             );
+
             query_to_type.insert(
-                foreign_table_name.clone().to_camel_case().to_plural(),
+                table_name.clone().to_camel_case().to_plural(),
                 QueryEdgeInfo {
                     node_index: parent_index,
                     is_many: true,
                 },
             );
             query_to_type.insert(
-                foreign_table_name.clone().to_camel_case(),
+                parent_table_name.clone().to_camel_case(),
                 QueryEdgeInfo {
                     node_index: parent_index,
                     is_many: false,
@@ -105,5 +91,54 @@ pub fn create(database_url: &str) -> Poggers<PostgresBuilder> {
         query_to_type,
         local_id: 0,
         query_builder: PostgresBuilder {},
+    }
+}
+fn find_or_create_node(
+    g: &mut DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    table_name: &str,
+) -> NodeIndex<u32> {
+    let node_index_optional = g.node_indices().find(|i| g[*i].table_name == table_name);
+    match node_index_optional {
+        Some(foreign_index) => foreign_index,
+        None => g.add_node(GraphQLType {
+            terminal_fields: HashSet::new(),
+            table_name: table_name.to_string(),
+            primary_keys: vec![],
+        }),
+    }
+}
+
+fn handle_foreign_key(
+    g: &mut DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    node: NodeIndex<u32>,
+    edge: EdgeIndex<u32>,
+    new_parent_pk: &str,
+    new_child_fk: &str,
+) {
+    let parent_pk_index = g[node]
+        .primary_keys
+        .iter()
+        .position(|pk| *pk == new_parent_pk);
+
+    //the index of the childs fk needs to match the index of the parent's pk
+    match parent_pk_index {
+        Some(i) => {
+            //ensure no out of bounds
+            while g[edge].foreign_keys.len() < g[node].primary_keys.len() {
+                g[edge].foreign_keys.push("".to_string());
+            }
+            g[edge].foreign_keys[i] = new_child_fk.to_string();
+        }
+        None => {
+            g[node].primary_keys.push(new_parent_pk.to_string());
+            let right_most = g[node].primary_keys.len() - 1;
+
+            //no out of bounds
+            while g[edge].foreign_keys.len() < g[node].primary_keys.len() {
+                g[edge].foreign_keys.push("".to_string());
+            }
+            //last element
+            g[edge].foreign_keys[right_most] = new_child_fk.to_string();
+        }
     }
 }
