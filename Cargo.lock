@@ -654,7 +654,6 @@ dependencies = [
  "convert_case",
  "petgraph",
  "postgres",
- "serde",
  "serde_json",
  "time 0.3.3",
 ]

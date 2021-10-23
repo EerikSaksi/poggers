@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::iter::FromIterator;
-
 use super::*;
 
 fn test_sql_equality(actual: Result<String, async_graphql_parser::Error>, expected: &str) {

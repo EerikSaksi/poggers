@@ -1,3 +1,6 @@
+#[cfg(test)]
+#[path = "./test.rs"]
+mod test;
 use postgres::{Client, NoTls};
 mod generate_sql;
 

@@ -97,3 +97,4 @@ fn foreign_primary_key() {
     let edge = g.find_edge(node, foreign_node).unwrap();
     assert_eq!(g[edge].foreign_keys, vec!["post_id"]);
 }
+
