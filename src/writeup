@@ -338,6 +338,7 @@ How building JSON worked for the following query:
 This returned the rows like so
 --------------------------------------
 | parent_id | parent_name | child_id | 
+--------------------------------------
 | 1         | Bob         | 1        |
 | 1         | Bob         | 2        |
 | 1         | Bob         | 3        |
@@ -532,5 +533,49 @@ def handle_fk(fks, pks, new_fk, new_pk):
 		pk_index = len(pks) - 1
 
 	fk[pk_index] = new_fk
-	
 
+Geting the correct subquery working took some time. After thinking that I successfully solved the problem, the subquery did not work for subqueries. For a primary key(id1, id2) the subquery returned 
+
+----------------------------
+| child_col  | parent_col  |
+----------------------------
+| parent_id1 | id1         |
+| parent_id1 | id2         |
+| parent_id2 | id1         |
+| parent_id2 | id2         |
+----------------------------
+The issue with this is that instead of this query showing that parent_id1 correponds to id1, and parent_id1 correponds to id2, this just creates all permutations of the foreign and primary keys. By using this query I found on stack overflow:
+
+select
+	att2.attname as \"child_column\",
+	cl.relname as \"parent_table\",
+	att.attname as \"parent_column\",
+	child_table
+from
+	(
+		select
+			unnest(con1.conkey) as \"parent\",
+			unnest(con1.confkey) as \"child\",
+			con1.confrelid,
+			con1.conrelid,
+			con1.conname,
+			cl.relname as child_table,
+			ns.nspname as child_schema
+		from
+			pg_class cl
+			join pg_namespace ns on cl.relnamespace = ns.oid
+			join pg_constraint con1 on con1.conrelid = cl.oid
+		where
+			con1.contype = 'f'
+
+This was instead returned
+----------------------------
+| child_col  | parent_col  |
+----------------------------
+| parent_id1 | id1         |
+| parent_id2 | id2         |
+----------------------------
+
+I have found that composite primary keys have caused a lot of issues for me. Both on the query introspection side, but also on the Rust code side (requires lists to support primary keys/foreign keys). I also am not even sure how common composite primary keys are, so had I known how annoying this would've been to support I wouldn't have done so. But I've already sunk time into it so might as well double down.
+
+I also added support for finding primary keys. This is done through another subquery, which joins with information_schema based on column and table name. This works for composite primary keys, as well as primary keys which are also foreign keys. 

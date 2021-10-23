@@ -5,19 +5,62 @@ use postgres::{Client, NoTls, Row};
 
 pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
     let mut client = Client::connect(database_url, NoTls)?;
-    let query  = ["
-            select cols.table_name, cols.column_name,  data_type, foreign_keys.foreign_table_name, foreign_keys.foreign_column_name,
-            case is_nullable
-                when 'NO' then '!'
-                when 'YES' then ''
-            end as nullable
-            from information_schema.columns as cols left join
-            (",
-             &constraint_subquery(),
-            ") as foreign_keys
-            on foreign_keys.column_name = cols.column_name and foreign_keys.table_name = cols.table_name
-            where cols.table_schema = 'public'
-            order by cols.table_name, cols.column_name, cols.data_type, foreign_table_name, is_nullable"].concat();
+    let query = "
+        select
+          cols.table_name,
+          cols.column_name,
+          data_type,
+          foreign_keys.parent_table,
+          foreign_keys.parent_column,
+					primary_keys.column_name is not null as is_primary,
+          case
+            is_nullable
+            when 'NO' then '!'
+            when 'YES' then ''
+          end as nullable
+        from
+          information_schema.columns as cols
+          left join (
+            select
+              att2.attname as \"child_column\",
+              cl.relname as \"parent_table\",
+              att.attname as \"parent_column\",
+              child_table
+            from
+              (
+                select
+                  unnest(con1.conkey) as \"parent\",
+                  unnest(con1.confkey) as \"child\",
+                  con1.confrelid,
+                  con1.conrelid,
+                  con1.conname,
+                  cl.relname as child_table,
+                  ns.nspname as child_schema
+                from
+                  pg_class cl
+                  join pg_namespace ns on cl.relnamespace = ns.oid
+                  join pg_constraint con1 on con1.conrelid = cl.oid
+                where
+                  con1.contype = 'f'
+              ) con
+              join pg_attribute att on att.attrelid = con.confrelid
+              and att.attnum = con.child
+              join pg_class cl on cl.oid = con.confrelid
+              join pg_attribute att2 on att2.attrelid = con.conrelid
+              and att2.attnum = con.parent
+          ) as foreign_keys on foreign_keys.child_column = cols.column_name
+          and foreign_keys.child_table = cols.table_name
+					left join 
+					(
+						SELECT c.column_name, tc.table_name
+						FROM information_schema.table_constraints tc 
+						JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name) 
+						JOIN information_schema.columns AS c ON c.table_schema = tc.constraint_schema
+							AND tc.table_name = c.table_name AND ccu.column_name = c.column_name
+						WHERE constraint_type = 'PRIMARY KEY'
+					) as primary_keys on primary_keys.column_name = cols.column_name and primary_keys.table_name = cols.table_name
+        where cols.table_schema = 'public'
+        order by table_name";
     let query_res = client.query(&*query, &[])?;
     Ok(query_res)
 }
@@ -89,28 +132,5 @@ pub fn read_type_information() -> Result<Vec<Row>, postgres::Error> {
 
 //https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys (I added the group by because the code doesn't work for multiple constraints with the same name across tables)
 pub fn constraint_subquery<'a>() -> &'a str {
-    "SELECT
-      tc.table_schema,
-      tc.constraint_name,
-      tc.table_name,
-      kcu.column_name,
-      ccu.table_schema AS foreign_table_schema,
-      ccu.table_name AS foreign_table_name,
-      ccu.column_name AS foreign_column_name
-    FROM
-      information_schema.table_constraints AS tc
-      JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-      AND tc.table_schema = kcu.table_schema
-      JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-      AND ccu.table_schema = tc.table_schema
-    WHERE
-      tc.constraint_type = 'FOREIGN KEY'
-    group by
-      tc.table_schema,
-      tc.table_name,
-      kcu.column_name,
-      ccu.table_schema,
-      ccu.table_name,
-      ccu.column_name,
-      tc.constraint_name"
+    ""
 }
