@@ -519,3 +519,18 @@ This code wouldn't actually produce the format in JSON as expected, but it would
 
 Using diesel
 Rust has a powerful ORM library called Diesel. This library is compile time: it has no overhead, and it will not allow a program to compile if it could throw a database error. This seemed really attractive, as it e.g had a query which introspects your database. The downside of using Diesel is that in order to propely integrate it, all my code would also need to compile time. All the logic related to generating queries and processing JSON, generating GraphQL etc. would also need to happen at compile time, rather than working on data structure representations of the schema and query at runtime. Writing macros is very difficult as it's metaprogramming (coding to create code) which would only add another layer to this complex project.
+
+Before creating tests for my new GraphQL builder I thought it would be faster to get my database introspection working. Although creating the table metadata would be better testing practice, I found that maintaining all the manually generated database metadata became a chore, especially when my data structures were constantly changing. In addition, I often messed up the manual data entry leading to tests failing. I thought this time I would get schema building working well, and perform thorough testing on the introspection in order to create better and more maintainable tests. When I ran the database query (which worked for my own database) on a new sample database I downloaded, I noticed that it was returning a lot of duplicates. What I realized was happening was that there were duplicate foreign key constraint names across multiple tables. The query which selects information about constraints does so through the constraint name and not the column and table name. I amended this by adding a group by statement, where the constraint name was the last of the list (meaning table and column name took precedence). I also wanted to support compound foreign keys. The SQL query which was originally designed to support non compound keys worked out of the box without any special configuration, but required some rust code to get working. For an edge connection from a child to a parent, the foreign key list stored in this edge must have the same cardinality as the primary key list of the parent, and fk[i] must refer to pk[i] for every index. This is the algorithm I used to ensure this:
+
+def handle_fk(fks, pks, new_fk, new_pk):
+	pk_index = pks.find_index(pk == new_pk)
+
+  #the pk the child refers to hasnt been added yet
+	if pk_index == -1
+		#place new pk in the back
+		pks += new_pk
+		pk_index = len(pks) - 1
+
+	fk[pk_index] = new_fk
+	
+

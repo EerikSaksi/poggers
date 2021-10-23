@@ -1,6 +1,5 @@
 use super::*;
 use petgraph::graph::Edge;
-use postgres::{Client, NoTls};
 fn assert_some_edge_eq(expected: &GraphQLEdgeInfo, edges: &[Edge<GraphQLEdgeInfo>]) {
     for edge in edges {
         let GraphQLEdgeInfo {
@@ -12,7 +11,7 @@ fn assert_some_edge_eq(expected: &GraphQLEdgeInfo, edges: &[Edge<GraphQLEdgeInfo
             && foreign_keys
                 .iter()
                 .zip(&expected.foreign_keys)
-                .all(|(a, b)| a.0 == b.0 && a.1 == b.1)
+                .all(|(a, b)| a == b)
         {
             return;
         }
@@ -20,23 +19,53 @@ fn assert_some_edge_eq(expected: &GraphQLEdgeInfo, edges: &[Edge<GraphQLEdgeInfo
     panic!("No edge found:\n\n {:?}\n\n", expected);
 }
 
-//fn check_single_connection() {
-//    let Poggers {g, local_id: _, query_to_type: _, query_builder: _} = 
-//    assert_some_edge_eq(
-//        &GraphQLEdgeInfo {
-//            one_to_many: true,
-//            foreign_keys: vec![("id".to_string(), "parent_table_id".to_string())],
-//            graphql_field_name: "parentTables".to_string(),
-//        },
-//        g.raw_edges(),
-//    );
-//    assert_some_edge_eq(
-//        &GraphQLEdgeInfo {
-//            one_to_many: false,
-//            foreign_keys: vec![("parent_table_id".to_string(), "id".to_string())],
-//            graphql_field_name: "parentTable".to_string(),
-//        },
-//        g.raw_edges(),
-//    );
-//    assert_eq!(g.raw_edges().len(), 2);
-//}
+#[test]
+fn check_many_to_one() {
+    let Poggers {
+        g,
+        local_id: _,
+        query_to_type: _,
+        query_builder: _,
+    } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    assert_some_edge_eq(
+        &GraphQLEdgeInfo {
+            foreign_keys: vec!["owneruserid".to_string()],
+            graphql_field_name: ("posts".to_string(), "siteUser".to_string()),
+        },
+        g.raw_edges(),
+    );
+}
+
+#[test]
+fn test_correct_num_edges() {
+    let Poggers {
+        g,
+        local_id: _,
+        query_to_type: _,
+        query_builder: _,
+    } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+
+    //when running the subquery in read_database 10 foreign keys are shown (also manually validated)
+    assert_eq!(g.raw_edges().len(), 10);
+}
+
+
+#[test]
+fn check_id_primary_keys() {
+    let Poggers {
+        g,
+        local_id: _,
+        query_to_type: _,
+        query_builder: _,
+    } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    for weight in g.node_weights() {
+        //every table but the parent table one has primary key as id
+        if weight.table_name != "parent_table" {
+            assert_eq!(weight.primary_keys, vec!["id"]);
+        }
+    }
+
+    //when running the subquery in read_database 10 foreign keys are shown (also manually validated)
+    assert_eq!(g.raw_edges().len(), 10);
+}
+
