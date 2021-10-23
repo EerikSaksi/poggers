@@ -1,3 +1,6 @@
+#[cfg(test)]
+#[path = "./test.rs"]
+mod test;
 use postgres::{Client, NoTls, Row};
 
 pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {

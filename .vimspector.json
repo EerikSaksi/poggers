@@ -25,7 +25,7 @@
       "configuration": {
         "request": "launch",
         "program": "${programName}",
-        "args": ["build_schema::internal_schema_info::test"]
+        "args": [" build_schema::read_database::test "]
       },
       "breakpoints": {
         "exception": {
