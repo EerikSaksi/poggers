@@ -4,6 +4,7 @@ mod test;
 use postgres::{Client, NoTls};
 mod generate_sql;
 
+#[derive(PartialEq, Debug)]
 pub struct TableQueryInfo {
     graphql_fields: Vec<String>,
     parent_key_name: String,

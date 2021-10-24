@@ -9,6 +9,8 @@ use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
 
+use super::TableQueryInfo;
+
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
@@ -28,7 +30,10 @@ impl ServerSidePoggers {
         }
     }
 
-    pub fn build_root(&mut self, query: &str) -> Result<String, async_graphql_parser::Error> {
+    pub fn build_root(
+        &mut self,
+        query: &str,
+    ) -> Result<(String, Vec<TableQueryInfo>), async_graphql_parser::Error> {
         let ast = parse_query::<&str>(query)?;
         match ast.operations {
             DocumentOperations::Single(Positioned { node, pos: _ }) => {
@@ -39,10 +44,14 @@ impl ServerSidePoggers {
             }
         }
     }
-    fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
+    fn visit_query(
+        &mut self,
+        selection_set: Positioned<SelectionSet>,
+    ) -> (String, Vec<TableQueryInfo>) {
         let mut select = String::from("SELECT ");
         let mut from = String::from(" FROM ");
         let mut order_by = String::new();
+        let mut table_query_info: Vec<TableQueryInfo> = vec![];
 
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
@@ -62,8 +71,10 @@ impl ServerSidePoggers {
                 &mut select,
                 &mut from,
                 &mut order_by,
+                &mut table_query_info,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
+                &field.node.name.node,
             );
         } else {
             panic!("First selection_set item isn't a field");
@@ -72,11 +83,17 @@ impl ServerSidePoggers {
         //we don't necessarily need to order (e.g if no joins) so check if there are any fields to
         //order and only then concat " ORDER BY " and the orderable column
         select.drain(select.len() - 2..select.len());
+
+        //as we do depth first and we need the first element to be the parent value do reverse
+        table_query_info.reverse();
         match order_by.is_empty() {
-            true => [select, from].concat(),
+            true => ([select, from].concat(), table_query_info),
             false => {
                 order_by.drain(order_by.len() - 2..order_by.len());
-                [&select, &from, " ORDER BY ", &order_by].concat()
+                (
+                    [&select, &from, " ORDER BY ", &order_by].concat(),
+                    table_query_info,
+                )
             }
         }
     }
@@ -86,8 +103,10 @@ impl ServerSidePoggers {
         select: &mut String,
         from: &mut String,
         order_by: &mut String,
+        table_query_info: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
+        parent_key_name: &str,
     ) {
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
@@ -97,12 +116,14 @@ impl ServerSidePoggers {
 
             let mut col_index = 0;
             let mut encountered_join = false;
+            let mut graphql_fields: Vec<String> = vec![];
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
                     let column_name =
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
                     if self.g[node_index].terminal_fields.contains(child_name) {
+                        graphql_fields.push(child_name.to_string());
                         select.push_str(column_name);
                         select.push_str(" as __t");
                         select.push_str(&id_copy.to_string());
@@ -156,10 +177,22 @@ impl ServerSidePoggers {
                             select.push_str(&i.to_string());
                             select.push_str("__, ");
                         }
-                        self.build_selection(select, from, order_by, selection, child_node_index);
+                        self.build_selection(
+                            select,
+                            from,
+                            order_by,
+                            table_query_info,
+                            selection,
+                            child_node_index,
+                            child_name,
+                        );
                     }
                 }
             }
+            table_query_info.push(TableQueryInfo {
+                graphql_fields,
+                parent_key_name: parent_key_name.to_string(),
+            });
         }
     }
     fn find_edge_and_endpoints(

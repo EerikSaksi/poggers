@@ -98,3 +98,4 @@ fn foreign_primary_key() {
     assert_eq!(g[edge].foreign_keys, vec!["post_id"]);
 }
 
+

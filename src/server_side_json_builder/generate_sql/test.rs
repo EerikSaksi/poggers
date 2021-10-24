@@ -1,11 +1,9 @@
+use super::*;
 use std::collections::HashSet;
 use std::iter::FromIterator;
-use super::*;
 
-fn test_sql_equality(actual: Result<String, async_graphql_parser::Error>, expected: &str) {
-    assert!(actual.is_ok());
-
-    let mut actual_iter = actual.as_ref().unwrap().split_ascii_whitespace().peekable();
+fn test_sql_equality(actual: String, expected: &str) {
+    let mut actual_iter = actual.split_ascii_whitespace().peekable();
 
     let mut expected_iter = expected.split_ascii_whitespace().peekable();
     let mut actual_cumm = String::new();
@@ -94,5 +92,27 @@ fn one_way_join() {
         }",
     );
     let expected = "SELECT __table_0__.name as __t0_c0__, __table_0__.id AS __t0_pk0__, __table_1__.workout_plan_id as __t1_c0__, __table_1__.name as __t1_c1__, __table_1__.id as __t1_c2__ FROM workout_plan AS __table_0__ JOIN workout_plan_day AS __table_1__ ON __table_0__.id = __table_1__.workout_plan_id ORDER BY __table_0__.id";
-    test_sql_equality(actual, expected);
+    match actual {
+        Ok(actual) => {
+            test_sql_equality(actual.0, expected);
+            assert_eq!(
+                actual.1,
+                vec![
+                    TableQueryInfo {
+                        parent_key_name: "workoutPlans".to_string(),
+                        graphql_fields: vec!["name".to_string()],
+                    },
+                    TableQueryInfo {
+                        parent_key_name: "workoutPlanDays".to_string(),
+                        graphql_fields: vec![
+                            "workoutPlanId".to_string(),
+                            "name".to_string(),
+                            "id".to_string(),
+                        ],
+                    },
+                ]
+            );
+        }
+        Err(e) => panic!("{}", e),
+    }
 }
