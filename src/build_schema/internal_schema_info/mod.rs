@@ -61,23 +61,15 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             };
             let parent_column: String = current_row.get("parent_column");
             handle_foreign_key(&mut g, parent_index, edge, &parent_column, &column_name);
-
-            query_to_type.insert(
-                table_name.clone().to_camel_case().to_plural(),
-                QueryEdgeInfo {
-                    node_index: parent_index,
-                    is_many: true,
-                },
-            );
-            query_to_type.insert(
-                parent_table_name.clone().to_camel_case(),
-                QueryEdgeInfo {
-                    node_index: parent_index,
-                    is_many: false,
-                },
-            );
         }
 
+        query_to_type.insert(
+            table_name.clone().to_plural().to_camel_case(),
+            QueryEdgeInfo {
+                node_index: child_index,
+                is_many: true,
+            },
+        );
         g.node_weights_mut().for_each(|graphql_type| {
             if graphql_type.table_name == table_name {
                 graphql_type.terminal_fields.insert(column_name.clone());

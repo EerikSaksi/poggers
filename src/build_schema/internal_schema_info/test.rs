@@ -35,11 +35,10 @@ fn assert_some_edge_eq(
 
 #[test]
 fn test_one_to_many() {
-    let Poggers {
+    let ServerSidePoggers {
         g,
         local_id: _,
         query_to_type: _,
-        query_builder: _,
     } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     assert_some_edge_eq(("posts", "siteUser"), vec!["owneruserid"], g.raw_edges());
     assert_some_edge_eq(("badges", "siteUser"), vec!["userid"], g.raw_edges());
@@ -48,11 +47,10 @@ fn test_one_to_many() {
 
 #[test]
 fn test_composite_primary_keys() {
-    let Poggers {
+    let ServerSidePoggers {
         g,
         local_id: _,
         query_to_type: _,
-        query_builder: _,
     } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     assert_some_edge_eq(
         ("childTables", "parentTable"),
@@ -63,11 +61,10 @@ fn test_composite_primary_keys() {
 
 #[test]
 fn check_id_primary_keys() {
-    let Poggers {
+    let ServerSidePoggers {
         g,
         local_id: _,
         query_to_type: _,
-        query_builder: _,
     } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
@@ -79,11 +76,10 @@ fn check_id_primary_keys() {
 
 #[test]
 fn foreign_primary_key() {
-    let Poggers {
+    let ServerSidePoggers {
         g,
         local_id: _,
         query_to_type: _,
-        query_builder: _,
     } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let node = g
         .node_indices()
@@ -98,4 +94,19 @@ fn foreign_primary_key() {
     assert_eq!(g[edge].foreign_keys, vec!["post_id"]);
 }
 
-
+#[test]
+fn query_to_type() {
+    let ServerSidePoggers {
+        g: _,
+        local_id: _,
+        query_to_type,
+    } = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    assert!(
+        query_to_type.contains_key("siteUsers"),
+        "{}",
+        query_to_type
+            .keys()
+            .into_iter()
+            .fold(String::new(), |a, b| format!("{}\n{}", a, b))
+    )
+}
