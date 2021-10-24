@@ -2,7 +2,9 @@
 #[path = "./test.rs"]
 mod test;
 use postgres::{Client, NoTls};
-mod generate_sql;
+
+pub use self::generate_sql::ServerSidePoggers;
+pub mod generate_sql;
 
 #[derive(PartialEq, Debug)]
 pub struct TableQueryInfo {
@@ -10,11 +12,12 @@ pub struct TableQueryInfo {
     parent_key_name: String,
 }
 
-pub fn convert(query: &str, table_query_info: Vec<TableQueryInfo>) {
+pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) {
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
 
-    let rows = client.query(query, &[]).unwrap();
+    let (gql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
+    let rows = client.query(&*gql_query, &[]).unwrap();
 
     let mut s = String::new();
     let mut rows_iter = rows.iter().peekable();
