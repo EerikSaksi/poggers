@@ -2,11 +2,11 @@
 #[path = "./test.rs"]
 mod test;
 use postgres::{Client, NoTls};
-use std::time::Instant;
 
 pub use self::generate_sql::ServerSidePoggers;
 pub mod generate_sql;
 
+use std::time::Instant;
 #[derive(PartialEq, Debug)]
 pub struct TableQueryInfo {
     graphql_fields: Vec<String>,
@@ -14,16 +14,13 @@ pub struct TableQueryInfo {
 }
 
 pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
+    let before = Instant::now();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let (sql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
 
-    let before = Instant::now();
-    let rows = client
-        .query(&*[&sql_query, ""].concat(), &[])
-        .unwrap();
+    let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
 
-    println!("Elapsed time: {:.2?}", before.elapsed());
     let mut s = String::from(
         &[
             "{",
@@ -94,6 +91,7 @@ pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
     }
     s.drain(s.len() - 2..s.len());
     s.push_str("]}]}");
+    println!("Elapsed time: {:.2?}", before.elapsed());
     s
 }
 fn stringify(field: &str) -> String {

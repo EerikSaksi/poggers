@@ -21,12 +21,12 @@ fn select_integer_fields() {
           }
         }";
     let res = convert(query, &mut pogg);
-    println!("{}", res);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    let mut file = File::create("foo.json").unwrap();
-    file.write_all(res.as_bytes()).unwrap();
-    match p {
-        Ok(p) => println!("{}", p),
-        Err(e) => panic!("{}", e),
-    }
+    //let p: Result<Value, Error> = serde_json::from_str(&*res);
+    //let mut file = File::create("foo.json").unwrap();
+    //file.write_all(res.as_bytes()).unwrap();
+    //match p {
+    //    Ok(p) => println!("{}", p),
+    //    Err(e) => panic!("{}", e),
+    //}
+    panic!();
 }
