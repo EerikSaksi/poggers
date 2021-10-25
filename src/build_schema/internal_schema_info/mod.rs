@@ -80,6 +80,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         g,
         query_to_type,
         local_id: 0,
+        num_select_cols: 0
     }
 }
 fn find_or_create_node(

@@ -77,6 +77,7 @@ fn one_way_join() {
         query_to_type,
         g,
         local_id: 0,
+        num_select_cols: 0,
     };
 
     let actual = pogg.build_root(
@@ -102,6 +103,7 @@ fn one_way_join() {
                     TableQueryInfo {
                         parent_key_name: "workoutPlans".to_string(),
                         graphql_fields: vec!["name".to_string()],
+                        column_offset: 0
                     },
                     TableQueryInfo {
                         parent_key_name: "workoutPlanDays".to_string(),
@@ -110,10 +112,32 @@ fn one_way_join() {
                             "name".to_string(),
                             "id".to_string(),
                         ],
+                        column_offset: 2
                     },
                 ]
             );
         }
         Err(e) => panic!("{}", e),
     }
+}
+
+#[test]
+fn column_offsets() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query = "
+        query{
+          siteUsers{
+            reputation
+            views
+            upvotes
+            downvotes
+            posts{
+              id
+              posttypeid
+            }
+          }
+        }";
+    let (_, table_query_infos) = pogg.build_root(query).unwrap();
+    assert_eq!(table_query_infos.get(0).unwrap().column_offset, 0);
+    assert_eq!(table_query_infos.get(1).unwrap().column_offset, 5);
 }

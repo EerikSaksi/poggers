@@ -15,6 +15,7 @@ pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
+    pub num_select_cols: usize,
 }
 
 #[allow(dead_code)]
@@ -27,6 +28,7 @@ impl ServerSidePoggers {
             g,
             query_to_type,
             local_id: 0,
+            num_select_cols: 0,
         }
     }
 
@@ -114,9 +116,9 @@ impl ServerSidePoggers {
             let id_copy = self.local_id;
             let current_alias = ServerSidePoggers::table_alias(self.local_id);
 
-            let mut col_index = 0;
             let mut encountered_join = false;
             let mut graphql_fields: Vec<String> = vec![];
+            let column_offset = self.num_select_cols;
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
@@ -128,9 +130,9 @@ impl ServerSidePoggers {
                         select.push_str(" as __t");
                         select.push_str(&id_copy.to_string());
                         select.push_str("_c");
-                        select.push_str(&col_index.to_string());
+                        select.push_str(&(self.num_select_cols - column_offset).to_string());
                         select.push_str("__, ");
-                        col_index += 1;
+                        self.num_select_cols += 1;
                     } else {
                         //if we have a child join then we need to order the parent by its primary
                         //key to allow us to capture all children for the parent when iterating
@@ -163,6 +165,7 @@ impl ServerSidePoggers {
                             .zip(&self.g[edge].foreign_keys)
                             .enumerate()
                         {
+                            self.num_select_cols += 1;
                             let parent_pk = [&current_alias, ".", pk].concat();
                             from.push_str(&parent_pk);
                             from.push_str(" = ");
@@ -192,6 +195,7 @@ impl ServerSidePoggers {
             table_query_info.push(TableQueryInfo {
                 graphql_fields,
                 parent_key_name: parent_key_name.to_string(),
+                column_offset,
             });
         }
     }

@@ -592,16 +592,16 @@ I wanted to increase the performance of my JSON builder. In order to do so, I fi
 
 Something that seemed optimizable was the last bullet point. Currently I was fetching columns by constructing the string __t0_c0__ and then passing, and then requesting the value at this column. the rust-postgres library also allows by integer, where the integer corresponds to the position on the column list. To me it was obvious that dynamically generating the correct integer index would be much faster than allocating memory to generate the string. Although I did not have proof, I had a suspicion that providing the column position as an integer to rust-postgres would also be faster than providing the string column name. I decided to benchmark these two individually to see which would be faster.
 
-I benchmarked the creation of 100 column integer indexes for 100 tables, as well as 100 column string indexes for 100 tables, and the results are what I expected:
+First I compared ID generation in isolation. Unsurpringly, integer generation was much faster. This was simply multiplying table by columns, whilst string ID generation required string allocation.
+test integer_indexing::tests::construct_ids                  ... bench:       4,791 ns/iter (+/- 95)
+test integer_indexing::tests::construct_string_ids           ... bench:   1,455,671 ns/iter (+/- 258,757)
 
+This is about 303 times faster!
 
-test integer_indexing::tests::construct_ids        ... bench:       4,756 ns/iter (+/- 43)
-test integer_indexing::tests::construct_string_ids ... bench:   1,457,145 ns/iter (+/- 42,987)
+Here are the implementations for both tests: 
 
-This is enough cause to replace string ids with integer ids. 
-
-This was the code used for the benchmarks. I also made sure to include test::black_box, as rust assumes that any unused variable can be discarded. I also didn't want to use this variable (e.g print it) as that would taint the results (if printing one takes longer than the other that wouldn't be relevant to construction speed).
-fn construct_ids(b: &mut Bencher) {
+#[bench]
+fn construct_ids(b: &mut bencher) {
 		b.iter(|| {
 				for table in 0..100 {
 						for col in 0..100 {
@@ -610,8 +610,9 @@ fn construct_ids(b: &mut Bencher) {
 				}
 		})
 }
+
 #[bench]
-fn construct_string_ids(b: &mut Bencher) {
+fn construct_string_ids(b: &mut bencher) {
 		b.iter(|| {
 				for table in 0..100 {
 						for col in 0..100 {
@@ -622,3 +623,71 @@ fn construct_string_ids(b: &mut Bencher) {
 				}
 		})
 }
+ 
+The tests have to create ids for 100 columns for each of the 100 tables. I use test::black_box in order to prevent rust from optimizing away unused variables. It would be a bad idea to use the variable by e.g printing it, as the use of the variable may vary and mess with benchmarks
+
+
+Next I wanted to see how id generation combined with row indexing
+
+
+test integer_indexing::tests::test_postgres_integer_indexing ... bench:      89,218 ns/iter (+/- 266)
+test integer_indexing::tests::test_postgres_string_indexing  ... bench:   2,790,018 ns/iter (+/- 21,185)
+
+The performance ratio remained relatively constant (at 31x).
+
+
+I created a table with 100 columns, field1 ... field100. I then inserted 100 rows into this table. I then created a query which selected each field aliased as string ids are aliased. For each row, I then indexed each column (again using black box to ensure no optimizations) by integers and dynamically generated string ids and compared performance
+
+fn get_rows() -> vec<row> {
+    let mut client = client::connect(
+        "postgres://eerik:postgrizzly@localhost:5432/benchmarks",
+        notls,
+    )
+    .unwrap();
+
+    let query = "
+        select 
+				field1 as  __t0_c1__,  
+        field2 as    __t0_c2__,  
+        field3 as    __t0_c3__,  
+        field4 as    __t0_c4__,  
+				...
+        field100 as  __t0_c100__ from test_table";
+    client.query(query, &[]).unwrap()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[bench]
+    fn test_postgres_integer_indexing(b: &mut Bencher) {
+        let rows = get_rows();
+        b.iter(|| {
+            for row in &rows {
+                for i in 0..100 {
+                    let col_val: i32 = test::black_box(row.get(i));
+                }
+            }
+        })
+    }
+
+    #[bench]
+    fn test_postgres_string_indexing(b: &mut Bencher) {
+        let rows = get_rows();
+
+        let table_index = 0;
+        b.iter(|| {
+            for row in &rows {
+                for i in 1..101 {
+                    let col_val: i32 = test::black_box(row.get(
+                        &*["__t", &table_index.to_string(), "_c", &i.to_string(), "__"].concat(),
+                    ));
+                }
+            }
+        })
+    }
+}
+
+Overall this seems like an optimization that is worth pursuing. I also believe that this will make the code for concise and readable. String concatenation is pretty ugly in Rust as you can see from the benchmarks. (&*["__t", &table_index.to_string(), "_c", &i.to_string(), "__"].concat(),) This will be easy to implement on the JSON building side, but will be a challenge on the SQL builder side. I need to ensure that the selects are grouped by table, and that e.g primary keys are not accidentally selected as GraphQL fields (they should e.g only be appended after all the requested fields). What I may do is simply store the start of the column values. This way the builder will know to select the nth GraphQL field from start + n. I will do an overall benchmark comparison with String ids and integer Ids to see if it even has any noticeable performance compared to the cost of executing the SQL query.
+
