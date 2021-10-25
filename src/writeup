@@ -591,3 +591,11 @@ I wanted to increase the performance of my JSON builder. In order to do so, I fi
 * Means to fetch columns corresponding to the GraphQL fields
 
 Something that seemed optimizable was the last bullet point. Currently I was fetching columns by constructing the string __t0_c0__ and then passing, and then requesting the value at this column. the rust-postgres library also allows by integer, where the integer corresponds to the position on the column list. To me it was obvious that dynamically generating the correct integer index would be much faster than allocating memory to generate the string. Although I did not have proof, I had a suspicion that providing the column position as an integer to rust-postgres would also be faster than providing the string column name. I decided to benchmark these two individually to see which would be faster.
+
+I benchmarked the creation of 100 column integer indexes for 100 tables, as well as 100 column string indexes for 100 tables, and the results are what I expected:
+
+
+test integer_indexing::tests::construct_ids        ... bench:       4,756 ns/iter (+/- 43)
+test integer_indexing::tests::construct_string_ids ... bench:   1,457,145 ns/iter (+/- 42,987)
+
+This is enough cause to replace string ids with integer ids. 
