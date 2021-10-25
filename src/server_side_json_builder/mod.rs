@@ -20,7 +20,7 @@ pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
 
     let before = Instant::now();
     let rows = client
-        .query(&*[&sql_query, " limit 6"].concat(), &[])
+        .query(&*[&sql_query, ""].concat(), &[])
         .unwrap();
 
     println!("Elapsed time: {:.2?}", before.elapsed());
@@ -57,7 +57,8 @@ pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
             let next_pk: i32 = next_row.get(&*pk_col_name);
             //parent changed
             if pk != next_pk {
-                s.push_str(&["\n]\n},\n{,\n"].concat());
+                s.drain(s.len() - 2..s.len());
+                s.push_str(&["\n]\n},\n{\n"].concat());
                 let mut i = 0;
                 for gql_field in &table_query_infos.get(0).unwrap().graphql_fields {
                     let col_name = ["__t0_c", &i.to_string(), "__"].concat();
@@ -65,7 +66,6 @@ pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
                     s.push_str(&[&stringify(gql_field), ":", &col_val.to_string(), ",\n"].concat());
                     i += 1;
                 }
-                s.drain(s.len() - 2..s.len());
 
                 s.push_str(
                     &[
@@ -86,7 +86,7 @@ pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
         for gql_field in &table_query_infos.get(1).unwrap().graphql_fields {
             let col_name = ["__t1_c", &i.to_string(), "__"].concat();
             let col_val: i32 = row.get(&*col_name);
-            s.push_str(&["", &stringify(&gql_field), ":", &col_val.to_string(), ",\n"].concat());
+            s.push_str(&[&stringify(&gql_field), ":", &col_val.to_string(), ",\n"].concat());
             i += 1
         }
         s.drain(s.len() - 2..s.len());
