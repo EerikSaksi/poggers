@@ -1,3 +1,4 @@
+#![feature(test)]
 use build_schema::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use handle_query::Poggers;
 use juniper_implementation::JuniperPoggers;
@@ -9,6 +10,7 @@ use std::fs::OpenOptions;
 use std::io::prelude::*;
 mod build_schema;
 mod handle_query;
+mod integer_indexing;
 mod juniper_implementation;
 use std::{
     collections::{HashMap, HashSet},
@@ -411,7 +413,8 @@ fn run_benchmarks(
 ) {
     let filepath = format!("/home/eerik/postgrustql/src/benchmarks/{}", filename);
     let mut file = File::create(&filepath).unwrap();
-    file.write_all(b"juniper_time, async_graphql_time\n").unwrap();
+    file.write_all(b"juniper_time, async_graphql_time\n")
+        .unwrap();
     for i in 0..10000 {
         pogg.local_id = 0;
         juniper_pogg.local_id = 0;

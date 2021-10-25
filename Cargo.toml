@@ -13,5 +13,5 @@ async-graphql-value = "2.10.2"
 convert_case = "0.4.0"
 graphql-parser = "0.3.0"
 petgraph = "0.6.0"
-postgres = "0.19.1"
+postgres = "0.19.2"
 
