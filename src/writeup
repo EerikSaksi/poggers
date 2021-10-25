@@ -579,3 +579,6 @@ This was instead returned
 I have found that composite primary keys have caused a lot of issues for me. Both on the query introspection side, but also on the Rust code side (requires lists to support primary keys/foreign keys). I also am not even sure how common composite primary keys are, so had I known how annoying this would've been to support I wouldn't have done so. But I've already sunk time into it so might as well double down.
 
 I also added support for finding primary keys. This is done through another subquery, which joins with information_schema based on column and table name. This works for composite primary keys, as well as primary keys which are also foreign keys. 
+
+
+As mentioned before, I was working on implementing my new server side JSON builder. This works by just selecting the raw rows ordered by the primary key of any parent tables (which have children). I use serde_json, a json parsing library in order to parse and format the data. I also use this parsed structure in order to validate certain data points manually e.g parent with id has correct number of children, every parent/child has all non null fields, etc.
