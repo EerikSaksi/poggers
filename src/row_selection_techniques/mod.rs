@@ -60,7 +60,7 @@ mod tests {
             NoTls,
         )
         .unwrap();
-        client.query("select * from test_table", &[]).unwrap()
+        client.query("select * from test_table limit 100", &[]).unwrap()
     }
 
     #[bench]
