@@ -19,6 +19,7 @@ fn test_random_user() {
             }
           }
         }";
+
     let res = convert(query, &mut pogg);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {

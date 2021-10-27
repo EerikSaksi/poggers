@@ -691,3 +691,47 @@ mod tests {
 
 Overall this seems like an optimization that is worth pursuing. I also believe that this will make the code for concise and readable. String concatenation is pretty ugly in Rust as you can see from the benchmarks. (&*["__t", &table_index.to_string(), "_c", &i.to_string(), "__"].concat(),) This will be easy to implement on the JSON building side, but will be a challenge on the SQL builder side. I need to ensure that the selects are grouped by table, and that e.g primary keys are not accidentally selected as GraphQL fields (they should e.g only be appended after all the requested fields). What I may do is simply store the start of the column values. This way the builder will know to select the nth GraphQL field from start + n. I will do an overall benchmark comparison with String ids and integer Ids to see if it even has any noticeable performance compared to the cost of executing the SQL query.
 
+
+
+I benchmarked Postgraphile (Javascript based competitor), the old database JSON builder, and the new server side JSON builder and the results were very good. Postgraphile took 420ms for the query, my old version took 120ms, and my new one only took 32ms. This is the same query, same database, all run 100 times (mean).
+
+My server side JSON builder generalized to only integer columns. This is because the rust-postgres driver requires you to specify the rust type of the Postgres column. In the queries so far, all columns have been integers, so no errors were thrown, even though I cast all columns as i32. I have considered different ways of solving this problem, and here are two alternatives I will investigate/benchmark.
+
+1. Compile time schema introspection:
+One possible solution is to perform schema introspection during compile time. During compile time, you can set the types. This is usually done by using macros (meta programming). This way I could hardcode the correct Rust type for a corresponding Postgres column.
+
+2, Runtime closure generation: Another option would be to hardcode a bunch of closures at compile time and to select the correct one at runtime. This is an example of a clOsure being returned from the Rust docs.
+
+fn returns_closure() -> Box<dyn Fn(i32) -> i32> {
+    Box::new(|x| x + 1)
+}
+
+I could create a bunch of functions which handle different column indexing:
+
+fn index_i32(row, index) -> Box<dyn Fn(i32) -> i32> {
+	let col_val: i32 = row.get(index);
+	return col_val;
+}
+
+fn index_str(row, index) -> Box<dyn Fn(i32) -> &str> {
+	let col_val: &str = row.get(index);
+	return \" + col_val \";
+}
+
+fn index_float(row, index) -> Box<dyn Fn(i32) -> f32> {
+	let col_val: f32 = row.get(index);
+	return col_val;
+}
+
+
+...
+
+Then, at either in the schema generation phase or query generation phase, for every field which was selected, I could also include a corresponding indexing function, which would be called to access the row at that position. Another advantage to this implementation would be that I could also handle easily meet the JSON spec, e.g in index_str, you can see the surrounding quotes around the string, which are required for string types. The JSON builder wouldn't need to worry about it, just calling the correct functions it was passed.
+
+3. This is very similar to the previous option but seems like it would be much slower but simpler. We could use some GraphQL type enum library, and switch/match over this enum to call the correct row selector for every column. The reason this seems slow is because we would perform this match for every column of every row, unless the optimizer recognizes that e.g column 2 will always be an int.
+
+4. String casting on the Postgres side: Postgres allows you to cast selected columns as strings by appending ::text to the end of it. By doing so, I could assume that every column we select has Postgres type &str. We would still need to know when a column actually is a string, as JSON requires string types to be wrapped in "". This would also apply to any non primitive types such as non epoch timestamps. This could easily be remedied by adding a boolean to every column (is_string) which would conditionally wrap the column in a string. The reason I'm not excited about this idea, although it is really simple is because it adds work to Postgres. On the JSON server side builder, the runtime is about 50/50 between the database and my Rust implementation. But once I leverage multithreading, Assuming 50/50 runtime even two threads would be enough to not make my code a bottleneck (one thread receives JSON, other thread requests rows immediately, as soon as this table receives JSON first thread is free and immediately requests more rows). But on a 4 thread CPU my code will 100% not be a bottleneck. So the more responsibility my code can take from Postgres the better. 
+
+But I will investigate
+
+

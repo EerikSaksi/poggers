@@ -10,6 +10,7 @@ use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
 pub mod postgres_query_builder;
+pub mod join_database_json;
 
 pub struct Poggers<SQL: postgres_query_builder::GraphQLQueryBuilder> {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,

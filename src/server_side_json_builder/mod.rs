@@ -45,7 +45,6 @@ pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
             - 1;
         let pk: i32 = row.get(pk_index);
         if pk != last_pk {
-
             //parent changed
             s.drain(s.len() - 2..s.len());
             s.push_str(&["\n]\n},\n{\n"].concat());
