@@ -698,7 +698,10 @@ I benchmarked Postgraphile (Javascript based competitor), the old database JSON 
 My server side JSON builder generalized to only integer columns. This is because the rust-postgres driver requires you to specify the rust type of the Postgres column. In the queries so far, all columns have been integers, so no errors were thrown, even though I cast all columns as i32. I have considered different ways of solving this problem, and here are two alternatives I will investigate/benchmark.
 
 1. Compile time schema introspection:
-One possible solution is to perform schema introspection during compile time. During compile time, you can set the types. This is usually done by using macros (meta programming). This way I could hardcode the correct Rust type for a corresponding Postgres column.
+One possible solution is to perform schema introspection during compile time. During compile time, you can set the types. This is usually done by using macros (meta programming). This way I could hardcode the correct Rust type for a corresponding Postgres column. This is one of the least appealing solutions, as meta programming seems pretty scary to me. Luckily, the runtime performance of this method is very easy to check. All I need to do is hardcode the types (I write the code as if a macro did it) and evaluate the runtime.
+
+Here is the cargo bench result for this 
+
 
 2, Runtime closure generation: Another option would be to hardcode a bunch of closures at compile time and to select the correct one at runtime. This is an example of a clOsure being returned from the Rust docs.
 
@@ -732,6 +735,5 @@ Then, at either in the schema generation phase or query generation phase, for ev
 
 4. String casting on the Postgres side: Postgres allows you to cast selected columns as strings by appending ::text to the end of it. By doing so, I could assume that every column we select has Postgres type &str. We would still need to know when a column actually is a string, as JSON requires string types to be wrapped in "". This would also apply to any non primitive types such as non epoch timestamps. This could easily be remedied by adding a boolean to every column (is_string) which would conditionally wrap the column in a string. The reason I'm not excited about this idea, although it is really simple is because it adds work to Postgres. On the JSON server side builder, the runtime is about 50/50 between the database and my Rust implementation. But once I leverage multithreading, Assuming 50/50 runtime even two threads would be enough to not make my code a bottleneck (one thread receives JSON, other thread requests rows immediately, as soon as this table receives JSON first thread is free and immediately requests more rows). But on a 4 thread CPU my code will 100% not be a bottleneck. So the more responsibility my code can take from Postgres the better. 
 
-But I will investigate
 
 
