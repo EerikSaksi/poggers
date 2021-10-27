@@ -738,6 +738,28 @@ test row_selection_techniques::tests::using_closures                      ... be
 
 Interestingly, this is marginally lower. But due to the uncertainties we can discern that it has equivalent performance to the hardcoded solutions. I think that I overestimated the overhead of generating the closures, and underestimated how miniscule this might be over 100,000 rows. Selecting 100,000 rows is generally unrealistic, so I figured that I'd test with 100 rows (more realistic in production settings) to see if the closure overhead would be visible. 
 
+test row_selection_techniques::tests::hardcoded_types_limit_100           ... bench:     168,355 ns/iter (+/- 3,618)
+test row_selection_techniques::tests::using_closures_limit_100            ... bench:     162,397 ns/iter (+/- 8,284)
+ 
+It still seemes to be lower, although again with the confidence interval we cannot be sure. But this is good news: there doesn't seem to much of a cost, if any to using runtime closures over metaprogramming, so I can completely disregard writing macros.
+
+
+As I was writing the closure test, I realized that if a lot of columns shared the same datatype, there would be a lot of duplicate closures. A single query might have 5 integer fields. For each one, we would need to allocate their own integer builder. In addition, I realized that we could allocate memory for all the different closures once at startup, and for each query, we could simply create a list of array indexes that we use to get the correct closure (allocating a list of integers will be faster than allocating closures). I decided to investigate this on a table with 100 integer columns. Our naive method would allocate 100 duplicate integer closures, whilst our new version would only require a list of one closure, and a 100 length array of 0s (each referencing this closure at index 0). This does require double indexing rather than single indexing.
+
+
+Naive method:
+closures[col_index]
+
+New method (get the index of the closure, and then use the index to get the correct closure)
+closures[closure_index[col_index]]
+
+When running at 100000 rows, the performance was almost identical. I decided to limit the query to 100 rows (so the cost of fetching rows wouldn't influence much)
+
+test row_selection_techniques::tests::closure_references ... bench:     475,264 ns/iter (+/- 23,170)
+test row_selection_techniques::tests::generated_closures ... bench:     497,739 ns/iter (+/- 28,268)
+
+Again, with the confidence intervals, this was a marginal improvement in a situtation where the closure references should've outshined by far (1 vs 100 generated closures). I will likely implement whichever is more readable. One advantage of references is that I could e.g hardcode global indices (INTEGER = 0, FLOAT = 1) so I could simply push these hardcoded values in the query builder, rather than allocating closures in the builder (more verbose and uglier)
+
 
 
 3. This is very similar to the previous option but seems like it would be much slower but simpler. We could use some GraphQL type enum library, and switch/match over this enum to call the correct row selector for every column. The reason this seems slow is because we would perform this match for every column of every row, unless the optimizer recognizes that e.g column 2 will always be an int.
