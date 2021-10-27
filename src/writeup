@@ -863,6 +863,13 @@ if 50 <= client.1 {
 client.1 += 1;
 client.query ...
 
-I decided to generalize this function to keep everything as equal as possible. To do this, this function takes two arguments which are both also functions. The first argument is a function that should take a Postgres client and return rows. The second function should take the rows as input and return it as JSON. 
+I decided to generalize this function to keep everything as equal as possible. To do this, this function takes two arguments . The first argument is a string that the Postgres client should run to return rows. The second function should take the rows as input and return it as JSON. 
 
+I then ran the benchmark. Both queries requested 100 rows, and had to request 100 rows and convert them to JSON 50 times. 
 
+test row_selection_techniques::tests::database_to_string_multithreaded    ... bench:  19,858,740 ns/iter (+/- 3,365,528)
+test row_selection_techniques::tests::serverside_to_string_multithreaded  ... bench:  14,696,502 ns/iter (+/- 1,315,883)
+
+As I suspected: although the database side to_string conversion is faster for a singular query, when we leverage multithreading over many queries the runtime of the individual JSON builders becomes less relevant, but the database performance bottlenecks.
+
+With this performance boost, I was motivated to implement multithreading in my JSON builder, and to test it's performance relative to existing implementations (over many queries).

@@ -2,24 +2,53 @@
 #[path = "./test.rs"]
 mod test;
 use postgres::{Client, NoTls, Row};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::thread;
 
 pub use self::generate_sql::ServerSidePoggers;
 pub mod generate_sql;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct TableQueryInfo {
     graphql_fields: Vec<String>,
     parent_key_name: String,
     column_offset: usize,
 }
 
-pub fn convert(gql_query: &str, pogg: &mut ServerSidePoggers) -> String {
-    let mut client =
-        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    let (sql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
+pub fn run_multithreaded(gql_query: &str, pogg: &mut ServerSidePoggers) {
+    let mut handles = vec![];
 
-    let rows = client.query(&*sql_query, &[]).unwrap();
+    let client = Arc::new(Mutex::new((
+        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap(),
+        0,
+    )));
+    let (query, table_query_infos) = pogg.build_root(gql_query).unwrap();
+    for _ in 0..8{
+        let client = Arc::clone(&client);
+        let query = query.to_string();
+        let table_query_infos: Vec<TableQueryInfo> = table_query_infos.to_vec();
+        let handle = thread::spawn(move || loop {
+            let rows: Vec<Row>;
+            {
+                let mut locked_client = client.lock().unwrap();
+                if 1000 <= locked_client.1 {
+                    return;
+                }
+                locked_client.1 += 1;
+                rows = locked_client.0.query(&*query, &[]).unwrap();
+            }
+            convert(rows, &table_query_infos);
+        });
+        handles.push(handle);
+    }
 
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
+
+pub fn convert(rows: Vec<Row>, table_query_infos: &Vec<TableQueryInfo>) -> String {
     let mut s = [
         "{",
         &stringify(&table_query_infos.get(0).unwrap().parent_key_name),
