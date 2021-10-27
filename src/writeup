@@ -844,3 +844,25 @@ Initially thread 0 locks the client and fetches data. As thread 2 is locking the
 The next step was to ensure that the query is executed a specific number of times. I added a shared counter to do this. Threads should check if the query has been executed enough times, and then immediately release the counter so that other threads dont wait for it.
 
 
+
+I added an integer field to the shared client to represent the counter. This way the client itself is accessed with client.0 and the counter with client.1. I thought it would be better to put the counter in the same shared state, as every thread which needs the database client also needs to know how many times the query has been run, and has to increment it by one. 
+let client = Arc::new(Mutex::new((
+		Client::connect(
+				"postgres://eerik:Postgrizzly@localhost:5432/benchmarks",
+				NoTls,
+		)
+		.unwrap(),
+		0,
+)));
+
+I added an infinite loop around each thread. Each thread should try to acquire the lock to the client as soon as it finished building JSON. Within the loop, once the thread acquires the lock to the client, it checks the number of iterations, and increments the count by one. If reached max queries, then the thread terminates.
+
+if 50 <= client.1 {
+	return
+}
+client.1 += 1;
+client.query ...
+
+I decided to generalize this function to keep everything as equal as possible. To do this, this function takes two arguments which are both also functions. The first argument is a function that should take a Postgres client and return rows. The second function should take the rows as input and return it as JSON. 
+
+
