@@ -1,6 +1,8 @@
 use chrono::{DateTime, Utc};
 use postgres::types::Timestamp;
 use postgres::{Client, NoTls, Row};
+
+use std::thread;
 extern crate test;
 pub fn insert_rows() {
     let mut sql = String::from(
@@ -31,6 +33,8 @@ pub fn insert_rows() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::sync::Mutex;
     use test::Bencher;
 
     fn get_rows(all_rows: bool) -> Vec<Row> {
@@ -60,7 +64,9 @@ mod tests {
             NoTls,
         )
         .unwrap();
-        client.query("select * from test_table limit 100", &[]).unwrap()
+        client
+            .query("select * from test_table limit 100", &[])
+            .unwrap()
     }
 
     #[bench]

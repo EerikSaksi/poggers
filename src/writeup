@@ -1,0 +1,785 @@
+# Building schema
+
+GraphQL schemas can be considered like Menus for data. They let the client know what queries exist, what types these queries return, what fields types have, and how different types are related. I saw this as the first step to my project, as clients would need to know what they could fetch before I could properly test them. Instead of expecting a user of my software to manually write a schema which is compatible with their database, and to update it whenever their database updates, I will automatically generate it for a given database.
+
+To better illustrate what my goal is, here is a hypothetical database implementation:
+
+create table seller (
+	id integer primary key,
+	name varchar
+);
+create table product (
+	id integer primary key,
+	listed_price float not null,
+	seller_id integer references seller(id)
+);
+
+Sellers have a name and an id, and products have a name, a price and a foreign key referencing a seller. This would be these two tables as GraphQL types:
+
+type Seller {
+	id: Int!
+	name: String
+}
+type Product {
+	id: Int!
+	listedPrice: Float!
+	seller: Seller
+}
+
+These are pretty similar. GraphQL and Postgres use different data type names, e.g varchar vs String. GraphQL uses upper camel case for type names, and camel case for all variable names, whilst Postgres conventionally uses snake case for everything. GraphQL signals nullability with '!' next to the data type, whilst Postgres uses 'not null' next to the type. Finally, the GraphQL Product type refers to a seller by value, and not by seller_id.
+
+In order to pull this data from the Postgres database, I used the following query:
+select table_name, column_name, data_type,
+case is_nullable
+when 'NO' then '!'
+when 'YES' then ''
+end as nullable
+from information_schema.columns where table_schema = 'public'
+group by table_name, column_name, data_type, nullable;
+
+The information_schema table is a meta information table contained within a Postgres database. This database stores information about the tables, functions, triggers, types, etc. stores within the database itself. By using this table, I was able to fetch all columns, their types, nullabity, and the table they belonged to. The columns I select from the database are grouped primarily by the table they belong to. This is the sudo code I used to create the schema.
+
+rows = "select table_name, column_name...".execute()
+
+last_table_name = "";
+current_graphql_type = "";
+all_types = "";
+for row in rows {
+//current_graphql_type will receive no more fields (as we group columns by table_name there will be no more fields for this table)
+if row.table_name != last_table_name {
+//close the type with closing brace
+current_graphql_type += "\n}"
+
+    			//add final current type to all types
+    			all_types += current_graphql_type
+
+
+    			last_table_name = row.table_name
+
+    			//current_graphql_type should be reinitialized with no fields with the current
+    			current_graphql_type += "type {last_table_name}{\n"
+    	}
+
+}
+
+With regards to queries, initially I wanted to implement my own parser. I saw this as beneficial, as it would allow me to resolve values in one pass. After realizing how hard this would be, and how I would need to keep updating this parser as the GraphQL spec changed, I decided that it would make more sense to simply to download a parser. I benchmarked the parser and was amazed at it's performance. It was able to parse queries in a matter of microseconds. Thus I decided that I should just parse requests, and then visit the generated AST.
+
+Next I decided to try to implement a generalized query parser. This simply visited matched enum types, and then visited the various types. I only implemented visitors for query types, and not mutations and subscriptions. I implemented some tests based on the explain that Postgraphile generated for GraphQL queries. I was able to create a query for
+
+I implemented a visitor design pattern which visited different selections of fields
+
+I used a test driven development in order to progressively add features
+
+# select all
+
+Initially no filter select all exercises
+
+The only data that this query required to work was the name of the table we select data from, and the fields that we want to select. I created a HashMap which translates
+
+This was the easiest at all it required was formatting the table name and the fields we wanted to an SQL query. I did this by recursively traversing the fields. If the current field had children, the function was recursively called on all children, and the results were formatted into the parent query. If the current field had no children, they would simply return themselves as a select statement. I had to make sure that I converted all database fields from snake case back to camel case for GraphQL and vice versa.
+
+    This was also very simple as it only had a depth of one. This select only selected from one table and asked for the fields of this table. This query also did not need to know anything about the database or the GraphQL schema.
+
+# Adding a query which selects a single item based on ID.
+
+The JSON build which is applied for a single element is different than that for multiple elements. In addition, there is an additional where clause at the end of the query so we select the correct row. In order to make this test pass, I added a HashMap field to my parser class. This HashMap goes from a String to a boolean (is_many). By doing this I was able to call the correct JSON build SQL code, and to know when to add the filter. I was able to access the ID that was passed to the GraphQL query through the AST.
+
+# Adding a Join query
+
+This increased complexity the most. So far the queries have worked even though they have been relatively blind to the database and the GraphQL schema. In order for joins to work, Poggers has to know when a field belongs to a table, and when a field is foreign. I initially used the graqphql-parser libraries schema parser. I fed the schema parser the containing the GraphQL schema string to see if I could make use of the existing library. After analyzing the data structure I realized that this would not be helpful for my implementation for a few reasons
+
+    1. The fields were all stored as vectors with O(n) read access. This would mean that if I wanted to read e.g the employee fields, I would need to iterate over all types before I found employee. Something like a HashMap would be far more suitable.
+    2. The data is not circular/recursive in any fashion. A query might select some fields from one type, jump to another type and select some fields, and get some nested fields from a third type. Something involving pointers/a graph would be very helpful for this. This would allow you to process the query, and make calls to foreign tables recursively, passing that query information through the pointer to that data.
+    3. I needed to embed my own context in to the queries, and didn't need a lot of the provided context. Each type should also include the corresponding table it maps to, whether a foreign query returns one or many, etc. There was also a lot of unnecessary context that the parser included, such as row and column position of each field, which I did not need.
+
+I initially tried to create a Graph like structure, where each node would be a type containing a set of terminal fields, and a set of pointers to other types. This proved to be very challenging due to Rust's ownership model. I also tried to create a vector based Graph, where each item was a type which contained its own set of vector indices and it's relation to these types, but rust was also very unhappy with this due to the borrow checker. I caved in and downloaded a package called petcrate which allows you to create a directional Graph. Each node in this directional Graph stores a set containing all names of all terminal fields, and the table the type corresponds to. A node has an edge to another node if one has a foreign key to the other. Each edge stores the name of the GraphQL field it corresponds to. As an example, if employees have a foreign key to departments, departments have an edge where (graphql_field_name) is "employees". When we encounter a field, we first check the current nodes terminal fields hashset for presence. If it's there, this GraphQL field is processed as a column of the table. Otherwise we iterate over all edges of the node until we find a node who's graphql_field_name matches this field. The edge also stores other information needed to construct the query: the directionality of the relation (one to many or many to one) and the column they are joined on. We also use the information stored on the node endpoints of this edge (e.g table_name) in order to join the correct tables together. Who would've thought that a graph based representation of a graph based query language would work well. One of the performance assumptions of this implementation is that tables generally have more of their own columns rather than foreign keys. Identifying your own columns happens with O(1) complexity through the hashset, and is always done before traversing edges finding an edge with the matching field name. This implementation might be slow with tables with lots of foreign keys, as each join has complexity O(f) complexity, where f is the number of foreign keys a table has. This also assumes that the number of foreign keys is relatively small, so that the runtime complexity difference isn't too significant, and hashset overheads such as the hashing function are still relevant.
+
+Migrating from graphql_parser to async_graphql_parser
+https://colab.research.google.com/drive/1JcsPot2k_03IYVcFG-ifNNiW0EeHjXqo
+
+One downside of this implementation is slight loss in readability. Both the Juniper parser and the async GraphQL parser store the positions of the fields (row and column). This data is irrelevant to me. The Juniper parser defines it like so:
+
+pub struct Field<'a, T: Text<'a>> {
+	pub position: Pos,
+	pub alias: Option<T::Value>,
+	pub name: T::Value,
+	pub arguments: Vec<(T::Value, Value<'a, T>)>,
+	pub directives: Vec<Directive<'a, T>>,
+	pub selection_set: SelectionSet<'a, T>,
+}
+
+In this case, the position is simply a field that I don't currently need, much like alias, name and directives.
+
+In async_graphql_parser however, every document element is wrapped in generic Positioned struct:
+
+pub struct Positioned<T: ?Sized> {
+	pub pos: Pos,
+	pub node: T,
+}
+As an example, this struct represents the root of the GraphQL query
+
+pub struct SelectionSet {
+	pub items: Vec<Positioned<Selection>>,
+}
+
+What this means is that when iterating over the queries I need to call e.g item.node.name and not just item.name. This isn't the end of the world, but can make for some ugly one liners, e.g:
+
+for selection in &field.node.selection_set.node.items {
+
+which before would've just been
+for selection in &field.selection_set.items {
+
+But as this is a performance critical project I should use async_graphql_parser even for the small performance decrease.
+
+Migrating was a lot easier than I thought, even though it required replacing all function signatures and anything related to accessing query data. This was partly due to the SQL logic not changing at all, the internal representation of the schema not changing, and the fact that both parsers represent the same specification albeit differently. Rust's compiler is also very strict, so a lot of the replacement was simply going to errors with my editor, fixing it, and then going to the next error. This made me appreciate the strongly typed nature of rust and the strict memory rules, as migrating this library would have been much more hands on in a dynamically typed language with no library specific errors, and just syntax ones.
+
+Three way join
+My implementation didn't yet generalize to a three way join. I realized that the difference with a nested join and a singular join is that singular joins call to_json whilst nested joins don't call to_json. Another difference is how nested joins define their key string. JSON is structured as a series of {key: values}, and the nested join defines it's key before its value, whilst a non nested join defines its key name after the value. Everything in the center is the same, only the surroundings and the ending are different.
+
+## nested join
+
+'@foreignTables'::text,
+(
+	...
+)
+
+## non nested join
+
+to_json (
+	...
+) as "@foreignTables"
+
+In order to surround the query with the correct text, the query constructor needs to know if it's in a nested or non nested join. I decided to add a boolean parameter is_nested_join to the build_foreign_field function. Then this method surrounds the query conditionally based on the value of is_nested_join. NextI had to figure out when the boolean should be true and false.
+
+build_selection is called on the root of the query. build_foreign_field would make no sense to call, as the root query is the first table we select from, so it doesn't have any children. Therefore any joins performed by build_selection (calls to build_foreign_field) would not be a nested join, so is_nested_join should be false.
+
+build_foreign_field is recursively called by itself to perform any nested joins. Logically, if we're in a build_foreign_field call, this means that any subsequent joins would be nested, so any recursive call will have is_nested_join be set as true
+
+Luckily, a three way join generalized to a six way join. Although I haven't tested a larger join, I have reason to believe that my implementation works for any joins with more than six tables, as the rules for any joins larger than two do not seem to change.
+
+#
+
+# refactoring
+
+All the logic related to query handling was being done in a single class. This became very uncomfortable to work with, as it was difficult to follow logic flows, remember what happens where etc. even though I wrote the code myself. I had considered separating different visitors in to different files/classes, but this didn't wouldn't actually address the original problem God Object problem. I needed more abstraction in the visitor in my implementation, so it would be easier to reason about the overall behaviour of the system, rather than focus on individual implmentations. I finally came up with a good idea: I should abstract away all the SQL building from the visitor. The visitor should still call functions related to building queries, but the visitor shouldn't need to know anything about the underlying query language or database protocol. I created a trait (equivalent to an interface in object oriented languages) named GraphQLQueryBuilder, and a struct which implemented this trait. I then added a struct field to the visitor, which had to be a GraphQLQueryBuilder (for now this has to be the Postgres one as it's the only one that implements it, but others may do so in the future). I then cut and paste SQL snippets from the visitor, added an apt name in the trait, and moved the cut code to this new function. The visitor would then call the GraphQLQueryBuilder's to append the SQL to this query instead of doing so itself. I would then run all tests, and if they passes git commit. After doing this for all snippets, I was able to extract all SQL away from the visitor. This lead to a very nice outcome.
+
+Prior to the refactoring, the visitor was about 270 lines long. This was shrunk down to only about 170 lines. The new SQL builder file was 177 lines. The total number of lines of code increased due to the functions definitions and method calls which weren't there before.
+
+# The benefits of this refactoring:
+
+    * Much easier to reason about how the visitor works and how the visitor uses information about the query, as there are no SQL implementation details
+    * The calls to the SQL builders are self documenting: for instance, it is much easier to understand that this line of code builds the query which selects a leaf (terminal nodes) data.
+    		SQL::build_terminal_field(&mut s, field_name);
+
+    		rather than this:
+
+    		s.push_str("to_json((__local_0__.\"");
+    		s.push_str(&field_name.to_case(Case::Snake));
+    		s.push_str("\")) as \"");
+    		s.push_str(field_name);
+    		s.push_str("\",\n");
+    * It was much easier to notice repeated SQL logic, to allow for function composition, less repetition and more reuse.
+
+    * This will make it much easier to support other database dialects. I will not need to implement another visitor, I will only need to implement the query building defined by the trait. I will probably need to change some of the function calls, as the trait (interface) function calls are defined based on Postgres, and not any other query language or database dialect. Adding support for another SQL dialect such as MYSQL or Oracle might be very feasible, and even some Graph databases such as MongoDB.
+
+# Many to one
+
+After doing this refactoring I decided to implement the many to one join. E.g instead of selecting employees for department, we select the department for every employee. Although SQL might not differentiate between one to many and many to one, due to the nested structure of GraphQL there is a difference.
+
+One to many
+query {
+	departments {
+		id
+		employee {
+		name
+		}
+	}
+}
+
+Example response for above
+
+{
+	"departments" [
+		"id": 1,
+		"employees" [
+			{"name": "Bob"},
+			{"name": "Rob"},
+		]
+	]
+}
+
+query {
+	employees {
+		name
+		department {
+			id
+		}
+	}
+}
+
+Example response for above
+
+"employees": {
+	"name": "Bob",
+	"department": {
+		id: 1
+	},
+	"name": "Rob",
+	"department": {
+		id: 1
+	},
+}
+
+This was pretty easy to implement. Syntactically this was very similar to the one to many join, but without additional surroundings that one to many has
+
+many to one:
+select json_build_object(
+...  
+ workout_plan_id\" = **local_1**.\"id\")
+
+one to many
+
+    select coalesce(
+    	(
+
+    		select json_agg(__local_1__.\"object\")
+    			from (
+    				select json_build_object(
+    					...
+    				workout_plan_id\" = __local_1__.\"id\")
+    			),
+    		'[]'::json
+    	)
+    )
+
+There are separate methods for closing and opening a join query. It can be thought of as a Hamburger, you can't just put both together before you put food on the bottom bun. The join_query_header is like the bottom bun which is called when we first encounter a foreign join. We then add all the fillings (any table fields this table had) and the query to fetch any foreign fields values recursively. Only once those have been added, can we add the top bun (join_query_closer). I added an extra parameter to both header and closer, one_to_many. This tells the method whether it should add the extra wrapping or not. The one_to_many value is gotten from the edge weight connecting the two types in our schema graph.
+
+
+# 16/10
+I realized that my tests didn't actually cover joins which don't occur as the last selection. The joins selections are supposed to have ,\n at the end of them, but as they were always the last selection they never need commas. This is an interesting example of a corner case not being testes for accidentally. I seemed to be aware of this problem, I intentionally left two spaces at the end of each join for tests to pass (as the last comma is removed) but seemed to forgot why the two last characters were being removed.
+
+Prior, I only stored the foreign key name of the child table. I always assumed that the parent tables primary key was called id. This was always the case in my tests, so all tests passed. In reality, primary keys can be other than id, and they can be composite. In order to address this, I turned the type of the foreign key data from String to a list of tuple pairs where each tuples left value represents the left tables key name, and each tuples right value is that tables corresponding right value. 
+
+E.g for the following table
+
+create table employee(
+		guid integer
+);
+create table assigned_task(
+		employee_guid integer references employee(guid)
+);
+
+For the outgoing edge from employee, the edge should store the foreign key vector [("guid", "employee_guid")], and the assigned_task's outgoing edge should store [("guid", "employee_guid")].
+
+As I was implementing this, I realized that I was storing a lot of duplicate data. This could lead to potential bugs (e.g any updates would have to happen in two places) and increased memory usage. If child_table references parent_table, they both reference one another, but with different edge data. For the example above, the edge weights would be 
+
+
+
+employee_to_task = {
+    graphql_field_name: "assigned_tasks",
+    pub one_to_many: true,
+    pub foreign_keys: [("guid", "employee_guid")],
+}
+
+task_to_employee = {
+    graphql_field_name: "employee",
+    pub one_to_many: false,
+    pub foreign_keys: [("employee_guid", "guid")],
+}
+
+graphql_field_name will always be different for the two edges. one_to_many will always be true for the parent and false for the child. The foreign keys vector will always be the same for the two, but each tuple pair will be flipped. I figured a better way to do this would be to draw an edge from the child to the parent table. This would allow us to get rid of the one_to_many field, as the directionality of the relation could be simply implied by the directionality in the Graph. foreign_keys could be stored from the childs perspective (e.g ("employee_guid", "guid")). When constructing the where clause of the join, we would need to flip the pairs prior depending on if the edge was outgoing or incoming. Finally we would need to change graphql_field_name to store two strings. When trying to find the corresponding edge for a non terminal field, we would first check our outgoing edges for any string who's right tuple value matches (any parent table we may refer to). If no match was found, we should then check the incoming edges left value (any child table referring to us).
+
+
+When creating the test for composite primary keys/foreign keys, I realized that the start of each query which has so far been constant changed. The start of the query has to know the primary keys of the root table. If we had the query selecting id_one and id_two for a table whose primary key was (id_one, id_two) the header would be as follows:
+
+query {
+	parentTable {
+		idOne
+		idTwo
+	}
+}
+
+
+select to_json(
+  json_build_array(
+    __local_0__.\"id_one\",
+    __local_0__.\"id_two\"
+  )
+) as \"__identifiers\",
+
+This means that we need to know the primary keys of all tables regardless of if they have any foreign fields. This was also another way to avoid duplicate data. Each node could store its primary keys in a vector, and any child referring to it would store its corresponding foreign key names in the same order 
+
+e.g
+parent_table_node = {
+	table_name: "parent_table",
+	...,
+	primary_keys: ["id_one", "id_two"]
+}
+
+
+# the edge of a child table connecting to this parent might be like so:
+child_to_parent = {
+		//left to right join is parent, right to left children
+    graphql_field_names: ("parent", "children"),
+    pub foreign_keys: ["parent_id_one", "parent_id_two"],
+}
+When joining we could simply zip the childs foreign keys with the parents primary keys.
+
+
+Implement a server side json builder, but ensure that there are rows in the tables, each parent has 1k, each child has 1k, each baby has 1k.
+SQL json query vs non json query
+
+I implemented a server side json builder, and the results were pretty promising. This builder wasn't generalized, and only worked for this particular query, but the results were pretty promising. A query which doesn't require that the data is in JSON format performs about 4 times faster than one which is returned in the expected json format. For this non generalized implementation, building the million rows took about 0.6 seconds, resulting in a total of 1.2 seconds runtime, compared to the previous 2.5 seconds in runtime. It is worth noting that in the previous implementation about 2.3 seconds were taken by the database, and the remaining runtime by my implementation. This means that my implmentation distributes the load much better. 
+
+How building JSON worked for the following query:
+	select parent.id, parent.parent_name, child.child_name from parent join child on parent.id = child.parent_id order by parent_id.
+
+
+This returned the rows like so
+--------------------------------------
+| parent_id | parent_name | child_id | 
+--------------------------------------
+| 1         | Bob         | 1        |
+| 1         | Bob         | 2        |
+| 1         | Bob         | 3        |
+| 1         | Bob         | 4        |
+| 2         | Karl        | 11       |
+| 2         | Karl        | 12       |
+| 3         | Alice       | 25       |
+--------------------------------------
+
+The key point is that if e.g the parent_id of the rows change from 1 to 2, we will encounter all children with parent_id 2 until parent_id changes again. By leveraging this I was able to make a one pass over the rows, and simply concatenate to the end of the string on each row. 
+
+Here is the rough sudo code for building a response to 
+
+query {
+	parentTables {
+		id 
+		parentName
+		childTables {
+			id
+		}
+	}
+}
+
+def rows_to_json(rows):
+
+	//add the parent fields of the first row, and the id of the first child
+	s = "
+		parentTables: [
+			{
+				id: ${rows[0].id},
+				parentName: ${rows[0].parent_name},
+				childTables: [
+					id: ${rows[0].child_id},
+				
+	"
+	prev_parent_id = rows[0].id
+	for row in rows[1:]:
+			if row.parent_id != prev_parent_id:
+				#close the childTables field of parentTables
+				s += "\n]"
+
+				#then close this parentTable, and add a comma
+				s += "},\n"
+
+				#create new object for this new row and add fields to it, 
+				#and the first child, like we did with the first child
+				s += "
+				{
+					id: ${row.id},
+					parentName: ${row.parent_name},
+					childTables: [
+						id: ${row.child_id},
+				"
+			#otherwise if still same parent just keep concatenating to childTables list
+			else: 
+				s += "id: ${row.child_id},"
+
+			prev_parent_id = row.parent_id;
+
+  #close final parentTable's childTables
+	s += "\n]"
+  #then that parentTable
+	s += "\n}"
+  #then parentTables (root)
+	s += "\n}"
+	return s
+
+For the rows I showed above, this would return:
+{
+	"parentTables": [
+		{
+				"id": 1,
+				"name": "Bob",
+				"childTables": [
+					{"id": 1},
+					{"id": 2},
+					{"id": 3},
+					{"id": 4},
+				]
+		},
+		{
+				"id": 2,
+				"name": "Karl",
+				"childTables": [
+					{"id": 11},
+					{"id": 12},
+				]
+		},
+		{
+			"id": 3,
+			"name": "Alice",
+			"childTables": [
+				{"id": 25},
+			]
+		}
+	] 
+}
+
+
+Generalizing this algorithm:
+My prior implementation only required visiting the query and then executing the query that the visitor generated. The new implementation has two stages: 
+		1. Iterate over the query, leveraging information about the database and GraphQL schema, in order to generate the query
+		2. Run the query, and use the context provided by the visitor in order to correctly create the rows.
+
+Implementing step 1:
+		I could reuse all of the visitor logic that I had used before. This new implementation also needed to perform joins and select the correct fields from the correct tables, but with a different SQL syntax. Here is the rough sudocode. The implementation uses the metadata extracted from the database to e.g determine if a field is terminal or the foreign/primary keys of tables.
+
+build_sql(query_root): 
+	select = "SELECT "
+	from = null
+	order_by = " ORDER BY "
+	build_field(query_root, select, from, order_by)
+	return select + from + order_by
+
+build_field(field, select, from, order_by):
+	for child_field in field.children:
+		if child_field is terminal:
+			select += "{table}.{field}, "
+		else if child_field is join:
+			#this might be a join or the first table we select from
+			if !from:
+				from = " FROM {table_name} "
+
+			#add join to this child
+			from += "JOIN {child_table} on {table_name}.{primary_key} = {child_table}.{child_fk} "
+
+      #since this parent has a child we want to sort parents by their primary key, so that all the children will be grouped
+			order_by += "{parent_table_name}.{parent_primary_key}, "
+
+      #recursively call build_field on this child so that it can select all its fields, and perform any joins it needs to do
+			build_field(child_field, select, from, order_by)
+
+Whenever a terminal field is encountered, it is added as a column to be selected by appending to the "select" string. Otherwise, if a field is foreign field, we need to add the foreign table to the "from" string, alongside a join which joins the parent and foreign table together. Although not shown, the join works for compound primary and foreign keys. As we want the children to be clustered by their parent, we also want to order the children by the parent primary key. There may be multiple order_by calls if we have multiple joins.
+
+Aliasing columns
+
+There may be naming conflicts between tables which share the same column names. In addition, I thought it would be helpful if the JSON builder didn't need to know the names of database columns and tables. I decided to use the following syntax for aliasing columns:
+
+
+
+select parent.id as __t0_c0__, parent.parent_name __t0_c1__, child.child_name __t1_c0__
+
+The number followed by the indicates the table index, and the number followed by the c indicates the column index. The table index is always incremented when a new table is encountered, and the column index is always incremented when a new column for that table is encountered. This helps to guarantee that there are no collisions (which something like random string generation might not guarantee). I also select primary keys even if they are not requested in the following format
+
+select parent.id as __t0_pk0__
+
+This aliasing allows us to operate our JSON builder without any knowledge about the database or the columns that it has. By passing an array of tuples, where the nth tuple value indicates tn's number of columns, and the second tuple value indicates tn's number of primary keys
+
+e.g for the previous example, we would return the following vector to the JSON builder:
+
+table_cols = [(2, 1), (1, 0)]
+We are selecting two cols from t0 (parent_table) which has one primary key (__t0_pk0__), whilst the second table (child_table) only selects one column (name) and although it has a primary key, we aren't interested in it, as we don't need to group child_table by id.
+
+
+Assume that for this case there are non composite indexes. It doesn't complicate the program much but just makes it more readable (table_cols also doesn't store the number of pks)
+table_cols = [2, 1]
+
+def build_rows():
+#run the generated query
+	rows = postgres.query(build_sql(query_root))
+
+	let prev_pks = null;
+	let table_index = 0
+	s = ""
+	for i in rows[1:]:
+		#move up and close objects while parent is changed 
+		while 0 < table_index && rows[i - 1].['__t${table_index}_pk0__'] !=  rows[i].['__t${table_index}_pk0__']:
+			table_index -= 1 
+			s += "\n]\n}"
+
+		#we need to move back down to the lowest level possible (e.g if we have a three way join and we moved from the lowest to the second lowest, because the primary keys of the second lowest changed, we need to get the selected field of this second lowest and then add the lowest level to this new object
+		temp_table_index = table_index
+		while temp_table_index < len(table_cols): 
+			for col_index in table_cols[temp_table_index]:
+				#for every col that was selected select that from this table
+				s += row["__t${temp_table_index}_c${col_index}__"]
+
+This code wouldn't actually produce the format in JSON as expected, but it would fetch the data values of the correct rows in the correct order. The formatting logic is pretty boring and easy to understand. The JSON builder does need to know the JSON keys of the rows it's selecting (otherwise it. But this is as simple as passing an array of the GQL fields. I just thought these wouldn't help understand the logic by which the correct fields are selected and we move up and down on the join hierarchy
+
+Using diesel
+Rust has a powerful ORM library called Diesel. This library is compile time: it has no overhead, and it will not allow a program to compile if it could throw a database error. This seemed really attractive, as it e.g had a query which introspects your database. The downside of using Diesel is that in order to propely integrate it, all my code would also need to compile time. All the logic related to generating queries and processing JSON, generating GraphQL etc. would also need to happen at compile time, rather than working on data structure representations of the schema and query at runtime. Writing macros is very difficult as it's metaprogramming (coding to create code) which would only add another layer to this complex project.
+
+Before creating tests for my new GraphQL builder I thought it would be faster to get my database introspection working. Although creating the table metadata would be better testing practice, I found that maintaining all the manually generated database metadata became a chore, especially when my data structures were constantly changing. In addition, I often messed up the manual data entry leading to tests failing. I thought this time I would get schema building working well, and perform thorough testing on the introspection in order to create better and more maintainable tests. When I ran the database query (which worked for my own database) on a new sample database I downloaded, I noticed that it was returning a lot of duplicates. What I realized was happening was that there were duplicate foreign key constraint names across multiple tables. The query which selects information about constraints does so through the constraint name and not the column and table name. I amended this by adding a group by statement, where the constraint name was the last of the list (meaning table and column name took precedence). I also wanted to support compound foreign keys. The SQL query which was originally designed to support non compound keys worked out of the box without any special configuration, but required some rust code to get working. For an edge connection from a child to a parent, the foreign key list stored in this edge must have the same cardinality as the primary key list of the parent, and fk[i] must refer to pk[i] for every index. This is the algorithm I used to ensure this:
+
+def handle_fk(fks, pks, new_fk, new_pk):
+	pk_index = pks.find_index(pk == new_pk)
+
+  #the pk the child refers to hasnt been added yet
+	if pk_index == -1
+		#place new pk in the back
+		pks += new_pk
+		pk_index = len(pks) - 1
+
+	fk[pk_index] = new_fk
+
+Geting the correct subquery working took some time. After thinking that I successfully solved the problem, the subquery did not work for subqueries. For a primary key(id1, id2) the subquery returned 
+
+----------------------------
+| child_col  | parent_col  |
+----------------------------
+| parent_id1 | id1         |
+| parent_id1 | id2         |
+| parent_id2 | id1         |
+| parent_id2 | id2         |
+----------------------------
+The issue with this is that instead of this query showing that parent_id1 correponds to id1, and parent_id1 correponds to id2, this just creates all permutations of the foreign and primary keys. By using this query I found on stack overflow:
+
+select
+	att2.attname as \"child_column\",
+	cl.relname as \"parent_table\",
+	att.attname as \"parent_column\",
+	child_table
+from
+	(
+		select
+			unnest(con1.conkey) as \"parent\",
+			unnest(con1.confkey) as \"child\",
+			con1.confrelid,
+			con1.conrelid,
+			con1.conname,
+			cl.relname as child_table,
+			ns.nspname as child_schema
+		from
+			pg_class cl
+			join pg_namespace ns on cl.relnamespace = ns.oid
+			join pg_constraint con1 on con1.conrelid = cl.oid
+		where
+			con1.contype = 'f'
+
+This was instead returned
+----------------------------
+| child_col  | parent_col  |
+----------------------------
+| parent_id1 | id1         |
+| parent_id2 | id2         |
+----------------------------
+
+I have found that composite primary keys have caused a lot of issues for me. Both on the query introspection side, but also on the Rust code side (requires lists to support primary keys/foreign keys). I also am not even sure how common composite primary keys are, so had I known how annoying this would've been to support I wouldn't have done so. But I've already sunk time into it so might as well double down.
+
+I also added support for finding primary keys. This is done through another subquery, which joins with information_schema based on column and table name. This works for composite primary keys, as well as primary keys which are also foreign keys. 
+
+
+As mentioned before, I was working on implementing my new server side JSON builder. This works by just selecting the raw rows ordered by the primary key of any parent tables (which have children). I use serde_json, a json parsing library in order to parse and format the data. I also use this parsed structure in order to validate certain data points manually e.g parent with id has correct number of children, every parent/child has all non null fields, etc. Getting the JSON structure correct was pretty difficult based on just the errors and manually inspecting it. I found a good way to do this by piping this malformed JSON to my editor whenever I ran the test, as this editor had syntax highlighting for JSON files. I could see exactly where the errors were occuring. Initially I manually added "limit 5" to the end of the query so I would only get one parent, and 4 children, so it would be less to work with. Once this worked, I decided to remove the limit in order to see if it generalized. This didn't but didn't require much work. I found that one common annoyance with JSON is trailing commas. The JSON spec does not allow trailing commas e.g {f1: 1, f2: 2,}, but requires {f1: 1, f2: 2}. The way I usually solve this is by simply removing the last two characters of any loop that separates fields by ,}.
+
+I wanted to increase the performance of my JSON builder. In order to do so, I first started off by listing what the JSON builder absolutely needs 
+
+* The SQL query that is being fetched
+* Names of the GraphQL fields for every table
+* Number of pks for each table
+* Means to fetch columns corresponding to the GraphQL fields
+
+Something that seemed optimizable was the last bullet point. Currently I was fetching columns by constructing the string __t0_c0__ and then passing, and then requesting the value at this column. the rust-postgres library also allows by integer, where the integer corresponds to the position on the column list. To me it was obvious that dynamically generating the correct integer index would be much faster than allocating memory to generate the string. Although I did not have proof, I had a suspicion that providing the column position as an integer to rust-postgres would also be faster than providing the string column name. I decided to benchmark these two individually to see which would be faster.
+
+First I compared ID generation in isolation. Unsurpringly, integer generation was much faster. This was simply multiplying table by columns, whilst string ID generation required string allocation.
+test integer_indexing::tests::construct_ids                  ... bench:       4,791 ns/iter (+/- 95)
+test integer_indexing::tests::construct_string_ids           ... bench:   1,455,671 ns/iter (+/- 258,757)
+
+This is about 303 times faster!
+
+Here are the implementations for both tests: 
+
+#[bench]
+fn construct_ids(b: &mut bencher) {
+		b.iter(|| {
+				for table in 0..100 {
+						for col in 0..100 {
+								let index = test::black_box(table * 100 + col);
+						}
+				}
+		})
+}
+
+#[bench]
+fn construct_string_ids(b: &mut bencher) {
+		b.iter(|| {
+				for table in 0..100 {
+						for col in 0..100 {
+								let index = test::black_box(
+										&["__t", &table.to_string(), "_c", &col.to_string(), "__"].concat(),
+								);
+						}
+				}
+		})
+}
+ 
+The tests have to create ids for 100 columns for each of the 100 tables. I use test::black_box in order to prevent rust from optimizing away unused variables. It would be a bad idea to use the variable by e.g printing it, as the use of the variable may vary and mess with benchmarks
+
+
+Next I wanted to see how id generation combined with row indexing
+
+
+test integer_indexing::tests::test_postgres_integer_indexing ... bench:      89,218 ns/iter (+/- 266)
+test integer_indexing::tests::test_postgres_string_indexing  ... bench:   2,790,018 ns/iter (+/- 21,185)
+
+The performance ratio remained relatively constant (at 31x).
+
+
+I created a table with 100 columns, field1 ... field100. I then inserted 100 rows into this table. I then created a query which selected each field aliased as string ids are aliased. For each row, I then indexed each column (again using black box to ensure no optimizations) by integers and dynamically generated string ids and compared performance
+
+fn get_rows() -> vec<row> {
+    let mut client = client::connect(
+        "postgres://eerik:postgrizzly@localhost:5432/benchmarks",
+        notls,
+    )
+    .unwrap();
+
+    let query = "
+        select 
+				field1 as  __t0_c1__,  
+        field2 as    __t0_c2__,  
+        field3 as    __t0_c3__,  
+        field4 as    __t0_c4__,  
+				...
+        field100 as  __t0_c100__ from test_table";
+    client.query(query, &[]).unwrap()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test::Bencher;
+
+    #[bench]
+    fn test_postgres_integer_indexing(b: &mut Bencher) {
+        let rows = get_rows();
+        b.iter(|| {
+            for row in &rows {
+                for i in 0..100 {
+                    let col_val: i32 = test::black_box(row.get(i));
+                }
+            }
+        })
+    }
+
+    #[bench]
+    fn test_postgres_string_indexing(b: &mut Bencher) {
+        let rows = get_rows();
+
+        let table_index = 0;
+        b.iter(|| {
+            for row in &rows {
+                for i in 1..101 {
+                    let col_val: i32 = test::black_box(row.get(
+                        &*["__t", &table_index.to_string(), "_c", &i.to_string(), "__"].concat(),
+                    ));
+                }
+            }
+        })
+    }
+}
+
+Overall this seems like an optimization that is worth pursuing. I also believe that this will make the code for concise and readable. String concatenation is pretty ugly in Rust as you can see from the benchmarks. (&*["__t", &table_index.to_string(), "_c", &i.to_string(), "__"].concat(),) This will be easy to implement on the JSON building side, but will be a challenge on the SQL builder side. I need to ensure that the selects are grouped by table, and that e.g primary keys are not accidentally selected as GraphQL fields (they should e.g only be appended after all the requested fields). What I may do is simply store the start of the column values. This way the builder will know to select the nth GraphQL field from start + n. I will do an overall benchmark comparison with String ids and integer Ids to see if it even has any noticeable performance compared to the cost of executing the SQL query.
+
+
+
+I benchmarked Postgraphile (Javascript based competitor), the old database JSON builder, and the new server side JSON builder and the results were very good. Postgraphile took 420ms for the query, my old version took 120ms, and my new one only took 32ms. This is the same query, same database, all run 100 times (mean).
+
+
+My server side JSON builder generalized to only integer columns. This is because the rust-postgres driver requires you to specify the rust type of the Postgres column. In the queries so far, all columns have been integers, so no errors were thrown, even though I cast all columns as i32. I have considered different ways of solving this problem, and here are two alternatives I will investigate/benchmark.
+
+1. Compile time schema introspection:
+One possible solution is to perform schema introspection during compile time. During compile time, you can set the types. This is usually done by using macros (meta programming). This way I could hardcode the correct Rust type for a corresponding Postgres column. This is one of the least appealing solutions, as meta programming seems pretty scary to me. Luckily, the runtime performance of this method is very easy to check. All I need to do is hardcode the types (I write the code as if a macro did it) and evaluate the runtime. This also serves as a good baseline (hardcoded is generally optimal vs generalized solutions)
+
+Here is the cargo bench result for this 
+
+test row_selection_techniques::tests::hardcoded_types                     ... bench: 167,750,679 ns/iter (+/- 1,618,684)
+
+
+2, Runtime closure generation: Another option would be to hardcode a bunch of closures at compile time and to select the correct one at runtime. This is an example of a clOsure being returned from the Rust docs.
+
+fn returns_closure() -> Box<dyn Fn(i32) -> i32> {
+    Box::new(|x| x + 1)
+}
+
+I could create a bunch of functions which handle different column indexing:
+
+fn index_i32(row, index) -> Box<dyn Fn(i32) -> i32> {
+	let col_val: i32 = row.get(index);
+	return col_val;
+}
+
+fn index_str(row, index) -> Box<dyn Fn(i32) -> &str> {
+	let col_val: &str = row.get(index);
+	return \" + col_val \";
+}
+
+fn index_float(row, index) -> Box<dyn Fn(i32) -> f32> {
+	let col_val: f32 = row.get(index);
+	return col_val;
+}
+
+
+...
+
+Then, at either in the schema generation phase or query generation phase, for every field which was selected, I could also include a corresponding indexing function, which would be called to access the row at that position. Another advantage to this implementation would be that I could also handle easily meet the JSON spec, e.g in index_str, you can see the surrounding quotes around the string, which are required for string types. The JSON builder wouldn't need to worry about it, just calling the correct functions it was passed.
+
+Here is the closure benchmark for the same rows as the hardcoded solutions:
+test row_selection_techniques::tests::using_closures                      ... bench: 163,264,050 ns/iter (+/- 2,265,191)
+
+Interestingly, this is marginally lower. But due to the uncertainties we can discern that it has equivalent performance to the hardcoded solutions. I think that I overestimated the overhead of generating the closures, and underestimated how miniscule this might be over 100,000 rows. Selecting 100,000 rows is generally unrealistic, so I figured that I'd test with 100 rows (more realistic in production settings) to see if the closure overhead would be visible. 
+
+test row_selection_techniques::tests::hardcoded_types_limit_100           ... bench:     168,355 ns/iter (+/- 3,618)
+test row_selection_techniques::tests::using_closures_limit_100            ... bench:     162,397 ns/iter (+/- 8,284)
+ 
+It still seemes to be lower, although again with the confidence interval we cannot be sure. But this is good news: there doesn't seem to much of a cost, if any to using runtime closures over metaprogramming, so I can completely disregard writing macros.
+
+
+As I was writing the closure test, I realized that if a lot of columns shared the same datatype, there would be a lot of duplicate closures. A single query might have 5 integer fields. For each one, we would need to allocate their own integer builder. In addition, I realized that we could allocate memory for all the different closures once at startup, and for each query, we could simply create a list of array indexes that we use to get the correct closure (allocating a list of integers will be faster than allocating closures). I decided to investigate this on a table with 100 integer columns. Our naive method would allocate 100 duplicate integer closures, whilst our new version would only require a list of one closure, and a 100 length array of 0s (each referencing this closure at index 0). This does require double indexing rather than single indexing.
+
+
+Naive method:
+closures[col_index]
+
+New method (get the index of the closure, and then use the index to get the correct closure)
+closures[closure_index[col_index]]
+
+When running at 100000 rows, the performance was almost identical. I decided to limit the query to 100 rows (so the cost of fetching rows wouldn't influence much)
+
+test row_selection_techniques::tests::closure_references ... bench:     475,264 ns/iter (+/- 23,170)
+test row_selection_techniques::tests::generated_closures ... bench:     497,739 ns/iter (+/- 28,268)
+
+Again, with the confidence intervals, this was a marginal improvement in a situtation where the closure references should've outshined by far (1 vs 100 generated closures). I will likely implement whichever is more readable. One advantage of references is that I could e.g hardcode global indices (INTEGER = 0, FLOAT = 1) so I could simply push these hardcoded values in the query builder, rather than allocating closures in the builder (more verbose and uglier). 
+
+
+3. This is very similar to the previous option but seems like it would be much slower but simpler. We could use some GraphQL type enum library, and switch/match over this enum to call the correct row selector for every column. The reason this seems slow is because we would perform this match for every column of every row, unless the optimizer recognizes that e.g column 2 will always be an int.
+
+4. String casting on the Postgres side: Postgres allows you to cast selected columns as strings by appending ::text to the end of it. By doing so, I could assume that every column we select has Postgres type &str. We would still need to know when a column actually is a string, as JSON requires string types to be wrapped in "". This would also apply to any non primitive types such as non epoch timestamps. This could easily be remedied by adding a boolean to every column (is_string) which would conditionally wrap the column in a string. The reason I'm not excited about this idea, although it is really simple is because it adds work to Postgres. On the JSON server side builder, the runtime is about 50/50 between the database and my Rust implementation. But once I leverage multithreading, Assuming 50/50 runtime even two threads would be enough to not make my code a bottleneck (one thread receives JSON, other thread requests rows immediately, as soon as this table receives JSON first thread is free and immediately requests more rows). But on a 4 thread CPU my code will 100% not be a bottleneck. So the more responsibility my code can take from Postgres the better. 
+
+Interestingly this was very very fast on the rust code size. This is likely as the Rust code never needed to call to_string on any column. Note that this does not include the time that it takes to query the database. 
+test row_selection_techniques::tests::server_side_text_query ... bench:  28,218,620 ns/iter (+/- 1,576,861)
+
+Compared to the closures/hardcoded, this is almost 6 times faster. I also wanted to investigate how the database query performed in isolation. This way I could estimate the total runtime, as well as where the runtime is coming from.
+
+test row_selection_techniques::tests::database_side_text_query                          ... bench:  87,984,255 ns/iter (+/- 6,216,376)
+test row_selection_techniques::tests::database_regular_query                       ... bench:  53,821,325 ns/iter (+/- 1,615,425)
+
+The database query casting everything to text is over 50% slower than the regular query. If we calculate total change in runtime vs no database string casting
+
+(server_side_text_query - hardcoded_types) + (database_side_text_query - database_regular_query)  
+= (28,218,620ns - 167,750,679ns) + (87,984,255ns - 53,821,325ns) = -105369129 ns = -105ms
+
+
+By performing string conversion on the database side we save 105ms! It might make more sense to use database-side string conversion when the service is not receiving many requests. When we receive only one request rarely, it would make more sense to prioritize latency for only this one request. But a more realistic scenario is our server receiving many requests per second, so we would need to prioritize mean request latenency rather than the latenency of one request. In a more realistic scenario, we would also be using multithreaded request handlers. In order to estimate mean latenency, both implementations (database text conversion and server text conversion) were tasked with executing the query 100 times, and converting them to JSON. Both tests used multithreading. 
+
+
