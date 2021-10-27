@@ -758,13 +758,89 @@ When running at 100000 rows, the performance was almost identical. I decided to 
 test row_selection_techniques::tests::closure_references ... bench:     475,264 ns/iter (+/- 23,170)
 test row_selection_techniques::tests::generated_closures ... bench:     497,739 ns/iter (+/- 28,268)
 
-Again, with the confidence intervals, this was a marginal improvement in a situtation where the closure references should've outshined by far (1 vs 100 generated closures). I will likely implement whichever is more readable. One advantage of references is that I could e.g hardcode global indices (INTEGER = 0, FLOAT = 1) so I could simply push these hardcoded values in the query builder, rather than allocating closures in the builder (more verbose and uglier)
-
+Again, with the confidence intervals, this was a marginal improvement in a situtation where the closure references should've outshined by far (1 vs 100 generated closures). I will likely implement whichever is more readable. One advantage of references is that I could e.g hardcode global indices (INTEGER = 0, FLOAT = 1) so I could simply push these hardcoded values in the query builder, rather than allocating closures in the builder (more verbose and uglier). 
 
 
 3. This is very similar to the previous option but seems like it would be much slower but simpler. We could use some GraphQL type enum library, and switch/match over this enum to call the correct row selector for every column. The reason this seems slow is because we would perform this match for every column of every row, unless the optimizer recognizes that e.g column 2 will always be an int.
 
 4. String casting on the Postgres side: Postgres allows you to cast selected columns as strings by appending ::text to the end of it. By doing so, I could assume that every column we select has Postgres type &str. We would still need to know when a column actually is a string, as JSON requires string types to be wrapped in "". This would also apply to any non primitive types such as non epoch timestamps. This could easily be remedied by adding a boolean to every column (is_string) which would conditionally wrap the column in a string. The reason I'm not excited about this idea, although it is really simple is because it adds work to Postgres. On the JSON server side builder, the runtime is about 50/50 between the database and my Rust implementation. But once I leverage multithreading, Assuming 50/50 runtime even two threads would be enough to not make my code a bottleneck (one thread receives JSON, other thread requests rows immediately, as soon as this table receives JSON first thread is free and immediately requests more rows). But on a 4 thread CPU my code will 100% not be a bottleneck. So the more responsibility my code can take from Postgres the better. 
 
+Interestingly this was very very fast on the rust code size. This is likely as the Rust code never needed to call to_string on any column. Note that this does not include the time that it takes to query the database. 
+test row_selection_techniques::tests::server_side_text_query ... bench:  28,218,620 ns/iter (+/- 1,576,861)
+
+Compared to the closures/hardcoded, this is almost 6 times faster. I also wanted to investigate how the database query performed in isolation. This way I could estimate the total runtime, as well as where the runtime is coming from.
+
+test row_selection_techniques::tests::database_side_text_query                          ... bench:  87,984,255 ns/iter (+/- 6,216,376)
+test row_selection_techniques::tests::database_regular_query                       ... bench:  53,821,325 ns/iter (+/- 1,615,425)
+
+The database query casting everything to text is over 50% slower than the regular query. If we calculate total change in runtime vs no database string casting
+
+(server_side_text_query - hardcoded_types) + (database_side_text_query - database_regular_query)  
+= (28,218,620ns - 167,750,679ns) + (87,984,255ns - 53,821,325ns) = -105369129 ns = -105ms
+
+
+By performing string conversion on the database side we save 105ms! It might make more sense to use database-side string conversion when the service is not receiving many requests. When we receive only one request rarely, it would make more sense to prioritize latency for only this one request. But a more realistic scenario is our server receiving many requests per second, so we would need to prioritize mean request latenency rather than the latenency of one request. In a more realistic scenario, we would also be using multithreaded request handlers. In order to estimate mean latenency, both implementations (database text conversion and server text conversion) were tasked with executing the query 100 times, and converting them to JSON. Both tests used multithreading. 
+
+
+As I don't have much experience with concurrency, I first wanted to ensure that I could correctly share the client between threads. Our goal is that one thread accesses the client, they use it to execute the SQL query, and save the rows. They then release the client before they start using the Rows to build JSON. This way another thread can immediately request its own rows, 
+
+//create a Postgres Client wrapped in a Arc (shared ownership, thread safe)
+let client = Arc::new(Mutex::new(
+		Client::connect(
+				"postgres://eerik:Postgrizzly@localhost:5432/benchmarks",
+				NoTls,
+		)
+		.unwrap(),
+));
+
+for i in 0..4 {
+		//pass each thread their own pointer to the client
+		let client = Arc::clone(&client);
+		let handle = thread::spawn(move || {
+				//initialize rows without assigning values
+				let mut rows: Vec<Row>;
+				{
+						//request client
+						let mut locked_client = client.lock().unwrap();
+						println!("Thread {} locked client", i);
+
+						//use client to execute SQL
+						rows = locked_client
+								.query("select * from multi_types", &[])
+								.unwrap();
+						println!("Thread {} received rows", i);
+
+						//Locks are automatically released when the variable goes out of scope, so this thread unlocks client, but maintains rows
+				}
+				//sleep simulates JSON build (this would use the rows variable)
+				thread::sleep(Duration::from_millis(500));
+				println!("Thread {} Done building JSON", i);
+		});
+		handles.push(handle);
+}
+
+//join threads
+for handle in handles {
+		handle.join().unwrap();
+}
+
+This generates the following output:
+
+Thread 0 locked client
+Thread 0 received rows
+Thread 2 locked client
+Thread 0 Done building JSON
+Thread 2 received rows
+Thread 1 locked client
+Thread 2 Done building JSON
+Thread 1 received rows
+Thread 3 locked client
+Thread 1 Done building JSON
+Thread 3 received rows
+Thread 3 Done building JSON
+
+Initially thread 0 locks the client and fetches data. As thread 2 is locking the client and fetching the rows, thread 0 finished building its JSON. While thread 2 is building its JSON, thread 1 locks the client, etc. This is ideal, as the database is constantly in use, and we are dividing the JSON building work across multiple threads.
+
+The next step was to ensure that the query is executed a specific number of times. I added a shared counter to do this. Threads should check if the query has been executed enough times, and then immediately release the counter so that other threads dont wait for it.
 
 
