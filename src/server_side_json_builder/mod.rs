@@ -5,6 +5,7 @@ use postgres::{Client, NoTls, Row};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use std::time::Instant;
 
 pub use self::generate_sql::ServerSidePoggers;
 pub mod generate_sql;
@@ -19,26 +20,37 @@ pub struct TableQueryInfo {
 pub fn run_multithreaded(gql_query: &str, pogg: &mut ServerSidePoggers) {
     let mut handles = vec![];
 
-    let client = Arc::new(Mutex::new((
-        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap(),
-        0,
-    )));
+    let times: Vec<u128> = vec![];
     let (query, table_query_infos) = pogg.build_root(gql_query).unwrap();
-    for _ in 0..8{
+    let mut thread_infos = (0..8).map(|_| (query.to_string(), table_query_infos.to_vec()));
+
+    let client = Arc::new(Mutex::new((Client::connect(
+        "postgres://eerik:Postgrizzly@localhost:5432/pets",
+        NoTls,
+    )
+    .unwrap(),)));
+
+    let runtime_infos = Arc::new(Mutex::new((times, Instant::now())));
+    for _ in 0..8 {
         let client = Arc::clone(&client);
-        let query = query.to_string();
-        let table_query_infos: Vec<TableQueryInfo> = table_query_infos.to_vec();
+        let runtime_infos = Arc::clone(&runtime_infos);
+        let threads_metadata = thread_infos.next().unwrap();
+        let query = threads_metadata.0;
+        let table_query_infos = threads_metadata.1;
         let handle = thread::spawn(move || loop {
             let rows: Vec<Row>;
             {
                 let mut locked_client = client.lock().unwrap();
-                if 1000 <= locked_client.1 {
-                    return;
-                }
-                locked_client.1 += 1;
                 rows = locked_client.0.query(&*query, &[]).unwrap();
             }
             convert(rows, &table_query_infos);
+            let mut locked_runtime_infos = runtime_infos.lock().unwrap();
+            if 1000 <= locked_runtime_infos.0.len() {
+                return;
+            }
+            let elapsed = locked_runtime_infos.1.elapsed().as_micros();
+            locked_runtime_infos.0.push(elapsed);
+            locked_runtime_infos.1 = Instant::now();
         });
         handles.push(handle);
     }
@@ -46,6 +58,7 @@ pub fn run_multithreaded(gql_query: &str, pogg: &mut ServerSidePoggers) {
     for handle in handles {
         handle.join().unwrap();
     }
+    println!("Multithreaded times {:?}", runtime_infos.lock().unwrap().0);
 }
 
 pub fn convert(rows: Vec<Row>, table_query_infos: &Vec<TableQueryInfo>) -> String {

@@ -29,6 +29,8 @@ fn main() {
           }
         }";
 
+    let mut database_side_times: Vec<u128> = Vec::new();
+
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     {
@@ -38,7 +40,6 @@ fn main() {
             query_to_type: poggg.query_to_type,
             g: poggg.g,
         };
-        let before = Instant::now();
         let sql = "select
   to_json(json_build_array(__local_0__.\"id\"))::text as \"__identifiers\",
   to_json((__local_0__.\"id\"))::text as \"id\",
@@ -90,31 +91,29 @@ from
     order by
       __local_0__.\"id\" ASC
   ) __local_0__";
-        for _ in 0..1000 {
-
+        for _ in 0..1000{
+            let before = Instant::now();
             pogg.local_id = 0;
             client.query(&*sql, &[]).unwrap();
+            database_side_times.push(before.elapsed().as_micros());
         }
-        println!("V1 {:.2?}", before.elapsed() / 1000);
     }
 
-    let before = Instant::now();
+    println!("Database side times {:?}", database_side_times);
+
     let (sql_query, table_query_infos) = serverside_pogg.build_root(query).unwrap();
-    for _ in 0..1000 {
+
+    let mut single_threaded_times: Vec<u128> = Vec::new();
+    for _ in 0..1000{
+        let before = Instant::now();
         serverside_pogg.local_id = 0;
         let rows = client.query(&*sql_query, &[]).unwrap();
         server_side_json_builder::convert(rows, &table_query_infos);
+        single_threaded_times.push(before.elapsed().as_micros());
     }
-    println!(
-        "Nonthreaded elapsed time: {:.2?}",
-        before.elapsed().as_millis() / 1000
-    );
+    println!("Single threaded times {:?}", single_threaded_times);
+
     serverside_pogg.local_id = 0;
     serverside_pogg.num_select_cols = 0;
-    let before = Instant::now();
     server_side_json_builder::run_multithreaded(query, &mut serverside_pogg);
-    println!(
-        "multithreaded elapsed time: {:.2?}",
-        before.elapsed().as_millis() / 1000
-    );
 }
