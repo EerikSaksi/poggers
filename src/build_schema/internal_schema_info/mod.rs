@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 pub struct GraphQLType {
-    pub terminal_fields: HashSet<String>,
+    pub field_to_types: HashMap<String, usize>,
     pub table_name: String,
     pub primary_keys: Vec<String>,
 }
@@ -26,6 +26,11 @@ pub struct QueryEdgeInfo {
     pub is_many: bool,
     pub node_index: NodeIndex<u32>,
 }
+static POG_INT: usize = 0;
+static POG_STR: usize = 1;
+static POG_FLOAT: usize = 2;
+static POG_TIMESTAMP: usize = 3;
+static POG_BOOLEAN: usize = 3;
 
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
@@ -61,6 +66,23 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             };
             let parent_column: String = current_row.get("parent_column");
             handle_foreign_key(&mut g, parent_index, edge, &parent_column, &column_name);
+        } else {
+            g.node_weights_mut().for_each(|graphql_type| {
+                if graphql_type.table_name == table_name {
+                    let data_type: &str = current_row.get("data_type");
+                    let data_type_index = match data_type {
+                        "integer" | "smallint" | "bigint" => POG_INT,
+                        "character varying" | "text" => POG_STR,
+                        "timestamp with time zone" | "timestamp" => POG_TIMESTAMP,
+                        "double precision" | "float" => POG_FLOAT,
+                        "boolean" => POG_BOOLEAN,
+                        other => panic!("Encountered unhandled type {}", other),
+                    };
+                    graphql_type
+                        .field_to_types
+                        .insert(column_name.clone(), data_type_index);
+                }
+            });
         }
 
         query_to_type.insert(
@@ -70,17 +92,12 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
                 is_many: true,
             },
         );
-        g.node_weights_mut().for_each(|graphql_type| {
-            if graphql_type.table_name == table_name {
-                graphql_type.terminal_fields.insert(column_name.clone());
-            }
-        });
     }
     ServerSidePoggers {
         g,
         query_to_type,
         local_id: 0,
-        num_select_cols: 0
+        num_select_cols: 0,
     }
 }
 fn find_or_create_node(
@@ -91,7 +108,7 @@ fn find_or_create_node(
     match node_index_optional {
         Some(foreign_index) => foreign_index,
         None => g.add_node(GraphQLType {
-            terminal_fields: HashSet::new(),
+            field_to_types: HashMap::new(),
             table_name: table_name.to_string(),
             primary_keys: vec![],
         }),

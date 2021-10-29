@@ -1,7 +1,4 @@
-use super::*;
 use crate::internal_schema_info::create;
-use std::collections::HashSet;
-use std::iter::FromIterator;
 
 fn test_sql_equality(actual: String, expected: &str) {
     let mut actual_iter = actual.split_ascii_whitespace().peekable();
@@ -35,89 +32,6 @@ fn test_sql_equality(actual: String, expected: &str) {
         }
         println!();
         panic!();
-    }
-}
-#[test]
-fn one_way_join() {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
-    let plan_node = g.add_node(GraphQLType {
-        table_name: "workout_plan".to_string(),
-        primary_keys: vec!["id".to_string()],
-        terminal_fields: HashSet::from_iter(["id", "name"].iter().map(|s| s.to_string())),
-    });
-
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
-    query_to_type.insert(
-        "workoutPlans".to_string(),
-        QueryEdgeInfo {
-            is_many: true,
-            node_index: plan_node,
-        },
-    );
-
-    let day_node = g.add_node(GraphQLType {
-        table_name: "workout_plan_day".to_string(),
-        primary_keys: vec!["workoutPlanId".to_string()],
-        terminal_fields: HashSet::from_iter(
-            ["workoutPlanId", "name", "id"]
-                .iter()
-                .map(|s| s.to_string()),
-        ),
-    });
-
-    g.add_edge(
-        day_node,
-        plan_node,
-        GraphQLEdgeInfo {
-            foreign_keys: vec!["workout_plan_id".to_string()],
-            graphql_field_name: ("workoutPlanDays".to_string(), "workoutPlanDay".to_string()),
-        },
-    );
-    let mut pogg = ServerSidePoggers {
-        query_to_type,
-        g,
-        local_id: 0,
-        num_select_cols: 0,
-    };
-
-    let actual = pogg.build_root(
-        "
-        query{
-          workoutPlans{
-            name
-            workoutPlanDays{
-              workoutPlanId
-              name
-              id
-            }
-          }
-        }",
-    );
-    let expected = "SELECT __table_0__.name as __t0_c0__, __table_0__.id AS __t0_pk0__, __table_1__.workout_plan_id as __t1_c0__, __table_1__.name as __t1_c1__, __table_1__.id as __t1_c2__ FROM workout_plan AS __table_0__ JOIN workout_plan_day AS __table_1__ ON __table_0__.id = __table_1__.workout_plan_id ORDER BY __table_0__.id";
-    match actual {
-        Ok(actual) => {
-            test_sql_equality(actual.0, expected);
-            assert_eq!(
-                actual.1,
-                vec![
-                    TableQueryInfo {
-                        parent_key_name: "workoutPlans".to_string(),
-                        graphql_fields: vec!["name".to_string()],
-                        column_offset: 0
-                    },
-                    TableQueryInfo {
-                        parent_key_name: "workoutPlanDays".to_string(),
-                        graphql_fields: vec![
-                            "workoutPlanId".to_string(),
-                            "name".to_string(),
-                            "id".to_string(),
-                        ],
-                        column_offset: 2
-                    },
-                ]
-            );
-        }
-        Err(e) => panic!("{}", e),
     }
 }
 

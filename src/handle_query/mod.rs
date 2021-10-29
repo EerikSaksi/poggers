@@ -9,8 +9,8 @@ use async_graphql_value::Value;
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-pub mod postgres_query_builder;
 pub mod join_database_json;
+pub mod postgres_query_builder;
 
 pub struct Poggers<SQL: postgres_query_builder::GraphQLQueryBuilder> {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
@@ -45,7 +45,6 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
         }
     }
     fn visit_query(&mut self, selection_set: Positioned<SelectionSet>) -> String {
-
         //create a __local__ string that we can use to distinguish this selection
         let table_alias = SQL::table_alias(self.local_id);
 
@@ -100,7 +99,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                 if let Selection::Field(child_field) = &selection.node {
                     //this field is terminal
                     let child_name = child_field.node.name.node.as_str();
-                    if self.g[node_index].terminal_fields.contains(child_name) {
+                    if self.g[node_index].field_to_types.contains_key(child_name) {
                         SQL::build_terminal_field(s, child_name);
                     } else {
                         //if its not terminal, this field must be some foreign field. Search the nodes
@@ -150,7 +149,7 @@ impl<SQL: postgres_query_builder::GraphQLQueryBuilder> Poggers<SQL> {
                     let child_name = child_field.node.name.node.as_str();
 
                     //check if the child name is a terminal field
-                    if self.g[node_index].terminal_fields.contains(child_name) {
+                    if self.g[node_index].field_to_types.contains_key(child_name) {
                         SQL::build_terminal_field_join(s, child_name, self.local_id);
                     } else {
                         //find the corresponding edge like in build_selection

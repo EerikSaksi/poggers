@@ -124,7 +124,7 @@ impl ServerSidePoggers {
                     let child_name = child_field.node.name.node.as_str();
                     let column_name =
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
-                    if self.g[node_index].terminal_fields.contains(child_name) {
+                    if self.g[node_index].field_to_types.contains_key(child_name) {
                         graphql_fields.push(child_name.to_string());
                         select.push_str(column_name);
                         select.push_str(" as __t");

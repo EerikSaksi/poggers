@@ -10,6 +10,11 @@ use std::time::Instant;
 pub use self::generate_sql::ServerSidePoggers;
 pub mod generate_sql;
 
+pub struct FieldInfo {
+    key: String,
+    closure_index: usize,
+}
+
 #[derive(PartialEq, Debug, Clone)]
 pub struct TableQueryInfo {
     graphql_fields: Vec<String>,
@@ -43,7 +48,7 @@ pub fn run_multithreaded(gql_query: &str, pogg: &mut ServerSidePoggers) {
                 let mut locked_client = client.lock().unwrap();
                 rows = locked_client.0.query(&*query, &[]).unwrap();
             }
-            convert(rows, &table_query_infos);
+            print!("{}", convert(rows, &table_query_infos));
             let mut locked_runtime_infos = runtime_infos.lock().unwrap();
             if 1000 <= locked_runtime_infos.0.len() {
                 return;
@@ -65,7 +70,7 @@ pub fn convert(rows: Vec<Row>, table_query_infos: &Vec<TableQueryInfo>) -> Strin
     let mut s = [
         "{",
         &stringify(&table_query_infos.get(0).unwrap().parent_key_name),
-        ":[\n",
+        ":[",
     ]
     .concat();
 
@@ -89,7 +94,7 @@ pub fn convert(rows: Vec<Row>, table_query_infos: &Vec<TableQueryInfo>) -> Strin
         if pk != last_pk {
             //parent changed
             s.drain(s.len() - 2..s.len());
-            s.push_str(&["\n]\n},\n{\n"].concat());
+            s.push_str(&["]},{"].concat());
             build_parent(&mut s, &table_query_infos, table_index, &row)
         }
         last_pk = pk;
@@ -116,7 +121,7 @@ fn build_parent(
         .enumerate()
     {
         let col_val: i32 = row.get(col_offset + i);
-        s.push_str(&[&stringify(gql_field), ":", &col_val.to_string(), ",\n"].concat());
+        s.push_str(&[&stringify(gql_field), ":", &col_val.to_string(), ","].concat());
     }
 
     s.push_str(
@@ -127,7 +132,7 @@ fn build_parent(
                     .unwrap()
                     .parent_key_name,
             ),
-            ":[\n",
+            ":[",
         ]
         .concat(),
     )
@@ -142,7 +147,7 @@ fn build_child(
         .get(table_index + 1)
         .unwrap()
         .column_offset;
-    s.push_str("{\n");
+    s.push_str("{");
     for (i, gql_field) in table_query_infos
         .get(1)
         .unwrap()
@@ -151,10 +156,10 @@ fn build_child(
         .enumerate()
     {
         let col_val: i32 = row.get(col_offset + i);
-        s.push_str(&[&stringify(&gql_field), ":", &col_val.to_string(), ",\n"].concat());
+        s.push_str(&[&stringify(&gql_field), ":", &col_val.to_string(), ","].concat());
     }
     s.drain(s.len() - 2..s.len());
-    s.push_str("},\n");
+    s.push_str("},");
 }
 fn stringify(field: &str) -> String {
     ["\"", field, "\""].concat()
