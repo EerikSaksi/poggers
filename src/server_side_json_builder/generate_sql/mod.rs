@@ -2,11 +2,13 @@
 #[path = "./test.rs"]
 mod test;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
+use crate::server_side_json_builder::FieldInfo;
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
 use convert_case::{Case, Casing};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
+use postgres::Row;
 use std::collections::HashMap;
 
 use super::TableQueryInfo;
@@ -117,78 +119,84 @@ impl ServerSidePoggers {
             let current_alias = ServerSidePoggers::table_alias(self.local_id);
 
             let mut encountered_join = false;
-            let mut graphql_fields: Vec<String> = vec![];
+            let mut graphql_fields: Vec<FieldInfo> = vec![];
             let column_offset = self.num_select_cols;
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
                     let column_name =
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
-                    if self.g[node_index].field_to_types.contains_key(child_name) {
-                        graphql_fields.push(child_name.to_string());
-                        select.push_str(column_name);
-                        select.push_str(" as __t");
-                        select.push_str(&id_copy.to_string());
-                        select.push_str("_c");
-                        select.push_str(&(self.num_select_cols - column_offset).to_string());
-                        select.push_str("__, ");
-                        self.num_select_cols += 1;
-                    } else {
-                        //if we have a child join then we need to order the parent by its primary
-                        //key to allow us to capture all children for the parent when iterating
-                        if !encountered_join {
-                            encountered_join = true;
-                            for pk in &self.g[node_index].primary_keys {
-                                order_by.push_str(&current_alias);
-                                order_by.push('.');
-                                order_by.push_str(&pk);
-                                order_by.push_str(", ");
-                            }
-                        }
-                        let child_alias = ServerSidePoggers::table_alias(self.local_id + 1);
-                        self.local_id += 1;
-                        let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
-                        let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
-
-                        from.push_str(" JOIN ");
-                        from.push_str(&self.g[child_node_index].table_name);
-                        from.push_str(" AS ");
-                        from.push_str(&child_alias);
-                        from.push_str(" ON ");
-
-                        //if its not terminal, this field must be some foreign field. Search the nodes
-                        //edges for the edge that corresponds to this graphql field, and whether its a
-                        //one to many or many to one relation
-                        for (i, (pk, fk)) in self.g[node_index]
-                            .primary_keys
-                            .iter()
-                            .zip(&self.g[edge].foreign_keys)
-                            .enumerate()
-                        {
-                            self.num_select_cols += 1;
-                            let parent_pk = [&current_alias, ".", pk].concat();
-                            from.push_str(&parent_pk);
-                            from.push_str(" = ");
-                            from.push_str(&child_alias);
-                            from.push('.');
-                            from.push_str(fk);
-                            select.push_str(&parent_pk);
-                            select.push_str(" AS ");
-                            select.push_str(" __t");
+                    match self.g[node_index].field_to_types.get(child_name) {
+                        Some(closure_index) => {
+                            graphql_fields.push(FieldInfo {
+                                key: child_name.to_string(),
+                                closure_index: *closure_index,
+                            });
+                            select.push_str(column_name);
+                            select.push_str(" as __t");
                             select.push_str(&id_copy.to_string());
-                            select.push_str("_pk");
-                            select.push_str(&i.to_string());
+                            select.push_str("_c");
+                            select.push_str(&(self.num_select_cols - column_offset).to_string());
                             select.push_str("__, ");
+                            self.num_select_cols += 1;
                         }
-                        self.build_selection(
-                            select,
-                            from,
-                            order_by,
-                            table_query_info,
-                            selection,
-                            child_node_index,
-                            child_name,
-                        );
+                        None => {
+                            //if we have a child join then we need to order the parent by its primary
+                            //key to allow us to capture all children for the parent when iterating
+                            if !encountered_join {
+                                encountered_join = true;
+                                for pk in &self.g[node_index].primary_keys {
+                                    order_by.push_str(&current_alias);
+                                    order_by.push('.');
+                                    order_by.push_str(&pk);
+                                    order_by.push_str(", ");
+                                }
+                            }
+                            let child_alias = ServerSidePoggers::table_alias(self.local_id + 1);
+                            self.local_id += 1;
+                            let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
+                            let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
+
+                            from.push_str(" JOIN ");
+                            from.push_str(&self.g[child_node_index].table_name);
+                            from.push_str(" AS ");
+                            from.push_str(&child_alias);
+                            from.push_str(" ON ");
+
+                            //if its not terminal, this field must be some foreign field. Search the nodes
+                            //edges for the edge that corresponds to this graphql field, and whether its a
+                            //one to many or many to one relation
+                            for (i, (pk, fk)) in self.g[node_index]
+                                .primary_keys
+                                .iter()
+                                .zip(&self.g[edge].foreign_keys)
+                                .enumerate()
+                            {
+                                self.num_select_cols += 1;
+                                let parent_pk = [&current_alias, ".", pk].concat();
+                                from.push_str(&parent_pk);
+                                from.push_str(" = ");
+                                from.push_str(&child_alias);
+                                from.push('.');
+                                from.push_str(fk);
+                                select.push_str(&parent_pk);
+                                select.push_str(" AS ");
+                                select.push_str(" __t");
+                                select.push_str(&id_copy.to_string());
+                                select.push_str("_pk");
+                                select.push_str(&i.to_string());
+                                select.push_str("__, ");
+                            }
+                            self.build_selection(
+                                select,
+                                from,
+                                order_by,
+                                table_query_info,
+                                selection,
+                                child_node_index,
+                                child_name,
+                            );
+                        }
                     }
                 }
             }

@@ -30,7 +30,9 @@ static POG_INT: usize = 0;
 static POG_STR: usize = 1;
 static POG_FLOAT: usize = 2;
 static POG_TIMESTAMP: usize = 3;
-static POG_BOOLEAN: usize = 3;
+static POG_BOOLEAN: usize = 4;
+static POG_JSON: usize = 5;
+
 
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
@@ -76,6 +78,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
                         "timestamp with time zone" | "timestamp" => POG_TIMESTAMP,
                         "double precision" | "float" => POG_FLOAT,
                         "boolean" => POG_BOOLEAN,
+                        "json" => POG_JSON,
                         other => panic!("Encountered unhandled type {}", other),
                     };
                     graphql_type
@@ -93,12 +96,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             },
         );
     }
-    ServerSidePoggers {
-        g,
-        query_to_type,
-        local_id: 0,
-        num_select_cols: 0,
-    }
+    ServerSidePoggers::new(g, query_to_type)
 }
 fn find_or_create_node(
     g: &mut DiGraph<GraphQLType, GraphQLEdgeInfo>,
