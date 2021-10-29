@@ -33,7 +33,6 @@ static POG_TIMESTAMP: usize = 3;
 static POG_BOOLEAN: usize = 4;
 static POG_JSON: usize = 5;
 
-
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
@@ -48,6 +47,8 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         if is_primary && !g[child_index].primary_keys.contains(&column_name) {
             g[child_index].primary_keys.push(column_name.to_string());
         }
+
+        let child_index = find_or_create_node(&mut g, &table_name);
 
         if let Some(parent_table_name) = parent_table_name {
             let parent_index = find_or_create_node(&mut g, &parent_table_name);
@@ -68,25 +69,20 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             };
             let parent_column: String = current_row.get("parent_column");
             handle_foreign_key(&mut g, parent_index, edge, &parent_column, &column_name);
-        } else {
-            g.node_weights_mut().for_each(|graphql_type| {
-                if graphql_type.table_name == table_name {
-                    let data_type: &str = current_row.get("data_type");
-                    let data_type_index = match data_type {
-                        "integer" | "smallint" | "bigint" => POG_INT,
-                        "character varying" | "text" => POG_STR,
-                        "timestamp with time zone" | "timestamp" => POG_TIMESTAMP,
-                        "double precision" | "float" => POG_FLOAT,
-                        "boolean" => POG_BOOLEAN,
-                        "json" => POG_JSON,
-                        other => panic!("Encountered unhandled type {}", other),
-                    };
-                    graphql_type
-                        .field_to_types
-                        .insert(column_name.clone(), data_type_index);
-                }
-            });
         }
+        let data_type: &str = current_row.get("data_type");
+        let data_type_index = match data_type {
+            "integer" | "smallint" | "bigint" => POG_INT,
+            "character varying" | "text" => POG_STR,
+            "timestamp with time zone" | "timestamp without time zone" => POG_TIMESTAMP,
+            "double precision" | "float" => POG_FLOAT,
+            "boolean" => POG_BOOLEAN,
+            "json" | "jsonb" => POG_JSON,
+            other => panic!("Encountered unhandled type {}", other),
+        };
+        g[child_index]
+            .field_to_types
+            .insert(column_name.clone(), data_type_index);
 
         query_to_type.insert(
             table_name.clone().to_plural().to_camel_case(),
@@ -135,8 +131,6 @@ fn handle_foreign_key(
             g[edge].foreign_keys[i] = new_child_fk.to_string();
         }
         None => {
-            let a = &g[node].primary_keys;
-
             g[node].primary_keys.push(new_parent_pk.to_string());
             let right_most = g[node].primary_keys.len() - 1;
 

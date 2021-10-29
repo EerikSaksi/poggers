@@ -95,3 +95,15 @@ fn query_to_type() {
             .fold(String::new(), |a, b| format!("{}\n{}", a, b))
     )
 }
+
+#[test]
+fn post_has_owneruserid() {
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let g = pogg.g;
+    let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
+    assert!(
+        post_node.field_to_types.contains_key("owneruserid"),
+        "No owneruserid, only {:?}",
+        post_node.field_to_types.keys()
+    );
+}

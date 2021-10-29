@@ -1,6 +1,7 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
+use postgres::GenericClient;
 use postgres::Row;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -84,7 +85,7 @@ impl JsonBuilder {
             let pk: i32 = row.get(pk_index);
             if pk != last_pk {
                 //parent changed
-                s.drain(s.len() - 2..s.len());
+                s.drain(s.len() - 1..s.len());
                 s.push_str(&["]},{"].concat());
                 self.build_parent(&mut s, &table_query_infos, table_index, &row)
             }
@@ -92,7 +93,7 @@ impl JsonBuilder {
             self.build_child(&mut s, &table_query_infos, table_index, row);
         }
 
-        s.drain(s.len() - 2..s.len());
+        s.drain(s.len() - 1..s.len());
 
         s.push_str("]}]}");
         s
@@ -159,7 +160,7 @@ impl JsonBuilder {
                 .concat(),
             );
         }
-        s.drain(s.len() - 2..s.len());
+        s.drain(s.len() - 1..s.len());
         s.push_str("},");
     }
     fn stringify(field: &str) -> String {
