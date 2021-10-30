@@ -107,3 +107,16 @@ fn post_has_owneruserid() {
         post_node.field_to_types.keys()
     );
 }
+
+#[test]
+fn post_has_correct_num_fields() {
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let g = pogg.g;
+    let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
+    assert_eq!(
+        post_node.field_to_types.len(),
+        21,
+        "Found extra fields: {:?}",
+        post_node.field_to_types.keys()
+    );
+}

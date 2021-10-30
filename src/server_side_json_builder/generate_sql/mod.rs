@@ -2,7 +2,7 @@
 #[path = "./test.rs"]
 mod test;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
-use crate::server_side_json_builder::FieldInfo;
+use crate::server_side_json_builder::ColumnInfo;
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
 use convert_case::{Case, Casing};
@@ -119,7 +119,7 @@ impl ServerSidePoggers {
             let current_alias = ServerSidePoggers::table_alias(self.local_id);
 
             let mut encountered_join = false;
-            let mut graphql_fields: Vec<FieldInfo> = vec![];
+            let mut graphql_fields: Vec<ColumnInfo> = vec![];
             let column_offset = self.num_select_cols;
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
@@ -128,10 +128,8 @@ impl ServerSidePoggers {
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
                     match self.g[node_index].field_to_types.get(child_name) {
                         Some(closure_index) => {
-                            graphql_fields.push(FieldInfo {
-                                key: child_name.to_string(),
-                                closure_index: *closure_index,
-                            });
+                            graphql_fields
+                                .push(ColumnInfo::Terminal(child_name.to_string(), *closure_index));
                             select.push_str(column_name);
                             select.push_str(" as __t");
                             select.push_str(&id_copy.to_string());

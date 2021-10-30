@@ -31,10 +31,6 @@ fn test_random_user() {
         }";
 
     let res = convert_gql(gql_query);
-    use std::fs::File;
-    use std::io::prelude::*;
-    let mut file = File::create("foo.json").unwrap();
-    file.write_all(res.as_bytes()).unwrap();
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
         Ok(p) => {
@@ -118,6 +114,23 @@ fn all_posts_belong_to_parent() {
                     .all(|post| post.get("owneruserid").unwrap().as_i64() == user_id))
             });
         }
+        Err(e) => panic!("{}", e),
+    }
+}
+
+#[test]
+fn non_nullable_string_fields() {
+    let gql_query = "
+        query {
+          siteUsers{
+            id
+            displayname
+          }
+        }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    match p {
+        Ok(p) => {}
         Err(e) => panic!("{}", e),
     }
 }
