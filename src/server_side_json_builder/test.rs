@@ -12,6 +12,13 @@ fn convert_gql(gql_query: &str) -> String {
     let rows = client.query(&*sql_query, &[]).unwrap();
     JsonBuilder::new().convert(rows, &table_query_infos)
 }
+#[allow(dead_code)]
+fn write_json_to_file(res: &str) {
+    use std::fs::File;
+    use std::io::prelude::*;
+    let mut file = File::create("foo.json").unwrap();
+    file.write_all(res.as_bytes()).unwrap();
+}
 
 #[test]
 fn test_random_user() {
@@ -31,6 +38,8 @@ fn test_random_user() {
         }";
 
     let res = convert_gql(gql_query);
+    write_json_to_file(&res);
+
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
         Ok(p) => {
@@ -130,7 +139,15 @@ fn non_nullable_string_fields() {
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
-        Ok(p) => {}
+        Ok(p) => {
+            let site_users = p.get("siteUsers").unwrap();
+            site_users.as_array().unwrap().iter().for_each(|user| {
+                //test non nullable fields defined for all users
+                let obj = user.as_object().unwrap();
+                obj.get("id").unwrap().as_i64().unwrap();
+                obj.get("displayname").unwrap().as_str().unwrap();
+            });
+        }
         Err(e) => panic!("{}", e),
     }
 }

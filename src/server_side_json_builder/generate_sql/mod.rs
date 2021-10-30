@@ -118,6 +118,20 @@ impl ServerSidePoggers {
             let id_copy = self.local_id;
             let current_alias = ServerSidePoggers::table_alias(self.local_id);
 
+            //we need to add all primary keys of this particular table (so we know how to group
+            //separate objects)
+            for (i, pk) in self.g[node_index].primary_keys.iter().enumerate() {
+                select.push_str(&current_alias);
+                select.push('.');
+                select.push_str(&pk);
+                select.push_str(" AS ");
+                select.push_str(" __t");
+                select.push_str(&id_copy.to_string());
+                select.push_str("_pk");
+                select.push_str(&i.to_string());
+                select.push_str("__, ");
+            }
+
             let mut encountered_join = false;
             let mut graphql_fields: Vec<ColumnInfo> = vec![];
             let column_offset = self.num_select_cols;
@@ -126,6 +140,7 @@ impl ServerSidePoggers {
                     let child_name = child_field.node.name.node.as_str();
                     let column_name =
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
+
                     match self.g[node_index].field_to_types.get(child_name) {
                         Some(closure_index) => {
                             graphql_fields
@@ -164,11 +179,10 @@ impl ServerSidePoggers {
                             //if its not terminal, this field must be some foreign field. Search the nodes
                             //edges for the edge that corresponds to this graphql field, and whether its a
                             //one to many or many to one relation
-                            for (i, (pk, fk)) in self.g[node_index]
+                            for (pk, fk) in self.g[node_index]
                                 .primary_keys
                                 .iter()
                                 .zip(&self.g[edge].foreign_keys)
-                                .enumerate()
                             {
                                 self.num_select_cols += 1;
                                 let parent_pk = [&current_alias, ".", pk].concat();
@@ -177,13 +191,6 @@ impl ServerSidePoggers {
                                 from.push_str(&child_alias);
                                 from.push('.');
                                 from.push_str(fk);
-                                select.push_str(&parent_pk);
-                                select.push_str(" AS ");
-                                select.push_str(" __t");
-                                select.push_str(&id_copy.to_string());
-                                select.push_str("_pk");
-                                select.push_str(&i.to_string());
-                                select.push_str("__, ");
                             }
                             self.build_selection(
                                 select,

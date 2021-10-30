@@ -33,7 +33,7 @@ impl JsonBuilder {
                 }),
                 Box::new(|row, index| {
                     let col_val: &str = row.get(index);
-                    col_val.to_string()
+                    ["\"", col_val, "\""].concat()
                 }),
                 Box::new(|row, index| {
                     let col_val: f64 = row.get(index);
@@ -66,29 +66,28 @@ impl JsonBuilder {
         let mut row_iter = rows.iter();
         let first_row = row_iter.next().unwrap();
         s.push('{');
-        self.build_parent(&mut s, &table_query_infos, 0, &first_row);
+        self.build_field(&mut s, &table_query_infos, 0, &first_row);
 
-        let mut last_pk: i32 = first_row.get(table_query_infos.get(1).unwrap().column_offset - 1);
+        let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = row_iter.next() {
             //one left of the start of the next tables cols is primary key
-            let pk_index = table_query_infos.get(0).unwrap().graphql_fields.len() + 1;
-
-            let pk: i32 = row.get(pk_index);
+            let pk: i32 = row.get(0);
             if pk != last_pk {
                 //parent changed
                 s.drain(s.len() - 1..s.len());
-                s.push_str(&["]},{"].concat());
-                self.build_parent(&mut s, &table_query_infos, 0, &row)
+                s.push_str(&["},{"].concat());
+                self.build_field(&mut s, &table_query_infos, 0, &row)
             }
+            last_pk = pk;
         }
 
         //drop trailing comma (not allowed in some JSON parsers)
         s.drain(s.len() - 1..s.len());
 
-        s.push_str("]}]}");
+        s.push_str("}]}");
         s
     }
-    fn build_parent(
+    fn build_field(
         &self,
         s: &mut String,
         table_query_infos: &Vec<TableQueryInfo>,
@@ -104,10 +103,13 @@ impl JsonBuilder {
             .enumerate()
         {
             match col_info {
-                ColumnInfo::Foreign(key, child_index) => {}
+                ColumnInfo::Foreign(key, child_index) => {
+                    s.push_str(&[&JsonBuilder::stringify(key), ": ["].concat());
+                    self.build_field(s, table_query_infos, *child_index, row);
+                    s.push(']');
+                }
                 ColumnInfo::Terminal(key, closure_index) => {
-                    let col_val = self.closures[*closure_index](row, col_offset + i);
-
+                    let col_val = self.closures[*closure_index](row, col_offset + i + 1);
                     s.push_str(
                         &[&JsonBuilder::stringify(key), ":", &col_val.to_string(), ","].concat(),
                     );
@@ -129,40 +131,6 @@ impl JsonBuilder {
         ["\"", field, "\""].concat()
     }
 }
-//    fn build_child(
-//        &self,
-//        s: &mut String,
-//        table_query_infos: &Vec<TableQueryInfo>,
-//        table_index: usize,
-//        row: &Row,
-//    ) {
-//        let col_offset = table_query_infos
-//            .get(table_index + 1)
-//            .unwrap()
-//            .column_offset;
-//        s.push_str("{");
-//        for (i, ColumnInfo { key, closure_index }) in table_query_infos
-//            .get(1)
-//            .unwrap()
-//            .graphql_fields
-//            .iter()
-//            .enumerate()
-//        {
-//            let col_val = self.closures[*closure_index](row, col_offset + i);
-//            s.push_str(
-//                &[
-//                    &JsonBuilder::stringify(&key),
-//                    ":",
-//                    &col_val.to_string(),
-//                    ",",
-//                ]
-//                .concat(),
-//            );
-//        }
-//        s.drain(s.len() - 1..s.len());
-//        s.push_str("},");
-//    }
-//}
 
 //pub fn run_multithreaded(gql_query: &str, pogg: &mut ServerSidePoggers) {
 //    let mut handles = vec![];
