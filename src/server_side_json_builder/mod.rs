@@ -70,7 +70,7 @@ impl JsonBuilder {
         let mut row_iter = rows.iter().peekable();
         let first_row = row_iter.next().unwrap();
         s.push('{');
-        self.build_field(&mut s, 0, &first_row, &mut row_iter);
+        self.build_one_root_parent(&mut s, 0, &first_row, &mut row_iter);
 
         let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = row_iter.next() {
@@ -80,22 +80,21 @@ impl JsonBuilder {
                 //parent changed
                 s.drain(s.len() - 1..s.len());
                 s.push_str(&["},{"].concat());
-                self.build_field(&mut s, 0, &row, &mut row_iter)
+                self.build_one_root_parent(&mut s, 0, &row, &mut row_iter)
             }
             last_pk = pk;
         }
 
         //drop trailing comma (not allowed in some JSON parsers)
         s.drain(s.len() - 1..s.len());
-
         s.push_str("}]}");
         s
     }
-    fn build_field<'a, I>(
+    fn build_one_root_parent<'a, I>(
         &self,
         s: &mut String,
         table_index: usize,
-        row: &Row,
+        row: &'a postgres::Row,
         row_iter: &mut std::iter::Peekable<I>,
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
@@ -124,29 +123,20 @@ impl JsonBuilder {
                 }
             };
         }
-
-        if let Some(TableQueryInfo {
-            graphql_fields: _,
-            parent_key_name,
-            column_offset: _,
-        }) = self.table_query_infos.get(table_index + 1)
-        {
-            s.push_str(&[&JsonBuilder::stringify(&parent_key_name), ":["].concat())
-        }
     }
     fn build_child<'a, I>(
         &self,
         s: &mut String,
         parent_pk_index: usize,
-        row: &Row,
+        mut row: &'a Row,
         row_iter: &mut std::iter::Peekable<I>,
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let mut parent_pk: i32 = row.get(parent_pk_index);
-        let col_offset = self.table_query_infos.get(0).unwrap().column_offset;
+        let col_offset = self.table_query_infos.get(1).unwrap().column_offset;
 
-        while let Some(row) = row_iter.next() {
+        loop {
             s.push('{');
             for (i, col_info) in self
                 .table_query_infos
@@ -161,26 +151,30 @@ impl JsonBuilder {
                         unimplemented!()
                     }
                     ColumnInfo::Terminal(key, closure_index) => {
-                        let col_val = self.closures[*closure_index](row, col_offset + i + 1);
+                        let col_val = self.closures[*closure_index](&row, col_offset + i + 1);
                         s.push_str(
                             &[&JsonBuilder::stringify(key), ":", &col_val.to_string(), ","]
                                 .concat(),
                         );
-                        match row_iter.peek() {
-                            Some(next_row) => {
-                                let next_pk = next_row.get(parent_pk_index);
-                                if next_pk != parent_pk {
-                                    break;
-                                };
-                                parent_pk = next_pk;
-                            }
-                            None => break
-                        }
                     }
                 };
             }
             s.drain(s.len() - 1..s.len());
             s.push_str("},");
+
+            match row_iter.peek() {
+                Some(next_row) => {
+                    let next_pk = next_row.get(parent_pk_index);
+                    if next_pk != parent_pk {
+                        break;
+                    };
+                    parent_pk = next_pk;
+                }
+                None => break,
+            }
+            
+            //can unwrap as this does not run if peek fails
+            row = row_iter.next().unwrap();
         }
     }
 
