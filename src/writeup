@@ -903,3 +903,100 @@ We then store this index alongside the column's GraphQL field name.
 
 During SQL generation, for every field which was selected, we pass the field's key and the closure index to the JSON builder. This JSON builder then calls the correct closure for the column
 self.closures[*closure_index];
+
+The sudo code of the JSON builder is as follows (in this code, rows is an iterator over the rows returned by the database.) Rows is passed as a function parameter. If a child function iterates over rows, it also progresses the parent iterator.
+
+let last_pk = -1
+fn main() {
+	s = ""
+	for row in rows {
+		//open new object
+		s += "{"
+
+		//add all fields of parent to new object
+		build_one_parent(s, row, rows)
+
+		//close new object, separate with comma
+		s += "},"
+	}
+	return s
+}
+
+fn build_one_parent(s, row, rows) {
+	//add all fields of this parent
+	for field in parent	 {
+		//if terminal simply "foo":"bar", where "bar" is the value that corresponds to column foo for this row
+		if field belongs to parent {
+			s += '"' + field '"' + ":" + row.get(field) + ","
+		}
+		else {
+			//we pass the rows parameter we received from main to children. The child needs to iterate over the rows, 
+			//as there could be many children corresponding to this one parent, and it needs to accumulate all of them
+			//we also pass the parent tables primary key column location (will always be 0) and the value of this rows 
+			//parent primary key (so that the child knows how to read each rows parent primary key, to know when to stop)
+			build_children(s, rows, row.get(0), 0)
+		}
+	}
+}
+
+fn build_children(s, rows, parent_pk_val, parent_pk_index) {
+	let row = rows.next()
+	
+	//parent hasnt changed
+	while parent_pk_val = rows.get(parent_pk_index) {
+		//exact same field building logic as in build_one_parent (except that any subsequent)
+		//joins pass this childs primary key location, and this childs primary key value 
+
+		s += "{"
+		if field belongs to child {
+			s += '"' + field '"' + ":" + row.get(field) + ","
+		}
+		else {
+			build_children(s, rows, row.get(child_pk_index), child_pk_index)
+		}
+		s += "},"
+
+		//progress iterator (this is a reference so progresses mains iterator too)
+		let row = rows.next()
+	}
+}
+
+
+I left some details out of this sudocode. I figured I would demonstrate how the general recursive logic works, and how we determine which columns to read, and how we use the changes in primary keys. Here are the data structures that we use in order to provide information about the query/schema to facilitate this.
+
+//A column is either foreign (we need its key name) or terminal (we need its key and the index of the closure so we can process it correctly)
+pub enum ColumnInfo {
+    Foreign(String),
+    Terminal(String, usize),
+}
+
+//This provides information about a single table, and the fields that were requested from that table. If we join another table, we need two in total. 
+pub struct TableQueryInfo {
+
+		//all the columns that were requested
+    graphql_fields: Vec<ColumnInfo>,
+
+		//this is where the column values start. If we joined with another table that selected 5 columns, Column offset would be 5 (our values start at 5). We don't need to store a range of columns, as we can infer where the columns end based of the length of GraphQL fields (if GraphQL fields has 3 terminal fields and column offset is 5, we can assume this tables columns are on indices 5, 6, 7)
+    column_offset: usize,
+}
+
+pub struct JsonBuilder {
+		//This stores the closures that are used to process columns. The correct closure is selected using ColumnInfo::Terminals usize value. These are hardcoded and not changed, they should stay constant with hardcoded index values used in the query constructor. 
+    closures: Vec<Box<dyn Fn(&Row, usize) -> String>>,
+
+		//stores the list of table_query_infos for every table which was selected from. 0 should be the parent
+    table_query_infos: Vec<TableQueryInfo>,
+}
+
+This solution generalized to two way joins. The first join was easy to do, as I could write build_children assuming that the parent called it (hardcoding). When I added a second join, I couldn't make assumptions about the parent, so it had to be generalized. 
+
+One bug that I realized from creating the three way join was that parents without children didn't appear. The default join only shows rows where all columns are present. I instead needed to use a left join (include parents that don't have children, and leave their children array as []). This also meant that I had to change my code
+
+Scenario 1 (no change)
+If the query parser tells us that there's a non-nullable child column, we throw an error if a parent does not have children 
+
+Scenario 2 (Check if the following parent has a different PK)
+This would eliminate the error throwing (a parent with no kids has only one row, so we wouldn't read this rows child columns). But if a parent has one child, we wouldn't read them
+
+Scenario 3 (Check childs primary keys)
+Before we try to start building the children of a row, we should check if the primary key (non nullable) is null. We should read this column as an Option, and check if this Option is defined. If so, we know that this parent does have children, and we can proceed as usual. Once we encounter a new parent, check again if this parent has no children.

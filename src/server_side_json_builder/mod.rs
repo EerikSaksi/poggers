@@ -153,7 +153,7 @@ impl JsonBuilder {
                 match col_info {
                     ColumnInfo::Foreign(key) => {
                         s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
-                        self.build_child(s, 0, row, row_iter, table_index + 1);
+                        self.build_child(s, col_offset, row, row_iter, table_index + 1);
                         s.drain(s.len() - 1..s.len());
                         s.push_str("]}");
                     }
