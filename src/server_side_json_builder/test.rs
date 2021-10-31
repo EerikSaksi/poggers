@@ -9,7 +9,9 @@ fn convert_gql(gql_query: &str) -> String {
     let (sql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    let rows = client.query(&*sql_query, &[]).unwrap();
+    let rows = client
+        .query(&*[&sql_query, " limit 40"].concat(), &[])
+        .unwrap();
     JsonBuilder::new(table_query_infos).convert(rows)
 }
 #[allow(dead_code)]
