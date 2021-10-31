@@ -193,7 +193,7 @@ impl ServerSidePoggers {
                                 from.push_str(fk);
                             }
 
-                            graphql_fields.push(ColumnInfo::Foreign(child_name.to_string(), 1));
+                            graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
                             self.build_selection(
                                 select,
                                 from,

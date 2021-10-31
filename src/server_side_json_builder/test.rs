@@ -9,9 +9,7 @@ fn convert_gql(gql_query: &str) -> String {
     let (sql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    let rows = client
-        .query(&*[&sql_query, ""].concat(), &[])
-        .unwrap();
+    let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
     JsonBuilder::new(table_query_infos).convert(rows)
 }
 #[allow(dead_code)]
@@ -40,7 +38,6 @@ fn test_random_user() {
         }";
 
     let res = convert_gql(gql_query);
-    write_json_to_file(&res);
 
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
@@ -148,6 +145,59 @@ fn non_nullable_string_fields() {
                 let obj = user.as_object().unwrap();
                 obj.get("id").unwrap().as_i64().unwrap();
                 obj.get("displayname").unwrap().as_str().unwrap();
+            });
+        }
+        Err(e) => panic!("{}", e),
+    }
+}
+
+#[test]
+fn three_way_join() {
+    let gql_query = "
+        query {
+          siteUsers{
+            id
+            reputation
+            views
+            upvotes
+            downvotes
+            posts{
+              id
+              posttypeid
+              owneruserid
+              comments{
+                score
+                postid
+                text
+              }
+            }
+          }
+        }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+
+    write_json_to_file(&res);
+    match p {
+        Ok(p) => {
+            let site_users = p.get("siteUsers").unwrap();
+            site_users.as_array().unwrap().iter().for_each(|user| {
+                user.get("posts")
+                    .unwrap()
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .for_each(|post| {
+                        post.get("comments")
+                            .unwrap()
+                            .as_array()
+                            .iter()
+                            .for_each(|comment| {
+                                assert_eq!(
+                                    comment.get("postid").unwrap().as_i64(),
+                                    post.get("id").unwrap().as_i64()
+                                )
+                            })
+                    });
             });
         }
         Err(e) => panic!("{}", e),

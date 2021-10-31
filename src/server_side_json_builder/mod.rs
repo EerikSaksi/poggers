@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 pub mod generate_sql;
 
 pub enum ColumnInfo {
-    Foreign(String, usize),
+    Foreign(String),
     Terminal(String, usize),
 }
 
@@ -34,7 +34,7 @@ impl JsonBuilder {
                 }),
                 Box::new(|row, index| {
                     let col_val: &str = row.get(index);
-                    ["\"", col_val, "\""].concat()
+                    serde_json::to_string(col_val).unwrap()
                 }),
                 Box::new(|row, index| {
                     let col_val: f64 = row.get(index);
@@ -70,7 +70,7 @@ impl JsonBuilder {
         let mut row_iter = rows.iter().peekable();
         let first_row = row_iter.next().unwrap();
         s.push('{');
-        self.build_one_root_parent(&mut s, 0, &first_row, &mut row_iter);
+        self.build_one_root_parent(&mut s, &first_row, &mut row_iter);
 
         let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = row_iter.next() {
@@ -80,7 +80,7 @@ impl JsonBuilder {
                 //parent changed
                 s.drain(s.len() - 1..s.len());
                 s.push_str(&["},{"].concat());
-                self.build_one_root_parent(&mut s, 0, &row, &mut row_iter)
+                self.build_one_root_parent(&mut s, &row, &mut row_iter)
             }
             last_pk = pk;
         }
@@ -93,7 +93,6 @@ impl JsonBuilder {
     fn build_one_root_parent<'a, I>(
         &self,
         s: &mut String,
-        table_index: usize,
         row: &'a postgres::Row,
         row_iter: &mut std::iter::Peekable<I>,
     ) where
@@ -109,9 +108,9 @@ impl JsonBuilder {
             .enumerate()
         {
             match col_info {
-                ColumnInfo::Foreign(key, child_index) => {
+                ColumnInfo::Foreign(key) => {
                     s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
-                    self.build_child(s, 0, row, row_iter);
+                    self.build_child(s, 0, row, row_iter, 1);
                     s.drain(s.len() - 1..s.len());
                     s.push_str("]}");
                 }
@@ -130,25 +129,33 @@ impl JsonBuilder {
         parent_pk_index: usize,
         mut row: &'a Row,
         row_iter: &mut std::iter::Peekable<I>,
+        table_index: usize,
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let mut parent_pk: i32 = row.get(parent_pk_index);
-        let col_offset = self.table_query_infos.get(1).unwrap().column_offset;
+        let col_offset = self
+            .table_query_infos
+            .get(table_index)
+            .unwrap()
+            .column_offset;
 
         loop {
             s.push('{');
             for (i, col_info) in self
                 .table_query_infos
-                .get(1)
+                .get(table_index)
                 .unwrap()
                 .graphql_fields
                 .iter()
                 .enumerate()
             {
                 match col_info {
-                    ColumnInfo::Foreign(..) => {
-                        unimplemented!()
+                    ColumnInfo::Foreign(key) => {
+                        s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
+                        self.build_child(s, 0, row, row_iter, table_index + 1);
+                        s.drain(s.len() - 1..s.len());
+                        s.push_str("]}");
                     }
                     ColumnInfo::Terminal(key, closure_index) => {
                         let col_val = self.closures[*closure_index](&row, col_offset + i + 1);
@@ -172,7 +179,7 @@ impl JsonBuilder {
                 }
                 None => break,
             }
-            
+
             //can unwrap as this does not run if peek fails
             row = row_iter.next().unwrap();
         }
