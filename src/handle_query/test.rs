@@ -57,6 +57,7 @@ fn build_graph(inputs: Vec<BuildGraphInput>) -> Poggers<PostgresBuilder> {
         query_builder: PostgresBuilder {},
         g,
     }
+    
 }
 
 fn test_sql_equality(actual: Result<String, Error>, expected: &str) {

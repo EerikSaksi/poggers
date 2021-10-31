@@ -873,3 +873,33 @@ test row_selection_techniques::tests::serverside_to_string_multithreaded  ... be
 As I suspected: although the database side to_string conversion is faster for a singular query, when we leverage multithreading over many queries the runtime of the individual JSON builders becomes less relevant, but the database performance bottlenecks.
 
 With this performance boost, I was motivated to implement multithreading in my JSON builder, and to test it's performance relative to existing implementations (over many queries).
+
+
+
+
+
+I decided to implement the closure method for handling different types of rows. I created a bunch of static (basically global) variables which refer to the index of the closure for a particular type. 
+
+static POG_INT: usize = 0;
+static POG_STR: usize = 1;
+static POG_FLOAT: usize = 2;
+static POG_TIMESTAMP: usize = 3;
+static POG_BOOLEAN: usize = 4;
+static POG_JSON: usize = 5;
+
+Prior, I only stored the terminal fields in a HashSet (check if a field corresponds to a column that belongs to the table, if not check edges to find which foreign field it is). I changed this HashSet to a HashMap, where the value corresponds to the type of the column. During the schema introspection stage, we match the Postgres data type of the column to a compatible Rust columns closure index:
+
+let data_type_index = match data_type {
+		"integer" | "smallint" | "bigint" => POG_INT,
+		"character varying" | "text" => POG_STR,
+		"timestamp with time zone" | "timestamp without time zone" => POG_TIMESTAMP,
+		"double precision" | "float" => POG_FLOAT,
+		"boolean" => POG_BOOLEAN,
+		"json" | "jsonb" => POG_JSON,
+		other => panic!("Encountered unhandled type {}", other),
+};
+
+We then store this index alongside the column's GraphQL field name.
+
+During SQL generation, for every field which was selected, we pass the field's key and the closure index to the JSON builder. This JSON builder then calls the correct closure for the column
+self.closures[*closure_index];

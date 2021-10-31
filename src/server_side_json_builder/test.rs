@@ -10,7 +10,7 @@ fn convert_gql(gql_query: &str) -> String {
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let rows = client.query(&*sql_query, &[]).unwrap();
-    JsonBuilder::new().convert(rows, &table_query_infos)
+    JsonBuilder::new(table_query_infos).convert(rows)
 }
 #[allow(dead_code)]
 fn write_json_to_file(res: &str) {
