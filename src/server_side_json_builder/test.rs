@@ -6,14 +6,11 @@ use serde_json::{Error, Value};
 
 fn convert_gql(gql_query: &str) -> String {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
-    use std::time::Instant;
-    let before = Instant::now();
-    let (sql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+    let (sql_query, table_query_infos) = pogg.build_root(gql_query).unwrap();
     let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
     let to_return = JsonBuilder::new(table_query_infos).convert(rows);
-    println!("Elapsed time: {:.2?}", before.elapsed());
     to_return
 }
 #[allow(dead_code)]
@@ -47,7 +44,6 @@ fn test_random_user() {
     match p {
         Ok(p) => {
             let site_users = p.get("siteUsers").unwrap();
-
             //test specific user sampled at random
             assert!(site_users.as_array().unwrap().iter().any(|user| {
                 let obj = user.as_object().unwrap();
@@ -178,6 +174,7 @@ fn three_way_join() {
               posttypeid
               owneruserid
               comments{
+                id
                 score
                 postid
                 text
@@ -187,8 +184,8 @@ fn three_way_join() {
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    write_json_to_file(&res);
     let mut num_users = 0;
+    let mut num_posts = 0;
     let mut num_comments = 0;
     match p {
         Ok(p) => {
@@ -201,6 +198,7 @@ fn three_way_join() {
                     .unwrap()
                     .iter()
                     .for_each(|post| {
+                        num_posts += 1;
                         post.get("comments")
                             .unwrap()
                             .as_array()
@@ -218,5 +216,29 @@ fn three_way_join() {
         }
         Err(e) => panic!("{}", e),
     }
-    assert_eq!(num_comments, 22312)
+    //select count(*) from site_user
+    assert_eq!(num_users, 16429, "Mismatched user count");
+
+    //select count(*) from post where owneruserid is not null;
+    assert_eq!(num_posts, 17575, "Mismatched post count");
+
+    //select count(*) from post join comment on post.id = comment.postid where owneruserid is not null;
+    assert_eq!(num_comments, 21630);
+}
+
+#[test]
+fn join_foreign_field_not_last() {
+    let gql_query = "
+        query {
+          siteUsers{
+            id
+            posts{
+              owneruserid
+            }
+            views
+          }
+        }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    assert!(p.is_ok(), "{}", p.unwrap_err());
 }

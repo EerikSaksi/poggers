@@ -109,9 +109,14 @@ impl JsonBuilder {
         {
             match col_info {
                 ColumnInfo::Foreign(key) => {
+                    let child_pk: Option<i32> =
+                        row.get(self.table_query_infos.get(1).unwrap().column_offset);
+
                     s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
-                    self.build_child(s, 0, row, row_iter, 1);
-                    s.drain(s.len() - 1..s.len());
+                    if child_pk.is_some() {
+                        self.build_child(s, col_offset, row, row_iter, 1);
+                        s.drain(s.len() - 1..s.len());
+                    }
                     s.push_str("]}");
                 }
                 ColumnInfo::Terminal(key, closure_index) => {
@@ -152,9 +157,18 @@ impl JsonBuilder {
             {
                 match col_info {
                     ColumnInfo::Foreign(key) => {
+                        let child_pk: Option<i32> = row.get(
+                            self.table_query_infos
+                                .get(table_index + 1)
+                                .unwrap()
+                                .column_offset,
+                        );
+
                         s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
-                        self.build_child(s, col_offset, row, row_iter, table_index + 1);
-                        s.drain(s.len() - 1..s.len());
+                        if child_pk.is_some() {
+                            self.build_child(s, col_offset, row, row_iter, table_index + 1);
+                            s.drain(s.len() - 1..s.len());
+                        }
                         s.push_str("]}");
                     }
                     ColumnInfo::Terminal(key, closure_index) => {
@@ -171,11 +185,16 @@ impl JsonBuilder {
 
             match row_iter.peek() {
                 Some(next_row) => {
-                    let next_pk = next_row.get(parent_pk_index);
-                    if next_pk != parent_pk {
-                        break;
-                    };
-                    parent_pk = next_pk;
+                    let next_pk_opt: Option<i32> = next_row.get(parent_pk_index);
+                    match next_pk_opt {
+                        Some(next_pk) => {
+                            if next_pk != parent_pk {
+                                break;
+                            };
+                            parent_pk = next_pk
+                        }
+                        None => break,
+                    }
                 }
                 None => break,
             }
@@ -184,7 +203,6 @@ impl JsonBuilder {
             row = row_iter.next().unwrap();
         }
     }
-
     fn stringify(field: &str) -> String {
         ["\"", field, "\""].concat()
     }

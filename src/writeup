@@ -1000,3 +1000,58 @@ This would eliminate the error throwing (a parent with no kids has only one row,
 
 Scenario 3 (Check childs primary keys)
 Before we try to start building the children of a row, we should check if the primary key (non nullable) is null. We should read this column as an Option, and check if this Option is defined. If so, we know that this parent does have children, and we can proceed as usual. Once we encounter a new parent, check again if this parent has no children.
+
+This seemed to work fine for one way joins. Prior to calling the build_children method we checked whether the child's pk was null. If so, we progressed forward. Otherwise we progressed as usual. I thought that this would generalize to the three way join but it didn't. The query worked by selecting users, their posts, and the comments of that post. The comment builder would keep checking if the parents primary key had changed. The issue that I did not realize, is that the row after a comment might correspond to a user with no posts and no comments. This would mean that the next row's post id is null, and we treat it as a non-nullable. In order to fix this, I also had to treat the parent primary key as nullable. This worked. There is a performance overhead to this, as we are essentially null checking every time, rather than not null checking. Ther might be some possible solutions, e.g going over null columns first, so that we don't need to worry about them after. There were no more runtime errors, although the number of posts, comments, and users did not match (select count(*) from ...). After trying to figure out how my code was wrong, I realized that the post foreign key to the user table was nullable, so I actually had to "select count(*) from post where owneruserid is not null"  "select count(*) from post join comment on post.id = comment.postid where owneruserid is not null"
+
+The next problem I wanted to solve was joins that did not occur at the very end. So far, all my tests have placed joins as follows:
+ 
+query {
+	siteUsers{
+		id
+		views
+		posts{
+			owneruserid
+		}
+	}
+}
+
+The posts join only occurs after all the siteUser fields have been chosen. This is convenient, as we expect the columns to be grouped by table (e.g in this case we assume that starting at 0, there are two siteUsers fields, and starting at 2, there is one owneruserid field (using column offset). The columns are automatically selected in this correct order. 
+
+query {
+	siteUsers{
+		id
+		posts{
+			owneruserid
+		}
+		views
+	}
+}
+For this query, our SQL builder selects site_user.id, posts.owneruserid, and site_user.views. This is problematic, as our JSON builder would assume that siteUsers first two fields occured first. This query throws an error, as owneruserid is expected to be not null and views isn't (views is treated as non-nullable like owneruserid, which throws an error). Even if there were no type errors, we'd be selecting the wrong column values (owneruserid and views flipped). 
+
+This definetely requires work on the query builder side. Currently, the code works like this (if terminal add field to tables we select from, otherwise recursively call child which adds its own fields).
+
+def build_query(table):
+ 	s += ""
+	for field in fields:
+		if field is terminal:
+			s+= table + "." + field
+		else:
+			s+= build_query(child_table)
+
+In order for fields to be grouped, I think the code needs to work like this:
+
+
+def build_query(table):
+ 	s += ""
+	child_fields = []
+	for field in fields:
+		if field is terminal:
+			s+= table + "." + field
+		else:
+			child_fields += child_table
+	for child_table in child_fields:
+		build_query(child_table)
+
+Essentially we need to maintain a list of all children we need to visit, instead of visiting them as soon as we encounter them. This way fields should be grouped by child.
+
+Whether or not this will work out of the box for the JSON builder is unclear: JSON builder doesn't assume that foreign fields occur at the end, but it does assume that selected fields are grouped by table.

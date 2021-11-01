@@ -170,7 +170,7 @@ impl ServerSidePoggers {
                             let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
                             let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
 
-                            from.push_str(" JOIN ");
+                            from.push_str(" LEFT JOIN ");
                             from.push_str(&self.g[child_node_index].table_name);
                             from.push_str(" AS ");
                             from.push_str(&child_alias);
