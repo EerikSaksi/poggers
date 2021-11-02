@@ -1055,3 +1055,5 @@ def build_query(table):
 Essentially we need to maintain a list of all children we need to visit, instead of visiting them as soon as we encounter them. This way fields should be grouped by child.
 
 Whether or not this will work out of the box for the JSON builder is unclear: JSON builder doesn't assume that foreign fields occur at the end, but it does assume that selected fields are grouped by table.
+
+Something I'm not fully sure about is whether or not we need to store the indices of tables in the column_info table. Technically, if the JSON builder visits tables in the same order as the query builder, it should number the tables in the same way. Both of these visitors are depth first.

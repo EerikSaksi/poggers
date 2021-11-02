@@ -37,7 +37,7 @@ impl ServerSidePoggers {
     pub fn build_root(
         &mut self,
         query: &str,
-    ) -> Result<(String, Vec<TableQueryInfo>), async_graphql_parser::Error> {
+    ) -> Result<(String, Vec<TableQueryInfo>, String), async_graphql_parser::Error> {
         let ast = parse_query::<&str>(query)?;
         match ast.operations {
             DocumentOperations::Single(Positioned { node, pos: _ }) => {
@@ -51,22 +51,20 @@ impl ServerSidePoggers {
     fn visit_query(
         &mut self,
         selection_set: Positioned<SelectionSet>,
-    ) -> (String, Vec<TableQueryInfo>) {
+    ) -> (String, Vec<TableQueryInfo>, String) {
         let mut select = String::from("SELECT ");
         let mut from = String::from(" FROM ");
         let mut order_by = String::new();
         let mut table_query_info: Vec<TableQueryInfo> = vec![];
 
+        let root_key_name: &str;
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index;
-
+            root_key_name = field.node.name.node.as_str();
             //we need to wrap this so that query_type is dropped, and copy out the is_many and
             //node_index fields to satisfy the borrow checker
             {
-                let query_type = self
-                    .query_to_type
-                    .get(field.node.name.node.as_str())
-                    .unwrap();
+                let query_type = self.query_to_type.get(root_key_name).unwrap();
                 node_index = query_type.node_index;
             }
             from.push_str(&self.g[node_index].table_name);
@@ -91,12 +89,17 @@ impl ServerSidePoggers {
         //as we do depth first and we need the first element to be the parent value do reverse
         table_query_info.reverse();
         match order_by.is_empty() {
-            true => ([select, from].concat(), table_query_info),
+            true => (
+                [select, from].concat(),
+                table_query_info,
+                root_key_name.to_owned(),
+            ),
             false => {
                 order_by.drain(order_by.len() - 2..order_by.len());
                 (
                     [&select, &from, " ORDER BY ", &order_by].concat(),
                     table_query_info,
+                    root_key_name.to_owned(),
                 )
             }
         }
@@ -117,6 +120,7 @@ impl ServerSidePoggers {
             //this field is terminal
             let id_copy = self.local_id;
             let current_alias = ServerSidePoggers::table_alias(self.local_id);
+            let mut children: Vec<(&Positioned<Selection>, NodeIndex<u32>, &str)> = vec![];
 
             //we need to add all primary keys of this particular table (so we know how to group
             //separate objects)
@@ -135,6 +139,7 @@ impl ServerSidePoggers {
             let mut encountered_join = false;
             let mut graphql_fields: Vec<ColumnInfo> = vec![];
             let column_offset = self.num_select_cols;
+
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
@@ -194,24 +199,27 @@ impl ServerSidePoggers {
                             }
 
                             graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
-                            self.build_selection(
-                                select,
-                                from,
-                                order_by,
-                                table_query_info,
-                                selection,
-                                child_node_index,
-                                child_name,
-                            );
+                            children.push((selection, child_node_index, child_name));
                         }
                     }
                 }
             }
             table_query_info.push(TableQueryInfo {
                 graphql_fields,
-                parent_key_name: parent_key_name.to_string(),
                 column_offset,
             });
+
+            for child in children {
+                self.build_selection(
+                    select,
+                    from,
+                    order_by,
+                    table_query_info,
+                    child.0,
+                    child.1,
+                    child.2,
+                );
+            }
         }
     }
     fn find_edge_and_endpoints(

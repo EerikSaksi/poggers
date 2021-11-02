@@ -14,18 +14,18 @@ pub enum ColumnInfo {
 
 pub struct TableQueryInfo {
     graphql_fields: Vec<ColumnInfo>,
-    parent_key_name: String,
     column_offset: usize,
 }
 
 pub struct JsonBuilder {
     closures: Vec<Box<dyn Fn(&Row, usize) -> String>>,
     table_query_infos: Vec<TableQueryInfo>,
+    root_key_name: String,
 }
 
 #[allow(dead_code)]
 impl JsonBuilder {
-    pub fn new(table_query_infos: Vec<TableQueryInfo>) -> Self {
+    pub fn new(table_query_infos: Vec<TableQueryInfo>, root_key_name: String) -> Self {
         JsonBuilder {
             closures: vec![
                 Box::new(|row, index| {
@@ -54,18 +54,14 @@ impl JsonBuilder {
                 }),
             ],
             table_query_infos,
+            root_key_name,
         }
     }
 
     pub fn convert(&self, rows: Vec<Row>) -> String {
         //the first row requires special treatment, we need to add the initial braces, and we need
         //there is no previous pks to determine if this row should be
-        let mut s = [
-            "{",
-            &JsonBuilder::stringify(&self.table_query_infos.get(0).unwrap().parent_key_name),
-            ":[",
-        ]
-        .concat();
+        let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":["].concat();
 
         let mut row_iter = rows.iter().peekable();
         let first_row = row_iter.next().unwrap();
