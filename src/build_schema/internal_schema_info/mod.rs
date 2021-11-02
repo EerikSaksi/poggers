@@ -2,7 +2,6 @@
 #[path = "./test.rs"]
 mod test;
 use crate::build_schema::read_database;
-use crate::handle_query::Poggers;
 use crate::server_side_json_builder::ServerSidePoggers;
 use inflector::Inflector;
 use petgraph::graph::DiGraph;
@@ -32,6 +31,12 @@ static POG_FLOAT: usize = 2;
 static POG_TIMESTAMP: usize = 3;
 static POG_BOOLEAN: usize = 4;
 static POG_JSON: usize = 5;
+static POG_NULLABLE_INT: usize = 6;
+static POG_NULLABLE_STR: usize = 7;
+static POG_NULLABLE_FLOAT: usize = 8;
+static POG_NULLABLE_TIMESTAMP: usize = 9;
+static POG_NULLABLE_BOOLEAN: usize = 10;
+static POG_NULLABLE_JSON: usize = 11;
 
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
@@ -43,6 +48,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         let parent_table_name: Option<String> = current_row.get("parent_table");
         let column_name: String = current_row.get("column_name");
         let is_primary: bool = current_row.get("is_primary");
+        let nullable: &str = current_row.get("is_nullable");
         let child_index = find_or_create_node(&mut g, &table_name);
         if is_primary && !g[child_index].primary_keys.contains(&column_name) {
             g[child_index].primary_keys.push(column_name.to_string());
@@ -71,14 +77,28 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             handle_foreign_key(&mut g, parent_index, edge, &parent_column, &column_name);
         }
         let data_type: &str = current_row.get("data_type");
-        let data_type_index = match data_type {
-            "integer" | "smallint" | "bigint" => POG_INT,
-            "character varying" | "text" => POG_STR,
-            "timestamp with time zone" | "timestamp without time zone" => POG_TIMESTAMP,
-            "double precision" | "float" => POG_FLOAT,
-            "boolean" => POG_BOOLEAN,
-            "json" | "jsonb" => POG_JSON,
-            other => panic!("Encountered unhandled type {}", other),
+        let data_type_index = match nullable {
+            "YES" => match data_type {
+                "integer" | "smallint" | "bigint" => POG_NULLABLE_INT,
+                "character varying" | "text" => POG_NULLABLE_STR,
+                "timestamp with time zone" | "timestamp without time zone" => {
+                    POG_NULLABLE_TIMESTAMP
+                }
+                "double precision" | "float" => POG_NULLABLE_FLOAT,
+                "boolean" => POG_NULLABLE_BOOLEAN,
+                "json" | "jsonb" => POG_NULLABLE_JSON,
+                other => panic!("Encountered unhandled type {}", other),
+            },
+            "NO" => match data_type {
+                "integer" | "smallint" | "bigint" => POG_INT,
+                "character varying" | "text" => POG_STR,
+                "timestamp with time zone" | "timestamp without time zone" => POG_TIMESTAMP,
+                "double precision" | "float" => POG_FLOAT,
+                "boolean" => POG_BOOLEAN,
+                "json" | "jsonb" => POG_JSON,
+                other => panic!("Encountered unhandled type {}", other),
+            },
+            other => panic!("Nullable was {}", other),
         };
         g[child_index]
             .field_to_types

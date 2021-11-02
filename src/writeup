@@ -1076,3 +1076,30 @@ for field in fields
 		i += 1
 	else
 		...
+
+This seemed to be the only thing that the JSON builder needed to change in order for it to work. The change that had to be done in the query builder was delaying the recursive calls of children only after we selected all parent fields.
+
+Next, I decided to experiment with multiple child queries. This query joins all comments a user made, alongside all posts the user made.
+query{
+	siteUsers{
+		id
+		comments{
+			score
+		}
+		posts{
+			title
+		}
+	}
+}
+
+This was suuuuper slow (2 seconds) and in addition lead to incorrect results. Our JSON builder iterated over all the comments, and disregarded the posts (although it tried to build posts, comments had progressed the iterator over all the rows).  The format I want to achieve (imagine two users, user with id 1 has three posts and two comments, whilst user with id 2 has three posts and two comments). We show unrelated post and comment columns, but when we run out comments, the comment fields become null. This is essentially "user join post" and "user join comment" concatenated column wise together. 
+----------------------------------------
+| user_id | comment_score | post_views |
+----------------------------------------
+| 1       | 26            | 300        |
+| 1       | 30            | 123        |
+| 1       |               | 1000       |
+| 2       | 123           | 300        |
+| 2       | 400           | 123        |
+| 2       | 5             |            |
+----------------------------------------

@@ -13,11 +13,7 @@ pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
           foreign_keys.parent_table,
           foreign_keys.parent_column,
 					primary_keys.column_name is not null as is_primary,
-          case
             is_nullable
-            when 'NO' then '!'
-            when 'YES' then ''
-          end as nullable
         from
           information_schema.columns as cols
           left join (

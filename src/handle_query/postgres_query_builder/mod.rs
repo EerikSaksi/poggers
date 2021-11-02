@@ -31,7 +31,7 @@ impl GraphQLQueryBuilder for PostgresBuilder {
     fn build_terminal_field(s: &mut String, field_name: &str) {
         s.push_str("to_json((__local_0__.\"");
         s.push_str(&field_name.to_case(Case::Snake));
-        s.push_str("\")) as \"");
+        s.push_str("\"))::text as \"");
         s.push_str(field_name);
         s.push_str("\",\n");
     }

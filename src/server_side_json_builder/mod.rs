@@ -52,6 +52,48 @@ impl JsonBuilder {
                     let col_val: serde_json::Value = row.get(index);
                     col_val.to_string()
                 }),
+                Box::new(|row, index| {
+                    let col_val: Option<i32> = row.get(index);
+                    match col_val {
+                        Some(val) => val.to_string(),
+                        None => String::from("null"),
+                    }
+                }),
+                Box::new(|row, index| {
+                    let col_val: Option<&str> = row.get(index);
+                    match col_val {
+                        Some(val) => serde_json::to_string(val).unwrap(),
+                        None => String::from("null"),
+                    }
+                }),
+                Box::new(|row, index| {
+                    let col_val: Option<f64> = row.get(index);
+                    match col_val {
+                        Some(val) => val.to_string(),
+                        None => String::from("null"),
+                    }
+                }),
+                Box::new(|row, index| {
+                    let col_val: Option<DateTime<Utc>> = row.get(index);
+                    match col_val {
+                        Some(val) => val.to_string(),
+                        None => String::from("null"),
+                    }
+                }),
+                Box::new(|row, index| {
+                    let col_val: Option<bool> = row.get(index);
+                    match col_val {
+                        Some(val) => val.to_string(),
+                        None => String::from("null"),
+                    }
+                }),
+                Box::new(|row, index| {
+                    let col_val: Option<serde_json::Value> = row.get(index);
+                    match col_val {
+                        Some(val) => val.to_string(),
+                        None => String::from("null"),
+                    }
+                }),
             ],
             table_query_infos,
             root_key_name,

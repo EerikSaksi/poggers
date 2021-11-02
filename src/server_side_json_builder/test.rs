@@ -6,11 +6,15 @@ use serde_json::{Error, Value};
 
 fn convert_gql(gql_query: &str) -> String {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+    use std::time::Instant;
+    let before = Instant::now();
     let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query).unwrap();
     let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
     let to_return = JsonBuilder::new(table_query_infos, root_key_name).convert(rows);
+    println!("Elapsed time: {:.2?}", before.elapsed());
     to_return
 }
 #[allow(dead_code)]
@@ -233,13 +237,60 @@ fn join_foreign_field_not_last() {
           siteUsers{
             id
             posts{
+              id
               owneruserid
             }
             views
           }
         }";
     let res = convert_gql(gql_query);
-    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    assert!(p.is_ok(), "{}", p.unwrap_err());
+    match p {
+        Ok(p) => {
+            let site_users = p.get("siteUsers").unwrap();
+            site_users.as_array().unwrap().iter().for_each(|user| {
+                let obj = user.as_object().unwrap();
+                obj.get("views").unwrap().as_i64().unwrap();
+                let posts = obj.get("posts").unwrap().as_array().unwrap();
+                let user_id = obj.get("id").unwrap().as_i64().unwrap();
+                for post in posts {
+                    assert_eq!(post.get("owneruserid").unwrap().as_i64().unwrap(), user_id)
+                }
+            })
+        }
+        Err(e) => panic!("{}", e),
+    }
+}
+
+#[test]
+fn two_children_one_parent() {
+    let gql_query = "
+        query{
+          siteUsers{
+            id
+            comments{
+              score
+            }
+            posts{
+              title
+            }
+          }
+        }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    write_json_to_file(&res);
+    match p {
+        Ok(p) => {
+            let site_users = p.get("siteUsers").unwrap();
+            site_users.as_array().unwrap().iter().for_each(|user| {
+                let obj = user.as_object().unwrap();
+                obj.get("id").unwrap().as_i64().unwrap();
+                let comments = obj.get("comments").unwrap().as_array().unwrap();
+                println!("{}", comments.len());
+                let posts = obj.get("posts").unwrap().as_array().unwrap();
+                panic!("{}", posts.len());
+            })
+        }
+        Err(e) => panic!("{}", e),
+    }
 }

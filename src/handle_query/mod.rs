@@ -9,7 +9,6 @@ use async_graphql_value::Value;
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-pub mod join_database_json;
 pub mod postgres_query_builder;
 
 pub struct Poggers<SQL: postgres_query_builder::GraphQLQueryBuilder> {

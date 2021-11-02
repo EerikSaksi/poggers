@@ -75,7 +75,6 @@ impl ServerSidePoggers {
                 &mut table_query_info,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
-                &field.node.name.node,
             );
         } else {
             panic!("First selection_set item isn't a field");
@@ -110,14 +109,13 @@ impl ServerSidePoggers {
         table_query_info: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
-        parent_key_name: &str,
     ) {
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             //this field is terminal
             let id_copy = self.local_id;
             let current_alias = ServerSidePoggers::table_alias(self.local_id);
-            let mut children: Vec<(&Positioned<Selection>, NodeIndex<u32>, &str)> = vec![];
+            let mut children: Vec<(&Positioned<Selection>, NodeIndex<u32>)> = vec![];
 
             //we need to add all primary keys of this particular table (so we know how to group
             //separate objects)
@@ -167,8 +165,8 @@ impl ServerSidePoggers {
                                     order_by.push_str(", ");
                                 }
                             }
-                            let child_alias = ServerSidePoggers::table_alias(self.local_id + 1);
                             self.local_id += 1;
+                            let child_alias = ServerSidePoggers::table_alias(self.local_id);
                             let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
                             let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
 
@@ -196,7 +194,7 @@ impl ServerSidePoggers {
                             }
 
                             graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
-                            children.push((selection, child_node_index, child_name));
+                            children.push((selection, child_node_index));
                         }
                     }
                 }
@@ -207,15 +205,7 @@ impl ServerSidePoggers {
             });
 
             for child in children {
-                self.build_selection(
-                    select,
-                    from,
-                    order_by,
-                    table_query_info,
-                    child.0,
-                    child.1,
-                    child.2,
-                );
+                self.build_selection(select, from, order_by, table_query_info, child.0, child.1);
             }
         }
     }

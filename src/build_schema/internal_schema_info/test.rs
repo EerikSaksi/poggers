@@ -120,3 +120,33 @@ fn post_has_correct_num_fields() {
         post_node.field_to_types.keys()
     );
 }
+
+#[test]
+fn check_nullability() {
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let g = pogg.g;
+    let user_node = g
+        .node_weights()
+        .find(|n| n.table_name == "site_user")
+        .unwrap();
+    let expected_column_types = vec![
+        ("id", POG_INT),
+        ("reputation", POG_INT),
+        ("creationdate", POG_TIMESTAMP),
+        ("displayname", POG_STR),
+        ("lastaccessdate", POG_NULLABLE_TIMESTAMP),
+        ("websiteurl", POG_NULLABLE_STR),
+        ("location", POG_NULLABLE_STR),
+        ("aboutme", POG_NULLABLE_STR),
+        ("views", POG_INT),
+        ("upvotes", POG_INT),
+        ("downvotes", POG_INT),
+        ("profileimageurl", POG_NULLABLE_STR),
+        ("age", POG_NULLABLE_INT),
+        ("accountid", POG_NULLABLE_INT),
+        ("jsonfield", POG_NULLABLE_JSON),
+    ];
+    for (key, expected) in expected_column_types {
+        assert_eq!(*user_node.field_to_types.get(key).unwrap(), expected);
+    }
+}
