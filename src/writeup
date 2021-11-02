@@ -1057,3 +1057,22 @@ Essentially we need to maintain a list of all children we need to visit, instead
 Whether or not this will work out of the box for the JSON builder is unclear: JSON builder doesn't assume that foreign fields occur at the end, but it does assume that selected fields are grouped by table.
 
 Something I'm not fully sure about is whether or not we need to store the indices of tables in the column_info table. Technically, if the JSON builder visits tables in the same order as the query builder, it should number the tables in the same way. Both of these visitors are depth first.
+
+One small change I had to make to the JSON builder is regarding indexing. Prior, I had a counter that would be incremented at every loop iteration.
+
+for (i, field) in fields.enumerate():
+	if field is terminal
+		s += build(i + col_offset)
+	else
+		...
+
+This way, if this tables fields start at 6, and we are on the 2nd loop iteration, we add 1 to 6, and pick the seventh column. Then we pick the eighth, etc. This worked, as all foreign fields were last. This didn't work when there was a foreign field in the middle. If there were 3 terminal fields, and we encountered a foreign field, we would skip one terminal field, and then get an out of bounds error. The fix is as follows.
+
+
+i = 0
+for field in fields
+	if field is terminal
+		s += build(i + col_offset)
+		i += 1
+	else
+		...

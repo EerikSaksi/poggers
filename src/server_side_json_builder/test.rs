@@ -239,6 +239,7 @@ fn join_foreign_field_not_last() {
           }
         }";
     let res = convert_gql(gql_query);
+    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     assert!(p.is_ok(), "{}", p.unwrap_err());
 }

@@ -95,30 +95,32 @@ impl JsonBuilder {
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let col_offset = self.table_query_infos.get(0).unwrap().column_offset;
-        for (i, col_info) in self
-            .table_query_infos
-            .get(0)
-            .unwrap()
-            .graphql_fields
-            .iter()
-            .enumerate()
-        {
+        let mut terminal_fields = 0;
+        for col_info in &self.table_query_infos.get(0).unwrap().graphql_fields {
             match col_info {
                 ColumnInfo::Foreign(key) => {
                     let child_pk: Option<i32> =
                         row.get(self.table_query_infos.get(1).unwrap().column_offset);
 
-                    s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
+                    s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
                     if child_pk.is_some() {
                         self.build_child(s, col_offset, row, row_iter, 1);
                         s.drain(s.len() - 1..s.len());
                     }
-                    s.push_str("]}");
+                    s.push_str("],");
                 }
                 ColumnInfo::Terminal(key, closure_index) => {
-                    let col_val = self.closures[*closure_index](row, col_offset + i + 1);
+                    let col_val =
+                        self.closures[*closure_index](row, col_offset + terminal_fields + 1);
+                    terminal_fields += 1;
                     s.push_str(
-                        &[&JsonBuilder::stringify(key), ":", &col_val.to_string(), ","].concat(),
+                        &[
+                            &JsonBuilder::stringify(&key),
+                            ":",
+                            &col_val.to_string(),
+                            ",",
+                        ]
+                        .concat(),
                     );
                 }
             };
@@ -142,14 +144,13 @@ impl JsonBuilder {
             .column_offset;
 
         loop {
+            let mut terminal_fields = 0;
             s.push('{');
-            for (i, col_info) in self
+            for col_info in &self
                 .table_query_infos
                 .get(table_index)
                 .unwrap()
                 .graphql_fields
-                .iter()
-                .enumerate()
             {
                 match col_info {
                     ColumnInfo::Foreign(key) => {
@@ -168,7 +169,9 @@ impl JsonBuilder {
                         s.push_str("]}");
                     }
                     ColumnInfo::Terminal(key, closure_index) => {
-                        let col_val = self.closures[*closure_index](&row, col_offset + i + 1);
+                        let col_val =
+                            self.closures[*closure_index](&row, col_offset + terminal_fields + 1);
+                        terminal_fields += 1;
                         s.push_str(
                             &[&JsonBuilder::stringify(key), ":", &col_val.to_string(), ","]
                                 .concat(),

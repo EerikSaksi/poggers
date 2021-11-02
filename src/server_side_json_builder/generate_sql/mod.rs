@@ -8,7 +8,6 @@ use async_graphql_parser::{parse_query, Positioned};
 use convert_case::{Case, Casing};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
-use postgres::Row;
 use std::collections::HashMap;
 
 use super::TableQueryInfo;
@@ -86,8 +85,6 @@ impl ServerSidePoggers {
         //order and only then concat " ORDER BY " and the orderable column
         select.drain(select.len() - 2..select.len());
 
-        //as we do depth first and we need the first element to be the parent value do reverse
-        table_query_info.reverse();
         match order_by.is_empty() {
             true => (
                 [select, from].concat(),
