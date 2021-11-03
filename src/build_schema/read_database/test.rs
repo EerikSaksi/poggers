@@ -1,5 +1,4 @@
 use super::*;
-
 #[test]
 fn validate_no_duplicate_constraints() {
     let mut client =

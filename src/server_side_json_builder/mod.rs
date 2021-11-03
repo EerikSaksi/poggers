@@ -186,7 +186,6 @@ impl JsonBuilder {
             }
             s.drain(s.len() - 1..s.len());
             s.push_str("},");
-
             match row_iter.peek() {
                 Some(next_row) => {
                     let next_pk_opt: Option<i32> = next_row.get(parent_pk_index);
@@ -249,10 +248,15 @@ impl JsonBuilder {
 
                 s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
                 if child_pk.is_some() {
-                    self.build_child(s, col_offset, row, row_iter, table_index + 1);
+                    let parent_pk_index = self
+                        .table_query_infos
+                        .get(table_index)
+                        .unwrap()
+                        .column_offset;
+                    self.build_child(s, parent_pk_index, row, row_iter, table_index + 1);
                     s.drain(s.len() - 1..s.len());
                 }
-                s.push_str("]}");
+                s.push_str("],");
                 col_offset
             }
             ColumnInfo::Terminal(key, closure_index) => {

@@ -5,7 +5,6 @@ use serde_json::{Error, Value};
 
 fn convert_gql(gql_query: &str) -> String {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
-
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query).unwrap();
@@ -42,7 +41,6 @@ fn test_random_user() {
 
     let p: Result<Value, Error> = serde_json::from_str(&*res);
 
-    write_json_to_file(&res);
     match p {
         Ok(p) => {
             let site_users = p.get("siteUsers").unwrap();
@@ -248,6 +246,7 @@ fn join_foreign_field_not_last() {
           }
         }";
     let res = convert_gql(gql_query);
+    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
         Ok(p) => {
