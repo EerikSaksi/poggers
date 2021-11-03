@@ -1,6 +1,7 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
+
 use postgres::Row;
 
 pub use self::generate_sql::ServerSidePoggers;
@@ -41,8 +42,12 @@ impl JsonBuilder {
                     col_val.to_string()
                 }),
                 Box::new(|row, index| {
+                    let col_val: chrono::NaiveDateTime = row.get(index);
+                    ["\"", &col_val.to_string(), "\""].concat()
+                }),
+                Box::new(|row, index| {
                     let col_val: DateTime<Utc> = row.get(index);
-                    col_val.to_string()
+                    ["\"", &col_val.to_string(), "\""].concat()
                 }),
                 Box::new(|row, index| {
                     let col_val: bool = row.get(index);
@@ -74,9 +79,16 @@ impl JsonBuilder {
                     }
                 }),
                 Box::new(|row, index| {
+                    let col_val: Option<chrono::NaiveDateTime> = row.get(index);
+                    match col_val {
+                        Some(val) => ["\"", &val.to_string(), "\""].concat(),
+                        None => String::from("null"),
+                    }
+                }),
+                Box::new(|row, index| {
                     let col_val: Option<DateTime<Utc>> = row.get(index);
                     match col_val {
-                        Some(val) => val.to_string(),
+                        Some(val) => ["\"", &val.to_string(), "\""].concat(),
                         None => String::from("null"),
                     }
                 }),

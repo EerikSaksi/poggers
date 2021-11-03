@@ -150,3 +150,4 @@ fn check_nullability() {
         assert_eq!(*user_node.field_to_types.get(key).unwrap(), expected);
     }
 }
+

@@ -141,6 +141,10 @@ impl ServerSidePoggers {
                     let column_name =
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
 
+                    if child_name == "displayname" {
+                        let a = &self.g[node_index];
+                        println!("{}", 0);
+                    }
                     match self.g[node_index].field_to_types.get(child_name) {
                         Some(closure_index) => {
                             graphql_fields
@@ -167,8 +171,17 @@ impl ServerSidePoggers {
                             }
                             self.local_id += 1;
                             let child_alias = ServerSidePoggers::table_alias(self.local_id);
-                            let (edge, _) = self.find_edge_and_endpoints(node_index, child_name);
-                            let child_node_index = self.g.edge_endpoints(edge).unwrap().0;
+                            let (edge, is_one_to_many) =
+                                self.find_edge_and_endpoints(node_index, child_name);
+
+                            let child_node_index = {
+                                //the child will depend on whether the edge we found was incoming
+                                //or outgoing
+                                match is_one_to_many {
+                                    true => self.g.edge_endpoints(edge).unwrap().0,
+                                    false => self.g.edge_endpoints(edge).unwrap().1,
+                                }
+                            };
 
                             from.push_str(" LEFT JOIN ");
                             from.push_str(&self.g[child_node_index].table_name);

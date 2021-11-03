@@ -1,7 +1,6 @@
 use super::*;
 use crate::build_schema::internal_schema_info::create;
-use postgres::Client;
-use postgres::NoTls;
+use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
 
 fn convert_gql(gql_query: &str) -> String {
@@ -9,12 +8,9 @@ fn convert_gql(gql_query: &str) -> String {
 
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    use std::time::Instant;
-    let before = Instant::now();
     let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query).unwrap();
     let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
     let to_return = JsonBuilder::new(table_query_infos, root_key_name).convert(rows);
-    println!("Elapsed time: {:.2?}", before.elapsed());
     to_return
 }
 #[allow(dead_code)]
@@ -262,34 +258,81 @@ fn join_foreign_field_not_last() {
     }
 }
 
+//#[test]
+//fn two_children_one_parent() {
+//    let gql_query = "
+//        query{
+//          siteUsers{
+//            id
+//            comments{
+//              score
+//            }
+//            posts{
+//              title
+//            }
+//          }
+//        }";
+//    let res = convert_gql(gql_query);
+//    let p: Result<Value, Error> = serde_json::from_str(&*res);
+//    write_json_to_file(&res);
+//    match p {
+//        Ok(p) => {
+//            let site_users = p.get("siteUsers").unwrap();
+//            site_users.as_array().unwrap().iter().for_each(|user| {
+//                let obj = user.as_object().unwrap();
+//                obj.get("id").unwrap().as_i64().unwrap();
+//                let comments = obj.get("comments").unwrap().as_array().unwrap();
+//                println!("{}", comments.len());
+//                let posts = obj.get("posts").unwrap().as_array().unwrap();
+//                panic!("{}", posts.len());
+//            })
+//        }
+//        Err(e) => panic!("{}", e),
+//    }
+//}
+
 #[test]
-fn two_children_one_parent() {
+fn weird_types_and_nullability() {
     let gql_query = "
         query{
           siteUsers{
             id
-            comments{
-              score
-            }
-            posts{
-              title
-            }
+            creationdate
+            aboutme
+            jsonfield
+            age
           }
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     write_json_to_file(&res);
     match p {
+        Ok(_) => {}
+        Err(e) => panic!("{}", e),
+    }
+}
+
+#[test]
+fn child_to_parent() {
+    let gql_query = "
+        query{
+            posts{
+                id
+                score
+                siteUser{
+                    displayname
+                }
+            }
+        }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    match p {
         Ok(p) => {
-            let site_users = p.get("siteUsers").unwrap();
-            site_users.as_array().unwrap().iter().for_each(|user| {
-                let obj = user.as_object().unwrap();
-                obj.get("id").unwrap().as_i64().unwrap();
-                let comments = obj.get("comments").unwrap().as_array().unwrap();
-                println!("{}", comments.len());
-                let posts = obj.get("posts").unwrap().as_array().unwrap();
-                panic!("{}", posts.len());
-            })
+            let posts = p.get("posts").unwrap().as_array().unwrap();
+            for post in posts {
+                let user = post.get("user").unwrap().as_object().unwrap();
+                user.get("displayname").unwrap().as_str().unwrap();
+            }
         }
         Err(e) => panic!("{}", e),
     }

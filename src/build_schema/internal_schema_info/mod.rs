@@ -7,7 +7,6 @@ use inflector::Inflector;
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 pub struct GraphQLType {
     pub field_to_types: HashMap<String, usize>,
@@ -29,14 +28,16 @@ static POG_INT: usize = 0;
 static POG_STR: usize = 1;
 static POG_FLOAT: usize = 2;
 static POG_TIMESTAMP: usize = 3;
-static POG_BOOLEAN: usize = 4;
-static POG_JSON: usize = 5;
-static POG_NULLABLE_INT: usize = 6;
-static POG_NULLABLE_STR: usize = 7;
-static POG_NULLABLE_FLOAT: usize = 8;
-static POG_NULLABLE_TIMESTAMP: usize = 9;
-static POG_NULLABLE_BOOLEAN: usize = 10;
-static POG_NULLABLE_JSON: usize = 11;
+static POG_TIMESTAMPTZ: usize = 4;
+static POG_BOOLEAN: usize = 5;
+static POG_JSON: usize = 6;
+static POG_NULLABLE_INT: usize = 7;
+static POG_NULLABLE_STR: usize = 8;
+static POG_NULLABLE_FLOAT: usize = 9;
+static POG_NULLABLE_TIMESTAMP: usize = 10;
+static POG_NULLABLE_TIMESTAMPTZ: usize = 11;
+static POG_NULLABLE_BOOLEAN: usize = 12;
+static POG_NULLABLE_JSON: usize = 13;
 
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
@@ -81,9 +82,8 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             "YES" => match data_type {
                 "integer" | "smallint" | "bigint" => POG_NULLABLE_INT,
                 "character varying" | "text" => POG_NULLABLE_STR,
-                "timestamp with time zone" | "timestamp without time zone" => {
-                    POG_NULLABLE_TIMESTAMP
-                }
+                "timestamp with time zone" => POG_NULLABLE_TIMESTAMPTZ,
+                "timestamp without time zone" => POG_NULLABLE_TIMESTAMP,
                 "double precision" | "float" => POG_NULLABLE_FLOAT,
                 "boolean" => POG_NULLABLE_BOOLEAN,
                 "json" | "jsonb" => POG_NULLABLE_JSON,
@@ -92,7 +92,8 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             "NO" => match data_type {
                 "integer" | "smallint" | "bigint" => POG_INT,
                 "character varying" | "text" => POG_STR,
-                "timestamp with time zone" | "timestamp without time zone" => POG_TIMESTAMP,
+                "timestamp with time zone" => POG_TIMESTAMPTZ,
+                "timestamp without time zone" => POG_TIMESTAMP,
                 "double precision" | "float" => POG_FLOAT,
                 "boolean" => POG_BOOLEAN,
                 "json" | "jsonb" => POG_JSON,

@@ -1092,7 +1092,7 @@ query{
 	}
 }
 
-This was suuuuper slow (2 seconds) and in addition lead to incorrect results. Our JSON builder iterated over all the comments, and disregarded the posts (although it tried to build posts, comments had progressed the iterator over all the rows).  The format I want to achieve (imagine two users, user with id 1 has three posts and two comments, whilst user with id 2 has three posts and two comments). We show unrelated post and comment columns, but when we run out comments, the comment fields become null. This is essentially "user join post" and "user join comment" concatenated column wise together. 
+This was suuuuper slow (2 seconds) and in addition lead to incorrect results. Our JSON builder iterated over all the comments, and disregarded the posts (although it tried to build posts, comments had progressed the iterator over all the rows).  The format I want to achieve (imagine two users, user with id 1 has three posts and two comments, whilst user with id 2 has three posts and two comments). We show unrelated post and comment columns, but when we run out comments, the comment fields become null. This is essentially "user join post" and "user join comment" concatenated column wise together. In theory, this should be the total time it takes to execute both a post join and comment join. This would require extra null on the Rust side (if we haven't run out of comments or post views check the primary key is defined before accessing the fields to avoid casting null errors.
 ----------------------------------------
 | user_id | comment_score | post_views |
 ----------------------------------------
@@ -1103,3 +1103,55 @@ This was suuuuper slow (2 seconds) and in addition lead to incorrect results. Ou
 | 2       | 400           | 123        |
 | 2       | 5             |            |
 ----------------------------------------
+
+
+I added nullable types to the schema builder. I then tested that all user table values were selected correctly 
+static POG_INT: usize = 0;
+static POG_STR: usize = 1;
+static POG_FLOAT: usize = 2;
+static POG_TIMESTAMP: usize = 3;
+static POG_BOOLEAN: usize = 4;
+static POG_JSON: usize = 5;
+static POG_NULLABLE_INT: usize = 6;
+static POG_NULLABLE_STR: usize = 7;
+static POG_NULLABLE_FLOAT: usize = 8;
+static POG_NULLABLE_TIMESTAMP: usize = 9;
+static POG_NULLABLE_BOOLEAN: usize = 10;
+static POG_NULLABLE_JSON: usize = 11;
+
+
+let expected_column_types = vec![
+		("id", POG_INT),
+		("reputation", POG_INT),
+		("creationdate", POG_TIMESTAMP),
+		("displayname", POG_STR),
+		("lastaccessdate", POG_NULLABLE_TIMESTAMP),
+		("websiteurl", POG_NULLABLE_STR),
+		("location", POG_NULLABLE_STR),
+		("aboutme", POG_NULLABLE_STR),
+		("views", POG_INT),
+		("upvotes", POG_INT),
+		("downvotes", POG_INT),
+		("profileimageurl", POG_NULLABLE_STR),
+		("age", POG_NULLABLE_INT),
+		("accountid", POG_NULLABLE_INT),
+		("jsonfield", POG_NULLABLE_JSON),
+];
+for (key, expected) in expected_column_types {
+		assert_eq!(*user_node.field_to_types.get(key).unwrap(), expected);
+}
+
+I manually performed the type casting, and ensured that all types were selected correctly, and that their nullability was correct. I then had to add corresponding closures for these new functions. Here's an example for the integer:
+Box::new(|row, index| {
+		let col_val: Option<i32> = row.get(index);
+		match col_val {
+				Some(val) => val.to_string(),
+				None => String::from("null"),
+		}
+}),
+
+Missing values are represented with null in json.
+
+Although I could simply reuse the existing closures that I defined earlier and add an extra (is null) parameter, I thought that this would be better. Although for regular function calls, the Rust optimizer might recognize that a condition will always be true, and not check that condition. When the closure is dynamically generated, I don't think it gets the same optimizations. This would mean that each data type would require a (is_null) check to determine it's type. Another issue would be that we would need to store the nullability of each column, in addition to the data types closure. This would also have an overhead and would complicate the closure call. So I decided to treat nullable types as their own type.
+
+I was having issues with timestamp conversion. In the end I realized that timestamps with timezone need to be treated differently than timestamps without time zone.
