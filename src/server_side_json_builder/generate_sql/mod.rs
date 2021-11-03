@@ -140,11 +140,6 @@ impl ServerSidePoggers {
                     let child_name = child_field.node.name.node.as_str();
                     let column_name =
                         &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
-
-                    if child_name == "displayname" {
-                        let a = &self.g[node_index];
-                        println!("{}", 0);
-                    }
                     match self.g[node_index].field_to_types.get(child_name) {
                         Some(closure_index) => {
                             graphql_fields
@@ -189,24 +184,40 @@ impl ServerSidePoggers {
                             from.push_str(&child_alias);
                             from.push_str(" ON ");
 
+                            //if one to many, then we want the tuples to be (pk, fk), otherwise,
+                            //(fk, pk)
+                            let join_cols = {
+                                match is_one_to_many {
+                                    true => self.g[node_index]
+                                        .primary_keys
+                                        .iter()
+                                        .zip(&self.g[edge].foreign_keys),
+                                    false => self.g[edge]
+                                        .foreign_keys
+                                        .iter()
+                                        .zip(&self.g[node_index].primary_keys),
+                                }
+                            };
+
                             //if its not terminal, this field must be some foreign field. Search the nodes
                             //edges for the edge that corresponds to this graphql field, and whether its a
                             //one to many or many to one relation
-                            for (pk, fk) in self.g[node_index]
-                                .primary_keys
-                                .iter()
-                                .zip(&self.g[edge].foreign_keys)
-                            {
+                            for (col1, col2) in join_cols {
                                 self.num_select_cols += 1;
-                                let parent_pk = [&current_alias, ".", pk].concat();
+                                let parent_pk = [&current_alias, ".", col1].concat();
                                 from.push_str(&parent_pk);
                                 from.push_str(" = ");
                                 from.push_str(&child_alias);
                                 from.push('.');
-                                from.push_str(fk);
+                                from.push_str(col2);
                             }
 
-                            graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
+                            if is_one_to_many {
+                                graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
+                            }
+                            else {
+                                graphql_fields.push(ColumnInfo::ForeignSingular(child_name.to_string()));
+                            }
                             children.push((selection, child_node_index));
                         }
                     }

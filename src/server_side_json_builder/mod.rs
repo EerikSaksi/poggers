@@ -10,6 +10,7 @@ pub mod generate_sql;
 
 pub enum ColumnInfo {
     Foreign(String),
+    ForeignSingular(String),
     Terminal(String, usize),
 }
 
@@ -148,36 +149,9 @@ impl JsonBuilder {
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
     {
-        let col_offset = self.table_query_infos.get(0).unwrap().column_offset;
-        let mut terminal_fields = 0;
+        let mut col_offset = self.table_query_infos.get(0).unwrap().column_offset + 1;
         for col_info in &self.table_query_infos.get(0).unwrap().graphql_fields {
-            match col_info {
-                ColumnInfo::Foreign(key) => {
-                    let child_pk: Option<i32> =
-                        row.get(self.table_query_infos.get(1).unwrap().column_offset);
-
-                    s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
-                    if child_pk.is_some() {
-                        self.build_child(s, col_offset, row, row_iter, 1);
-                        s.drain(s.len() - 1..s.len());
-                    }
-                    s.push_str("],");
-                }
-                ColumnInfo::Terminal(key, closure_index) => {
-                    let col_val =
-                        self.closures[*closure_index](row, col_offset + terminal_fields + 1);
-                    terminal_fields += 1;
-                    s.push_str(
-                        &[
-                            &JsonBuilder::stringify(&key),
-                            ":",
-                            &col_val.to_string(),
-                            ",",
-                        ]
-                        .concat(),
-                    );
-                }
-            };
+            col_offset = self.build_col_info(s, col_info, row, 0, row_iter, col_offset);
         }
     }
     fn build_child<'a, I>(
@@ -191,14 +165,15 @@ impl JsonBuilder {
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let mut parent_pk: i32 = row.get(parent_pk_index);
-        let col_offset = self
+        let col_offset_start = self
             .table_query_infos
             .get(table_index)
             .unwrap()
-            .column_offset;
+            .column_offset
+            + 1;
 
         loop {
-            let mut terminal_fields = 0;
+            let mut col_offset = col_offset_start;
             s.push('{');
             for col_info in &self
                 .table_query_infos
@@ -206,32 +181,8 @@ impl JsonBuilder {
                 .unwrap()
                 .graphql_fields
             {
-                match col_info {
-                    ColumnInfo::Foreign(key) => {
-                        let child_pk: Option<i32> = row.get(
-                            self.table_query_infos
-                                .get(table_index + 1)
-                                .unwrap()
-                                .column_offset,
-                        );
-
-                        s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
-                        if child_pk.is_some() {
-                            self.build_child(s, col_offset, row, row_iter, table_index + 1);
-                            s.drain(s.len() - 1..s.len());
-                        }
-                        s.push_str("]}");
-                    }
-                    ColumnInfo::Terminal(key, closure_index) => {
-                        let col_val =
-                            self.closures[*closure_index](&row, col_offset + terminal_fields + 1);
-                        terminal_fields += 1;
-                        s.push_str(
-                            &[&JsonBuilder::stringify(key), ":", &col_val.to_string(), ","]
-                                .concat(),
-                        );
-                    }
-                };
+                col_offset =
+                    self.build_col_info(s, col_info, row, table_index, row_iter, col_offset);
             }
             s.drain(s.len() - 1..s.len());
             s.push_str("},");
@@ -258,5 +209,65 @@ impl JsonBuilder {
     }
     fn stringify(field: &str) -> String {
         ["\"", field, "\""].concat()
+    }
+    fn build_col_info<'a, I>(
+        &self,
+        s: &mut String,
+        col_info: &ColumnInfo,
+        row: &'a postgres::Row,
+        table_index: usize,
+        row_iter: &mut std::iter::Peekable<I>,
+        col_offset: usize,
+    ) -> usize
+    where
+        I: std::iter::Iterator<Item = &'a Row>,
+    {
+        match col_info {
+            ColumnInfo::ForeignSingular(key) => {
+                let child_pk: Option<i32> = row.get(
+                    self.table_query_infos
+                        .get(table_index + 1)
+                        .unwrap()
+                        .column_offset,
+                );
+
+                s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
+                if child_pk.is_some() {
+                    self.build_child(s, col_offset, row, row_iter, table_index + 1);
+                    s.drain(s.len() - 1..s.len());
+                }
+                s.push_str("]}");
+                col_offset
+            }
+            ColumnInfo::Foreign(key) => {
+                let child_pk: Option<i32> = row.get(
+                    self.table_query_infos
+                        .get(table_index + 1)
+                        .unwrap()
+                        .column_offset,
+                );
+
+                s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
+                if child_pk.is_some() {
+                    self.build_child(s, col_offset, row, row_iter, table_index + 1);
+                    s.drain(s.len() - 1..s.len());
+                }
+                s.push_str("]}");
+                col_offset
+            }
+            ColumnInfo::Terminal(key, closure_index) => {
+                let col_val = self.closures[*closure_index](&row, col_offset);
+                s.push_str(
+                    &[
+                        &JsonBuilder::stringify(&key),
+                        ":",
+                        &col_val.to_string(),
+                        ",",
+                    ]
+                    .concat(),
+                );
+                col_offset + 1
+            }
+        }
     }
 }

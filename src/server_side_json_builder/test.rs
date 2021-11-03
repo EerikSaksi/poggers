@@ -41,17 +41,25 @@ fn test_random_user() {
     let res = convert_gql(gql_query);
 
     let p: Result<Value, Error> = serde_json::from_str(&*res);
+
+    write_json_to_file(&res);
     match p {
         Ok(p) => {
             let site_users = p.get("siteUsers").unwrap();
             //test specific user sampled at random
-            assert!(site_users.as_array().unwrap().iter().any(|user| {
-                let obj = user.as_object().unwrap();
-                obj.get("reputation").unwrap() == 28971
-                    && obj.get("views").unwrap() == 3534
-                    && obj.get("upvotes").unwrap() == 4879
-                    && obj.get("downvotes").unwrap() == 207
-            }));
+            let user = site_users
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|user| user.get("id").unwrap() == 13)
+                .unwrap()
+                .as_object()
+                .unwrap();
+            assert_eq!(user.get("reputation").unwrap(), 28971);
+            assert_eq!(user.get("views").unwrap(), 3534);
+            assert_eq!(user.get("upvotes").unwrap(), 4879);
+            assert_eq!(user.get("downvotes").unwrap(), 207);
+            assert_eq!(user.get("posts").unwrap().as_array().unwrap().len(), 535);
         }
         Err(e) => panic!("{}", e),
     }
@@ -305,7 +313,6 @@ fn weird_types_and_nullability() {
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    write_json_to_file(&res);
     match p {
         Ok(_) => {}
         Err(e) => panic!("{}", e),
@@ -319,8 +326,10 @@ fn child_to_parent() {
             posts{
                 id
                 score
+                owneruserid
                 siteUser{
                     displayname
+                    id
                 }
             }
         }";
@@ -330,8 +339,12 @@ fn child_to_parent() {
         Ok(p) => {
             let posts = p.get("posts").unwrap().as_array().unwrap();
             for post in posts {
-                let user = post.get("user").unwrap().as_object().unwrap();
+                let user = post.get("siteUser").unwrap().as_object().unwrap();
                 user.get("displayname").unwrap().as_str().unwrap();
+                assert_eq!(
+                    post.get("owneruserid").unwrap().as_i64().unwrap(),
+                    user.get("id").unwrap().as_i64().unwrap()
+                );
             }
         }
         Err(e) => panic!("{}", e),

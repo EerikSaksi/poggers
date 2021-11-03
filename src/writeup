@@ -1155,3 +1155,13 @@ Missing values are represented with null in json.
 Although I could simply reuse the existing closures that I defined earlier and add an extra (is null) parameter, I thought that this would be better. Although for regular function calls, the Rust optimizer might recognize that a condition will always be true, and not check that condition. When the closure is dynamically generated, I don't think it gets the same optimizations. This would mean that each data type would require a (is_null) check to determine it's type. Another issue would be that we would need to store the nullability of each column, in addition to the data types closure. This would also have an overhead and would complicate the closure call. So I decided to treat nullable types as their own type.
 
 I was having issues with timestamp conversion. In the end I realized that timestamps with timezone need to be treated differently than timestamps without time zone.
+
+I wanted to implement child to parent relationships. This already worked in the query builder (as the database side JSON builder needed to know if relationships were child to parent or parent to child). The generated join statement was invalid, as it would try to join the child.id with parent.parent_id, when it should've been child.parent_id with parent.id. I simply added a conditional which inverts the tuple columns if it's one to many. This generated almost the correct JSON in the JSON builder. For every post, it would select one user. As the post primary key changes every single row, it would close this array, and start a new post object. The issue with this was that it would wrap this one user in an array. 
+
+What we want:
+user: {id: 1, displayname: "Eerik" }
+
+What we got:
+user: [{id: 1, displayname: "Eerik" }]
+
+There is no need for a list if there is only 1 or null users. I decided to add a new enum type, ForeignSingular in addition to Foreign. I could've added a boolean field to Foreign (is_singular) but I decided to add a new field. This way Rust won't compile unless I explictly handle this case, and it should theoretically save more memory (every Foreign field would need to store a boolean).
