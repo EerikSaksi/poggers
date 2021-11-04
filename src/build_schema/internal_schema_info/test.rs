@@ -46,6 +46,7 @@ fn test_one_to_many() {
 fn test_composite_primary_keys() {
     let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
+    
     assert_some_edge_eq(
         ("childTables", "parentTable"),
         vec!["parent_id1", "parent_id2"],
@@ -150,4 +151,5 @@ fn check_nullability() {
         assert_eq!(*user_node.field_to_types.get(key).unwrap(), expected);
     }
 }
+
 

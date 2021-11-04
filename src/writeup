@@ -1164,4 +1164,7 @@ user: {id: 1, displayname: "Eerik" }
 What we got:
 user: [{id: 1, displayname: "Eerik" }]
 
-There is no need for a list if there is only 1 or null users. I decided to add a new enum type, ForeignSingular in addition to Foreign. I could've added a boolean field to Foreign (is_singular) but I decided to add a new field. This way Rust won't compile unless I explictly handle this case, and it should theoretically save more memory (every Foreign field would need to store a boolean).
+There is no need for a list if there is only 1 or null users. I decided to add a new enum type, ForeignSingular in addition to Foreign. I could've added a boolean field to Foreign (is_singular) but I decided to add a new field. This way Rust won't compile unless I explictly handle this case, and it should theoretically save more memory (every Foreign field would need to store a boolean). 
+
+I created a new method to build this many to one relationship. This doesn't surround the parent in [] braces (as there can at most be one parent). This also does not need to keep track of the parent primary key, as there aren't a variable number of children. 
+

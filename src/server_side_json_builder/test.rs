@@ -333,7 +333,6 @@ fn child_to_parent() {
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    write_json_to_file(&res);
     match p {
         Ok(p) => {
             let posts = p.get("posts").unwrap().as_array().unwrap();
@@ -352,6 +351,27 @@ fn child_to_parent() {
             }
         }
 
+        Err(e) => panic!("{}", e),
+    }
+}
+
+#[test]
+fn composite_join() {
+    let gql_query = "
+            query{
+              parentTables {
+                id1
+                id2
+                childTables{
+                  parentId1
+                  parentId2
+                }
+              }
+            }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    match p {
+        Ok(p) => {}
         Err(e) => panic!("{}", e),
     }
 }
