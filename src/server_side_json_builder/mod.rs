@@ -223,19 +223,21 @@ impl JsonBuilder {
     {
         match col_info {
             ColumnInfo::ForeignSingular(key) => {
-                let child_pk: Option<i32> = row.get(
-                    self.table_query_infos
-                        .get(table_index + 1)
-                        .unwrap()
-                        .column_offset,
-                );
+                let pk_col_offset = self
+                    .table_query_infos
+                    .get(table_index + 1)
+                    .unwrap()
+                    .column_offset;
+                let child_pk: Option<i32> = row.get(pk_col_offset);
 
-                s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
+                s.push_str(&JsonBuilder::stringify(&key));
+
                 if child_pk.is_some() {
-                    self.build_child(s, col_offset, row, row_iter, table_index + 1);
-                    s.drain(s.len() - 1..s.len());
+                    self.build_one_child(s, row, row_iter, pk_col_offset + 1, table_index + 1);
+                } else {
+                    s.push_str(":null")
                 }
-                s.push_str("]}");
+                s.push_str("}");
                 col_offset
             }
             ColumnInfo::Foreign(key) => {
@@ -273,5 +275,28 @@ impl JsonBuilder {
                 col_offset + 1
             }
         }
+    }
+
+    fn build_one_child<'a, I>(
+        &self,
+        s: &mut String,
+        row: &'a Row,
+        row_iter: &mut std::iter::Peekable<I>,
+        mut col_offset: usize,
+        table_index: usize,
+    ) where
+        I: std::iter::Iterator<Item = &'a Row>,
+    {
+        s.push_str(":{");
+        for col_info in &self
+            .table_query_infos
+            .get(table_index)
+            .unwrap()
+            .graphql_fields
+        {
+            col_offset = self.build_col_info(s, col_info, row, table_index, row_iter, col_offset);
+        }
+        s.drain(s.len() - 1..s.len());
+        s.push_str("}");
     }
 }

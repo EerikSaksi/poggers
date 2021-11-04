@@ -6,6 +6,4 @@ use handle_query::{postgres_query_builder::PostgresBuilder, Poggers};
 use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 
 fn main() {
-    panic!("");
-    println!("{}", 0);
 }

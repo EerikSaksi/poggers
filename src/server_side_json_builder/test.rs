@@ -246,7 +246,6 @@ fn join_foreign_field_not_last() {
           }
         }";
     let res = convert_gql(gql_query);
-    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
         Ok(p) => {
@@ -334,18 +333,25 @@ fn child_to_parent() {
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
+    write_json_to_file(&res);
     match p {
         Ok(p) => {
             let posts = p.get("posts").unwrap().as_array().unwrap();
             for post in posts {
-                let user = post.get("siteUser").unwrap().as_object().unwrap();
-                user.get("displayname").unwrap().as_str().unwrap();
-                assert_eq!(
-                    post.get("owneruserid").unwrap().as_i64().unwrap(),
-                    user.get("id").unwrap().as_i64().unwrap()
-                );
+                let user = post.get("siteUser").unwrap();
+                if user.is_null() {
+                    assert!(post.get("owneruserid").unwrap().is_null());
+                } else {
+                    let user = user.as_object().unwrap();
+                    user.get("displayname").unwrap().as_str().unwrap();
+                    assert_eq!(
+                        post.get("owneruserid").unwrap().as_i64().unwrap(),
+                        user.get("id").unwrap().as_i64().unwrap()
+                    );
+                }
             }
         }
+
         Err(e) => panic!("{}", e),
     }
 }
