@@ -1168,4 +1168,4 @@ There is no need for a list if there is only 1 or null users. I decided to add a
 
 I created a new method to build this many to one relationship. This doesn't surround the parent in [] braces (as there can at most be one parent). This also does not need to keep track of the parent primary key, as there aren't a variable number of children. Although the child only passes one parent row, this parent row might have children of their own which requires them to iterate over many rows.
 
-
+One optimization that I realized that I could make is that a null check on the parent primary key is not required for the first join, but is required for any children beyond that. I created a new method, build first child which is identical but does not null check the parent. This means that there will be no null checks for one way joins, and only null checks for the second join.
