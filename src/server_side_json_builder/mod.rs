@@ -2,10 +2,9 @@
 #[path = "./test.rs"]
 mod test;
 
-use postgres::Row;
-
 pub use self::generate_sql::ServerSidePoggers;
 use chrono::{DateTime, Utc};
+use postgres::Row;
 pub mod generate_sql;
 
 pub enum ColumnInfo {
@@ -165,7 +164,7 @@ impl JsonBuilder {
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let mut parent_pk: i32 = row.get(parent_pk_index);
-        let col_offset= self
+        let col_offset = self
             .table_query_infos
             .get(table_index)
             .unwrap()
@@ -216,8 +215,8 @@ impl JsonBuilder {
                     .get(table_index + 1)
                     .unwrap()
                     .column_offset;
-                let child_pk: Option<i32> = row.get(pk_col_offset);
 
+                let child_pk: Option<i32> = row.get(pk_col_offset);
                 s.push_str(&[&JsonBuilder::stringify(&key), ":"].concat());
 
                 if child_pk.is_some() {
@@ -235,7 +234,6 @@ impl JsonBuilder {
                         .unwrap()
                         .column_offset,
                 );
-
                 s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
                 if child_pk.is_some() {
                     let parent_pk_index = self
