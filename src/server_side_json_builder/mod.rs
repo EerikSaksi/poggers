@@ -121,7 +121,6 @@ impl JsonBuilder {
         let first_row = row_iter.next().unwrap();
         s.push('{');
         self.build_one_root_parent(&mut s, &first_row, &mut row_iter);
-
         let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = row_iter.next() {
             //one left of the start of the next tables cols is primary key
@@ -153,7 +152,7 @@ impl JsonBuilder {
             col_offset = self.build_col_info(s, col_info, row, 0, row_iter, col_offset);
         }
     }
-    fn build_child<'a, I>(
+    fn build_children<'a, I>(
         &self,
         s: &mut String,
         parent_pk_index: usize,
@@ -164,6 +163,7 @@ impl JsonBuilder {
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let mut parent_pk: i32 = row.get(parent_pk_index);
+        //+1 to offset primary key
         let col_offset = self
             .table_query_infos
             .get(table_index)
@@ -173,6 +173,7 @@ impl JsonBuilder {
 
         loop {
             self.build_one_child(s, row, row_iter, col_offset, table_index);
+
             match row_iter.peek() {
                 Some(next_row) => {
                     let next_pk_opt: Option<i32> = next_row.get(parent_pk_index);
@@ -185,6 +186,43 @@ impl JsonBuilder {
                         }
                         None => break,
                     }
+                }
+                None => break,
+            }
+
+            //can unwrap as this does not run if peek fails
+            row = row_iter.next().unwrap();
+        }
+    }
+
+    fn build_children_no_parent_null_check<'a, I>(
+        &self,
+        s: &mut String,
+        parent_pk_index: usize,
+        mut row: &'a Row,
+        row_iter: &mut std::iter::Peekable<I>,
+        table_index: usize,
+    ) where
+        I: std::iter::Iterator<Item = &'a Row>,
+    {
+        let mut parent_pk: i32 = row.get(parent_pk_index);
+        //+1 to offset primary key
+        let col_offset = self
+            .table_query_infos
+            .get(table_index)
+            .unwrap()
+            .column_offset
+            + 1;
+
+        loop {
+            self.build_one_child(s, row, row_iter, col_offset, table_index);
+            match row_iter.peek() {
+                Some(next_row) => {
+                    let next_pk: i32 = next_row.get(parent_pk_index);
+                    if next_pk != parent_pk {
+                        break;
+                    };
+                    parent_pk = next_pk
                 }
                 None => break,
             }
@@ -222,9 +260,8 @@ impl JsonBuilder {
                 if child_pk.is_some() {
                     self.build_one_child(s, row, row_iter, pk_col_offset + 1, table_index + 1);
                 } else {
-                    s.push_str(":null")
+                    s.push_str("null ")
                 }
-                s.push_str("}");
                 col_offset
             }
             ColumnInfo::Foreign(key) => {
@@ -241,7 +278,8 @@ impl JsonBuilder {
                         .get(table_index)
                         .unwrap()
                         .column_offset;
-                    self.build_child(s, parent_pk_index, row, row_iter, table_index + 1);
+
+                    self.build_children(s, parent_pk_index, row, row_iter, table_index + 1);
                     s.drain(s.len() - 1..s.len());
                 }
                 s.push_str("],");

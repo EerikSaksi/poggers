@@ -1172,29 +1172,19 @@ I realized that I was excessively null checking every relation. If a foreign key
 
 I also realized that if we only null check when we need to, we can also select primary keys less often. Currently, we are selecting the primary keys of every single table as __t0_pk0__, __t0_pk1__, __t1_pk0__ (table 0s two primary keys, table 1s first primary key). This is done regardless of whether the primary key columns are actually request explictly. 
 
-Current rules:
-	Primary keys:
-		Explictly request for ALL tables, including the root table
-	Null checks:
-		Always null check children's primary key before starting to build them (parent verifies it has children) and children null check the parent's 
-		primary key before checking if parent primary key changed (as instead of the parent changing to another parent with no children, you might encounter a parent with no children, leading to a null error).
+A better way to do it would be to only request the foreign keys of child tables. This way we can differentiate when we've built all parent's children (if the child foreign key changes then this means that these children belong to a different parent). We can also null check the child's fk columns: if (it or any) are null then this tells us that parent's have no children. 
 
-Proposed rules:
-	Primary keys:
-		Root table:
-			Required when we have a join from the root parent (child needs to figure out if the root parent changes by comparing primary keys)
-		Any other table:
-			Also required when we have a join (their children also need to track if this arbitrary tables' pk changes)
-		Childless table
-			Required if joined on nullable foreign key 
 
-	Null checks:
-		Root table:
-			Before starting to build children connected by a nullable child, the parent should check if the nullable child's primary key exists (this is to prevent the no children edge case)
-			After this, the nullable child is responsible for building all children before the parent's primary key changes. The child does not need to null check the root parent's primary key
-		Any other table:
-			Much like root, null checks are required for the first child to prevent the no children edge case (just return [] instead). But in addition, this tables' children need to null check the 
-			parent's primary key before accessing it (we might go from a comment to a user with no posts, nor any comments, causing an error. This can happen regardless of if the post and comment foreign key is nullable)
-		Childless table
-			Not required
+(no join)
+	Old version
+	One extra column (primary key)
+
+	New version 
+		No extra columns (we don't request primary key)
+
+One join
+	Old version 
+		Two columns (parent primary key, child primary key)
+	New version
+		One column (just child foreign key)
 

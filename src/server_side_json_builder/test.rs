@@ -332,6 +332,7 @@ fn child_to_parent() {
             }
         }";
     let res = convert_gql(gql_query);
+    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     match p {
         Ok(p) => {
