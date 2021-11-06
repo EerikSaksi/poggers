@@ -46,12 +46,22 @@ fn test_one_to_many() {
 fn test_composite_primary_keys() {
     let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
-    
     assert_some_edge_eq(
         ("childTables", "parentTable"),
         vec!["parent_id1", "parent_id2"],
         g.raw_edges(),
     );
+    let child = g
+        .node_weights()
+        .find(|n| n.table_name == "child_table")
+        .unwrap();
+    for field in ["parentId1", "parentId2"] {
+        assert!(
+            child.field_to_types.contains_key(field),
+            "{} doesn't have key, actually has {:?}",
+            field, &child.field_to_types.keys()
+        );
+    }
 }
 
 #[test]
@@ -151,5 +161,3 @@ fn check_nullability() {
         assert_eq!(*user_node.field_to_types.get(key).unwrap(), expected);
     }
 }
-
-

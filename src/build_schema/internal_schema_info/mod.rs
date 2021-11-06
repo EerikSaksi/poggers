@@ -103,8 +103,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         };
         g[child_index]
             .field_to_types
-            .insert(column_name.clone(), data_type_index);
-
+            .insert(column_name.to_camel_case(), data_type_index);
         query_to_type.insert(
             table_name.clone().to_plural().to_camel_case(),
             QueryEdgeInfo {
