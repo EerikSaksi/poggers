@@ -172,17 +172,7 @@ impl JsonBuilder {
                     col_offset
                 }
                 ColumnInfo::Terminal(key, closure_index) => {
-                    let col_val = self.closures[*closure_index](&row, col_offset);
-                    s.push_str(
-                        &[
-                            &JsonBuilder::stringify(&key),
-                            ":",
-                            &col_val.to_string(),
-                            ",",
-                        ]
-                        .concat(),
-                    );
-                    col_offset + 1
+                    self.build_terminal(s, key, *closure_index, row, col_offset)
                 }
             };
         }
@@ -289,17 +279,7 @@ impl JsonBuilder {
                 self.build_foreign(s, key, row, row_iter, col_offset, table_index)
             }
             ColumnInfo::Terminal(key, closure_index) => {
-                let col_val = self.closures[*closure_index](&row, col_offset);
-                s.push_str(
-                    &[
-                        &JsonBuilder::stringify(&key),
-                        ":",
-                        &col_val.to_string(),
-                        ",",
-                    ]
-                    .concat(),
-                );
-                col_offset + 1
+                self.build_terminal(s, key, *closure_index, row, col_offset)
             }
         }
     }
@@ -385,5 +365,26 @@ impl JsonBuilder {
         }
         s.push_str("],");
         col_offset
+    }
+
+    fn build_terminal(
+        &self,
+        s: &mut String,
+        key: &String,
+        closure_index: usize,
+        row: &Row,
+        col_offset: usize,
+    ) -> usize {
+        let col_val = self.closures[closure_index](&row, col_offset);
+        s.push_str(
+            &[
+                &JsonBuilder::stringify(&key),
+                ":",
+                &col_val.to_string(),
+                ",",
+            ]
+            .concat(),
+        );
+        col_offset + 1
     }
 }

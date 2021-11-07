@@ -138,12 +138,13 @@ impl ServerSidePoggers {
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
-                    let column_name =
-                        &[&current_alias, ".", &child_name.to_case(Case::Snake)].concat();
                     match self.g[node_index].field_to_types.get(child_name) {
-                        Some(closure_index) => {
+                        Some(column_info) => {
+
+                        let column_name =
+                            &[&current_alias, ".", &column_info.0].concat();
                             graphql_fields
-                                .push(ColumnInfo::Terminal(child_name.to_string(), *closure_index));
+                                .push(ColumnInfo::Terminal(child_name.to_string(), column_info.1));
                             select.push_str(column_name);
                             select.push_str(" as __t");
                             select.push_str(&id_copy.to_string());
@@ -202,6 +203,7 @@ impl ServerSidePoggers {
                             //if its not terminal, this field must be some foreign field. Search the nodes
                             //edges for the edge that corresponds to this graphql field, and whether its a
                             //one to many or many to one relation
+                            //
                             for (col1, col2) in join_cols {
                                 self.num_select_cols += 1;
                                 let parent_pk = [&current_alias, ".", col1].concat();
@@ -210,13 +212,16 @@ impl ServerSidePoggers {
                                 from.push_str(&child_alias);
                                 from.push('.');
                                 from.push_str(col2);
+                                from.push_str(" AND ");
                             }
+                            //remove trailing " and "
+                            from.drain(from.len() - 5..from.len());
 
                             if is_one_to_many {
                                 graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
-                            }
-                            else {
-                                graphql_fields.push(ColumnInfo::ForeignSingular(child_name.to_string()));
+                            } else {
+                                graphql_fields
+                                    .push(ColumnInfo::ForeignSingular(child_name.to_string()));
                             }
                             children.push((selection, child_node_index));
                         }

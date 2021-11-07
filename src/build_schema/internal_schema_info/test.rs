@@ -59,7 +59,8 @@ fn test_composite_primary_keys() {
         assert!(
             child.field_to_types.contains_key(field),
             "{} doesn't have key, actually has {:?}",
-            field, &child.field_to_types.keys()
+            field,
+            &child.field_to_types.keys()
         );
     }
 }
@@ -158,6 +159,6 @@ fn check_nullability() {
         ("jsonfield", POG_NULLABLE_JSON),
     ];
     for (key, expected) in expected_column_types {
-        assert_eq!(*user_node.field_to_types.get(key).unwrap(), expected);
+        assert_eq!(user_node.field_to_types.get(key).unwrap().1, expected);
     }
 }
