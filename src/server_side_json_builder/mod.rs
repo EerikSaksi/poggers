@@ -260,7 +260,7 @@ impl JsonBuilder {
                 if child_pk.is_some() {
                     self.build_one_child(s, row, row_iter, pk_col_offset + 1, table_index + 1);
                 } else {
-                    s.push_str("null ")
+                    s.push_str("null,")
                 }
                 col_offset
             }

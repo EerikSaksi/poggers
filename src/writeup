@@ -1187,4 +1187,7 @@ One join
 		Two columns (parent primary key, child primary key)
 	New version
 		One column (just child foreign key)
-
+68.04 ms no root parent null check three way join
+48.14 ms no root parent null check one way join
+65.02 ms null check three way join
+48.ms no root parent null check one way join
