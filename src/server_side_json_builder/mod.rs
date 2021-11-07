@@ -5,6 +5,7 @@ mod test;
 pub use self::generate_sql::ServerSidePoggers;
 use chrono::{DateTime, Utc};
 use postgres::Row;
+use std::ops::Range;
 pub mod generate_sql;
 
 pub enum ColumnInfo {
@@ -15,7 +16,7 @@ pub enum ColumnInfo {
 
 pub struct TableQueryInfo {
     graphql_fields: Vec<ColumnInfo>,
-    column_offset: usize,
+    primary_key_range: Range<usize>,
 }
 
 pub struct JsonBuilder {
@@ -118,7 +119,11 @@ impl JsonBuilder {
         let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":["].concat();
 
         let mut row_iter = rows.iter().peekable();
-        let first_row = row_iter.next().unwrap();
+        let first_row;
+        match row_iter.next() {
+            Some(row) => first_row = row,
+            None => return String::from("]}"),
+        }
         s.push('{');
         self.build_one_root_parent(&mut s, &first_row, &mut row_iter);
         let mut last_pk: i32 = first_row.get(0);
@@ -147,21 +152,27 @@ impl JsonBuilder {
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
     {
-        let mut col_offset = self.table_query_infos.get(0).unwrap().column_offset + 1;
+        let mut col_offset = self.table_query_infos.get(0).unwrap().primary_key_range.end;
         for col_info in &self.table_query_infos.get(0).unwrap().graphql_fields {
             col_offset = match col_info {
                 ColumnInfo::ForeignSingular(key) => {
                     self.build_foreign_singular(s, key, row, row_iter, col_offset, 0)
                 }
                 ColumnInfo::Foreign(key) => {
-                    let child_pk: Option<i32> =
-                        row.get(self.table_query_infos.get(1).unwrap().column_offset);
+                    let child_pk: Option<i32> = row.get(
+                        self.table_query_infos
+                            .get(1)
+                            .unwrap()
+                            .primary_key_range
+                            .start,
+                    );
                     s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
                     if child_pk.is_some() {
-                        let parent_pk_index = self.table_query_infos.get(0).unwrap().column_offset;
+                        let parent_pks_range =
+                            &self.table_query_infos.get(0).unwrap().primary_key_range;
                         self.build_children_no_parent_null_check(
                             s,
-                            parent_pk_index,
+                            parent_pks_range,
                             row,
                             row_iter,
                             1,
@@ -180,34 +191,44 @@ impl JsonBuilder {
     fn build_children<'a, I>(
         &self,
         s: &mut String,
-        parent_pk_index: usize,
+        parent_pks_range: &Range<usize>,
         mut row: &'a Row,
         row_iter: &mut std::iter::Peekable<I>,
         table_index: usize,
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
     {
-        let mut parent_pk: i32 = row.get(parent_pk_index);
-        //+1 to offset primary key
+        let mut parent_pks: Vec<i32> = vec![];
+        for col_offset in parent_pks_range.start..parent_pks_range.end {
+            parent_pks.push(row.get(col_offset));
+        }
         let col_offset = self
             .table_query_infos
             .get(table_index)
             .unwrap()
-            .column_offset
-            + 1;
+            .primary_key_range
+            .end;
 
         loop {
             self.build_one_child(s, row, row_iter, col_offset, table_index);
 
             match row_iter.peek() {
                 Some(next_row) => {
-                    let next_pk_opt: Option<i32> = next_row.get(parent_pk_index);
-                    match next_pk_opt {
-                        Some(next_pk) => {
-                            if next_pk != parent_pk {
+                    //null check the first parent column (rest will not be null if not null)
+                    let first_pk: Option<i32> = next_row.get(parent_pks_range.start);
+                    match first_pk {
+                        Some(first_pk) => {
+                            if first_pk != *parent_pks.get(0).unwrap() {
                                 break;
                             };
-                            parent_pk = next_pk
+                            let mut i = 1;
+                            while i + parent_pks_range.start < parent_pks_range.end {
+                                let pk_val: i32 = next_row.get(col_offset);
+                                if pk_val != *parent_pks.get(i).unwrap() {
+                                    break;
+                                };
+                                i += 1;
+                            }
                         }
                         None => break,
                     }
@@ -223,31 +244,39 @@ impl JsonBuilder {
     fn build_children_no_parent_null_check<'a, I>(
         &self,
         s: &mut String,
-        parent_pk_index: usize,
+        parent_pks_range: &Range<usize>,
         mut row: &'a Row,
         row_iter: &mut std::iter::Peekable<I>,
         table_index: usize,
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
     {
-        let mut parent_pk: i32 = row.get(parent_pk_index);
-        //+1 to offset primary key
+        let mut parent_pks: Vec<i32> = vec![];
+        for col_offset in parent_pks_range.start..parent_pks_range.end {
+            parent_pks.push(row.get(col_offset));
+        }
         let col_offset = self
             .table_query_infos
             .get(table_index)
             .unwrap()
-            .column_offset
-            + 1;
+            .primary_key_range
+            .end;
 
-        loop {
+        'outer: loop {
             self.build_one_child(s, row, row_iter, col_offset, table_index);
             match row_iter.peek() {
                 Some(next_row) => {
-                    let next_pk: i32 = next_row.get(parent_pk_index);
-                    if next_pk != parent_pk {
-                        break;
-                    };
-                    parent_pk = next_pk
+                    let mut i = parent_pks_range.start;
+                    while i < parent_pks_range.end {
+                        let pk_val: i32 = next_row.get(i);
+                        if pk_val == 4 && *parent_pks.get(i).unwrap() == 3 {
+                            println!("{}", 0);
+                        }
+                        if pk_val != *parent_pks.get(i).unwrap() {
+                            break 'outer;
+                        };
+                        i += 1;
+                    }
                 }
                 None => break,
             }
@@ -322,7 +351,8 @@ impl JsonBuilder {
             .table_query_infos
             .get(table_index + 1)
             .unwrap()
-            .column_offset;
+            .primary_key_range
+            .end;
 
         let child_pk: Option<i32> = row.get(pk_col_offset);
         s.push_str(&[&JsonBuilder::stringify(&key), ":"].concat());
@@ -350,17 +380,18 @@ impl JsonBuilder {
             self.table_query_infos
                 .get(table_index + 1)
                 .unwrap()
-                .column_offset,
+                .primary_key_range
+                .end,
         );
         s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
         if child_pk.is_some() {
-            let parent_pk_index = self
+            let parent_pks_range = &self
                 .table_query_infos
                 .get(table_index)
                 .unwrap()
-                .column_offset;
+                .primary_key_range;
 
-            self.build_children(s, parent_pk_index, row, row_iter, table_index + 1);
+            self.build_children(s, parent_pks_range, row, row_iter, table_index + 1);
             s.drain(s.len() - 1..s.len());
         }
         s.push_str("],");

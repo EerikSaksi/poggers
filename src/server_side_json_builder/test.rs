@@ -370,8 +370,18 @@ fn composite_join() {
             }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
+    write_json_to_file(&res);
     match p {
-        Ok(p) => {}
+        Ok(p) => {
+            for parent in p.get("parentTables").unwrap().as_array().unwrap() {
+                let id1 = parent.get("id1").unwrap().as_i64();
+                let id2 = parent.get("id2").unwrap().as_i64();
+                for child in parent.get("childTables").unwrap().as_array().unwrap() {
+                    assert_eq!(id1, child.get("parentId1").unwrap().as_i64());
+                    assert_eq!(id2, child.get("parentId2").unwrap().as_i64());
+                }
+            }
+        }
         Err(e) => panic!("{}", e),
     }
 }

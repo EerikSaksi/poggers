@@ -1191,3 +1191,19 @@ One join
 48.14 ms no root parent null check one way join
 65.02 ms null check three way join
 48.ms no root parent null check one way join
+
+Now each nodes terminal fields HashMap both stores the closure index required to process the column, but also the column name as a string. During schema introspection, I turn each column into camelcase to adhere to the naming convention of GraphQL (e.g parent_id becomes parentId). During query construction, I simply converted each GraphQL field snakecase in order to reverse this camelcase, and to get back the original column. Basically I was under the presumption that for all strings, s.to_camel().to_snake = s. One edge case is id1: id1 as camel case is id1, but as snake case is id_1. I figured there were probably other such edge cases, and rather than create rules to ensure that we accurately decipher the column name from the GraphQL name, we should just store the original column name.
+
+In order to support compound primary keys I first had to change how I represented the query. Before, I simply stored the start of the columns for a table (column_offset). E.g if the first table had 3 columns, the first table's column offset is 0, and the second one's is 3. We assume that the first column is the primary key, so the selected fields actually start at column offset + 1. Of course, there aren't always just one primary key. I replaced the column offset field with primary_key_range, which simply stores the range of primary keys. Instead of simply adding 1 to the column offset to get the start of selected fields, you should now use primary_key_range.end. I replaced all instances of column offset with primary_key_range and the code compiled and all existing passing tests were still passing, including the new composite primary/foreign key test. I made this test fail by adding rows where one id was the same, but the other id (composing the composite key) was different, and checked that for every child, the composite foreign key matched the composite primary key. This wasn't the case as our code wasn't actually checking if both primary keys matched. We need to transform this:
+
+if row.get(primary_key_range.start) != row.peek().get(primary_key_range.start) {
+	break
+}
+
+to
+
+for col_offset in primary_key_range {
+	if row.get(col_offset) != row.next().get(col_offset) {
+		break
+	}
+}

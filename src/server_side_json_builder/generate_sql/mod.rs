@@ -5,10 +5,10 @@ use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use crate::server_side_json_builder::ColumnInfo;
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
-use convert_case::{Case, Casing};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
+use std::ops::Range;
 
 use super::TableQueryInfo;
 
@@ -134,7 +134,6 @@ impl ServerSidePoggers {
             let mut encountered_join = false;
             let mut graphql_fields: Vec<ColumnInfo> = vec![];
             let column_offset = self.num_select_cols;
-
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
@@ -230,7 +229,11 @@ impl ServerSidePoggers {
             }
             table_query_info.push(TableQueryInfo {
                 graphql_fields,
-                column_offset,
+                //the value at which primary keys start is the column offset before we started
+                //adding any new columns (column offset was copied before we started modifiying it
+                //this recursive call. The right hand is the column offset + the number of primary
+                //keys that this table has.)
+                primary_key_range: (column_offset .. column_offset +  self.g[node_index].primary_keys.len()),
             });
 
             for child in children {

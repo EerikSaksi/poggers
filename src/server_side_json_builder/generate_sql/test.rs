@@ -52,6 +52,6 @@ fn column_offsets() {
           }
         }";
     let (_, table_query_infos, _) = pogg.build_root(query).unwrap();
-    assert_eq!(table_query_infos.get(0).unwrap().column_offset, 0);
-    assert_eq!(table_query_infos.get(1).unwrap().column_offset, 5);
+    assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
+    assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
 }
