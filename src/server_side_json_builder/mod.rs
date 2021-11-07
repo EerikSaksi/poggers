@@ -209,7 +209,7 @@ impl JsonBuilder {
             .primary_key_range
             .end;
 
-        loop {
+        'outer: loop {
             self.build_one_child(s, row, row_iter, col_offset, table_index);
 
             match row_iter.peek() {
@@ -219,7 +219,7 @@ impl JsonBuilder {
                     match first_pk {
                         Some(first_pk) => {
                             if first_pk != *parent_pks.get(0).unwrap() {
-                                break;
+                                break 'outer;
                             };
                             let mut i = 1;
                             while i + parent_pks_range.start < parent_pks_range.end {
@@ -230,10 +230,10 @@ impl JsonBuilder {
                                 i += 1;
                             }
                         }
-                        None => break,
+                        None => break 'outer,
                     }
                 }
-                None => break,
+                None => break 'outer,
             }
 
             //can unwrap as this does not run if peek fails
@@ -278,7 +278,7 @@ impl JsonBuilder {
                         i += 1;
                     }
                 }
-                None => break,
+                None => break 'outer,
             }
 
             //can unwrap as this does not run if peek fails
@@ -352,7 +352,7 @@ impl JsonBuilder {
             .get(table_index + 1)
             .unwrap()
             .primary_key_range
-            .end;
+            .start;
 
         let child_pk: Option<i32> = row.get(pk_col_offset);
         s.push_str(&[&JsonBuilder::stringify(&key), ":"].concat());

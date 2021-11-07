@@ -370,7 +370,6 @@ fn composite_join() {
             }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    write_json_to_file(&res);
     match p {
         Ok(p) => {
             for parent in p.get("parentTables").unwrap().as_array().unwrap() {

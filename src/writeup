@@ -1207,3 +1207,28 @@ for col_offset in primary_key_range {
 		break
 	}
 }
+
+One pretty annoyging bug I had was related to breaking loops. Before, I simply did this:
+
+while (true){
+	build_row(row)
+	if row.parent_pk = parent_pk{
+		break
+	}
+	row = row.next()
+}
+
+This would build all the children where the parent pk was parent_pk. I replaced this with
+
+while (true){
+	build_row(row)
+	for i in range(parent_pks){
+		if row.parent_pk[i] != parent_pk[i] {
+			break
+		}
+	}
+	row = row.next()
+}
+
+This doesn't actually break the row building loop, but the for i in range... loop. So it did nothing. Luckily I figured it out but still an annoying bug.
+
