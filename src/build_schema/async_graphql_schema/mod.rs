@@ -5,7 +5,7 @@ use async_graphql::{
 };
 use std::collections::BTreeMap;
 
-fn internal_to_async(pogg: ServerSidePoggers) -> Registry {
+pub fn internal_to_async(pogg: ServerSidePoggers) -> Registry {
     let mut query_fields: IndexMap<String, MetaField> = IndexMap::new();
     let mut query_type: BTreeMap<String, MetaType> = BTreeMap::new();
     for query_name in pogg.query_to_type.keys() {

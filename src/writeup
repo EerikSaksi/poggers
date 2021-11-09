@@ -1283,13 +1283,6 @@ else {
 	throw Error("child_field not found in ${node.name}s edges")
 }
 
-We need to make the error useful to the end user: It should say something like "Comment does not have field nonExistentField" rather than something related to my internal logic. This error throw is also unrecoverable (panic). This error shouldn't crash the server, instead the server should check if the query builder threw any errors, and then send the query over. By combining the rules and visitors of async-graphql and my own error throws, we've essentially solved validation. 
+We need to make the error useful to the end user: It should say something like "Comment does not have field nonExistentField" rather than something related to my internal logic. This error throw is also unrecoverable (panic). This error shouldn't crash the server, instead the server should check if the query builder threw any errors, and then send the query over. By combining the rules and visitors of async-graphql and my own error throws, we've essentially solved validation. async-graphql can also handle validating that the arguments passes are correct
 
 The next step was to create logic that can transform our internal representation into an async-graphql representation. Since we are validating that users only pick fields that exist from children, we only need to pass the root queries to async-graphql.
-
-
-
-
-
-
-

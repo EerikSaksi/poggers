@@ -1,14 +1,16 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
+use super::TableQueryInfo;
 use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use crate::server_side_json_builder::ColumnInfo;
+use async_graphql::registry::Registry;
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
+use convert_case::{Case, Casing};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-use super::TableQueryInfo;
 
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
@@ -22,6 +24,7 @@ impl ServerSidePoggers {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
         query_to_type: HashMap<String, QueryEdgeInfo>,
+        registry: Registry,
     ) -> ServerSidePoggers {
         ServerSidePoggers {
             g,
@@ -31,14 +34,11 @@ impl ServerSidePoggers {
         }
     }
 
-    pub fn build_root(
-        &mut self,
-        query: &str,
-    ) -> Result<(String, Vec<TableQueryInfo>, String), async_graphql_parser::Error> {
-        let ast = parse_query::<&str>(query)?;
+    pub fn build_root(&mut self, query: &str) -> (String, Vec<TableQueryInfo>, String) {
+        let ast = parse_query::<&str>(query).unwrap();
         match ast.operations {
             DocumentOperations::Single(Positioned { node, pos: _ }) => {
-                Ok(self.visit_query(node.selection_set))
+                self.visit_query(node.selection_set)
             }
             DocumentOperations::Multiple(_) => {
                 panic!("DocumentOperations::Multiple(operation)")
@@ -137,9 +137,7 @@ impl ServerSidePoggers {
                     let child_name = child_field.node.name.node.as_str();
                     match self.g[node_index].field_to_types.get(child_name) {
                         Some(column_info) => {
-
-                        let column_name =
-                            &[&current_alias, ".", &column_info.0].concat();
+                            let column_name = &[&current_alias, ".", &column_info.0].concat();
                             graphql_fields
                                 .push(ColumnInfo::Terminal(child_name.to_string(), column_info.1));
                             select.push_str(column_name);
@@ -231,7 +229,8 @@ impl ServerSidePoggers {
                 //adding any new columns (column offset was copied before we started modifiying it
                 //this recursive call. The right hand is the column offset + the number of primary
                 //keys that this table has.)
-                primary_key_range: (column_offset .. column_offset +  self.g[node_index].primary_keys.len()),
+                primary_key_range: (column_offset
+                    ..column_offset + self.g[node_index].primary_keys.len()),
             });
 
             for child in children {
@@ -281,7 +280,8 @@ impl ServerSidePoggers {
                 return (edge, false);
             }
         }
-        panic!("Shouldve found edge {}", field_name);
+        let gql_type = self.g[node_index].table_name.to_case(Case::UpperCamel);
+        panic!("{} does not have selection {}", gql_type, field_name);
     }
     fn table_alias(local_id: u8) -> String {
         ["__table_", &local_id.to_string(), "__"].concat()
