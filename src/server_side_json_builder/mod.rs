@@ -8,12 +8,14 @@ use postgres::Row;
 use std::ops::Range;
 pub mod generate_sql;
 
+#[derive(Debug)]
 pub enum ColumnInfo {
     Foreign(String),
     ForeignSingular(String),
     Terminal(String, usize),
 }
 
+#[derive(Debug)]
 pub struct TableQueryInfo {
     graphql_fields: Vec<ColumnInfo>,
     primary_key_range: Range<usize>,

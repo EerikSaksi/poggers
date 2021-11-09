@@ -7,6 +7,7 @@ use crate::server_side_json_builder::ColumnInfo;
 use async_graphql::parser::{
     parse_query,
     types::{DocumentOperations, Selection, SelectionSet},
+    Error,
 };
 use async_graphql::Positioned;
 
@@ -44,14 +45,23 @@ impl ServerSidePoggers {
         &mut self,
         query: &str,
     ) -> Result<(String, Vec<TableQueryInfo>, String), String> {
-        let ast = parse_query::<&str>(query).unwrap();
+        let ast;
+        match parse_query::<&str>(query) {
+            Ok(tree) => ast = tree,
+            Err(e) => return Err(e.to_string()),
+        }
         if let Err(e) = check_rules(
             &self.registry,
             &ast,
             None,
             async_graphql::ValidationMode::Strict,
         ) {
-            return Err(e.iter().fold(String::new(), |a, b| format!("{}\n{}", a, b)));
+            return Err(e
+                .iter()
+                .find(|err| !err.message.is_empty())
+                .unwrap()
+                .message
+                .to_string());
         }
 
         match ast.operations {

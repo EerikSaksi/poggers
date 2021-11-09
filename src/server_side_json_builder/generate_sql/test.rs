@@ -1,38 +1,4 @@
 use crate::build_schema::create;
-fn test_sql_equality(actual: String, expected: &str) {
-    let mut actual_iter = actual.split_ascii_whitespace().peekable();
-
-    let mut expected_iter = expected.split_ascii_whitespace().peekable();
-    let mut actual_cumm = String::new();
-    let mut expected_cumm = String::new();
-    while actual_iter.peek().is_some() && expected_iter.peek().is_some() {
-        let actual_val = actual_iter.next().unwrap();
-        let expected_val = expected_iter.next().unwrap();
-        actual_cumm.push_str(&format!("{} ", actual_val));
-        expected_cumm.push_str(&format!("{} ", expected_val));
-        if actual_val != expected_val {
-            println!("Actual\n\n{}\n", actual_cumm);
-            println!("Expected\n{}", expected_cumm);
-            panic!();
-        }
-    }
-    //println!("{}", actual_cumm);
-    if actual_iter.peek().is_some() {
-        println!("Actual still has vals");
-        for token in actual_iter {
-            print!("{} ", token);
-        }
-        panic!("\n");
-    }
-    if expected_iter.peek().is_some() {
-        println!("expected still has vals");
-        for token in expected_iter {
-            print!("{} ", token);
-        }
-        println!();
-        panic!();
-    }
-}
 
 #[test]
 fn column_offsets() {
@@ -64,4 +30,79 @@ fn test_invalid_root_query() {
               id
           }
         }";
+    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    assert_eq!(
+        err.as_str(),
+        "Unknown field \"commentos\" on type \"query\". Did you mean \"comments\"?"
+    );
+}
+#[test]
+fn test_invalid_syntax() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query = "
+        query{
+          comments {
+              id
+        }";
+    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    assert_eq!(
+        err.as_str(),
+        " --> 5:10\n  |\n5 |         }\n  |          ^---\n  |\n  = expected selection"
+    );
+}
+
+#[test]
+fn test_invalid_subchild() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query = "
+        query{
+          posts {
+              nonExistentChild
+          }
+        }";
+
+    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    assert_eq!(
+        err.as_str(),
+        "Post does not have selection nonExistentChild"
+    );
+}
+
+#[test]
+fn test_error_propagation() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query = "
+        query{
+            siteUsers{
+                id
+                displayname
+                posts {
+                    id
+                    title
+                    comments{
+                        nonExistentChild
+                    }
+                }
+            }
+        }";
+
+    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    assert_eq!(
+        err.as_str(),
+        "Comment does not have selection nonExistentChild"
+    );
+}
+
+#[test]
+fn test_no_root() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query = "
+        query{
+        }";
+
+    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    assert_eq!(
+        err.as_str(),
+        " --> 3:9\n  |\n3 |         }\n  |         ^---\n  |\n  = expected selection"
+    );
 }
