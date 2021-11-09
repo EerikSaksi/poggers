@@ -2,21 +2,26 @@
 #[path = "./test.rs"]
 mod test;
 use super::TableQueryInfo;
-use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
+use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use crate::server_side_json_builder::ColumnInfo;
+use async_graphql::parser::{
+    parse_query,
+    types::{DocumentOperations, Selection, SelectionSet},
+};
+use async_graphql::Positioned;
+
+use async_graphql::check_rules;
 use async_graphql::registry::Registry;
-use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
-use async_graphql_parser::{parse_query, Positioned};
 use convert_case::{Case, Casing};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
     pub num_select_cols: usize,
+    registry: Registry,
 }
 
 #[allow(dead_code)]
@@ -31,11 +36,18 @@ impl ServerSidePoggers {
             query_to_type,
             local_id: 0,
             num_select_cols: 0,
+            registry,
         }
     }
 
     pub fn build_root(&mut self, query: &str) -> (String, Vec<TableQueryInfo>, String) {
         let ast = parse_query::<&str>(query).unwrap();
+        check_rules(
+            &self.registry,
+            &ast,
+            None,
+            async_graphql::ValidationMode::Strict,
+        ).unwrap();
         match ast.operations {
             DocumentOperations::Single(Positioned { node, pos: _ }) => {
                 self.visit_query(node.selection_set)

@@ -1,14 +1,14 @@
-use crate::server_side_json_builder::ServerSidePoggers;
+use crate::build_schema::QueryEdgeInfo;
 use async_graphql::{
     indexmap::IndexMap,
     registry::{MetaField, MetaType, Registry},
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-pub fn internal_to_async(pogg: ServerSidePoggers) -> Registry {
+pub fn internal_to_async(query_to_type: &HashMap<String, QueryEdgeInfo>) -> Registry {
     let mut query_fields: IndexMap<String, MetaField> = IndexMap::new();
     let mut query_type: BTreeMap<String, MetaType> = BTreeMap::new();
-    for query_name in pogg.query_to_type.keys() {
+    for query_name in query_to_type.keys() {
         query_fields.insert(
             query_name.clone(),
             MetaField {

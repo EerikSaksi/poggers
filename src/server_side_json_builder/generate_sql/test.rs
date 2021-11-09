@@ -1,4 +1,4 @@
-use crate::internal_schema_info::create;
+use crate::build_schema::create;
 fn test_sql_equality(actual: String, expected: &str) {
     let mut actual_iter = actual.split_ascii_whitespace().peekable();
 
@@ -53,4 +53,15 @@ fn column_offsets() {
     let (_, table_query_infos, _) = pogg.build_root(query);
     assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
+}
+
+#[test]
+fn test_invalid_root_query() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query = "
+        query{
+          commentos {
+              id
+          }
+        }";
 }

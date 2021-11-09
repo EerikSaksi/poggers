@@ -1,5 +1,5 @@
 use super::*;
-use crate::build_schema::internal_schema_info::create;
+use crate::build_schema::create;
 use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
 

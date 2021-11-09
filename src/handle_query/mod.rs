@@ -1,8 +1,8 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
+use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use crate::handle_query::postgres_query_builder::PostgresBuilder;
-use crate::internal_schema_info::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use async_graphql_parser::types::{DocumentOperations, Selection, SelectionSet};
 use async_graphql_parser::{parse_query, Positioned};
 use async_graphql_value::Value;
