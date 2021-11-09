@@ -7,7 +7,7 @@ fn convert_gql(gql_query: &str) -> String {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query);
+    let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query).unwrap();
     let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
     let to_return = JsonBuilder::new(table_query_infos, root_key_name).convert(rows);
     to_return

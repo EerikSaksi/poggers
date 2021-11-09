@@ -40,14 +40,20 @@ impl ServerSidePoggers {
         }
     }
 
-    pub fn build_root(&mut self, query: &str) -> (String, Vec<TableQueryInfo>, String) {
+    pub fn build_root(
+        &mut self,
+        query: &str,
+    ) -> Result<(String, Vec<TableQueryInfo>, String), String> {
         let ast = parse_query::<&str>(query).unwrap();
-        check_rules(
+        if let Err(e) = check_rules(
             &self.registry,
             &ast,
             None,
             async_graphql::ValidationMode::Strict,
-        ).unwrap();
+        ) {
+            return Err(e.iter().fold(String::new(), |a, b| format!("{}\n{}", a, b)));
+        }
+
         match ast.operations {
             DocumentOperations::Single(Positioned { node, pos: _ }) => {
                 self.visit_query(node.selection_set)
@@ -60,7 +66,7 @@ impl ServerSidePoggers {
     fn visit_query(
         &mut self,
         selection_set: Positioned<SelectionSet>,
-    ) -> (String, Vec<TableQueryInfo>, String) {
+    ) -> Result<(String, Vec<TableQueryInfo>, String), String> {
         let mut select = String::from("SELECT ");
         let mut from = String::from(" FROM ");
         let mut order_by = String::new();
@@ -78,14 +84,16 @@ impl ServerSidePoggers {
             }
             from.push_str(&self.g[node_index].table_name);
             from.push_str(" AS __table_0__");
-            self.build_selection(
+            if let Err(e) = self.build_selection(
                 &mut select,
                 &mut from,
                 &mut order_by,
                 &mut table_query_info,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
-            );
+            ) {
+                return Err(e);
+            }
         } else {
             panic!("First selection_set item isn't a field");
         }
@@ -95,18 +103,18 @@ impl ServerSidePoggers {
         select.drain(select.len() - 2..select.len());
 
         match order_by.is_empty() {
-            true => (
+            true => Ok((
                 [select, from].concat(),
                 table_query_info,
                 root_key_name.to_owned(),
-            ),
+            )),
             false => {
                 order_by.drain(order_by.len() - 2..order_by.len());
-                (
+                Ok((
                     [&select, &from, " ORDER BY ", &order_by].concat(),
                     table_query_info,
                     root_key_name.to_owned(),
-                )
+                ))
             }
         }
     }
@@ -119,7 +127,7 @@ impl ServerSidePoggers {
         table_query_info: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
-    ) {
+    ) -> Result<(), String> {
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             //this field is terminal
@@ -174,8 +182,16 @@ impl ServerSidePoggers {
                             }
                             self.local_id += 1;
                             let child_alias = ServerSidePoggers::table_alias(self.local_id);
-                            let (edge, is_one_to_many) =
-                                self.find_edge_and_endpoints(node_index, child_name);
+
+                            let edge;
+                            let is_one_to_many;
+                            match self.find_edge_and_endpoints(node_index, child_name) {
+                                Ok((e, is_otm)) => {
+                                    edge = e;
+                                    is_one_to_many = is_otm
+                                }
+                                Err(e) => return Err(e),
+                            }
 
                             let child_node_index = {
                                 //the child will depend on whether the edge we found was incoming
@@ -246,15 +262,20 @@ impl ServerSidePoggers {
             });
 
             for child in children {
-                self.build_selection(select, from, order_by, table_query_info, child.0, child.1);
+                if let Err(e) =
+                    self.build_selection(select, from, order_by, table_query_info, child.0, child.1)
+                {
+                    return Err(e);
+                }
             }
         }
+        Ok(())
     }
     fn find_edge_and_endpoints(
         &self,
         node_index: NodeIndex<u32>,
         field_name: &str,
-    ) -> (EdgeIndex<u32>, bool) {
+    ) -> Result<(EdgeIndex<u32>, bool), String> {
         //given a node, find an edge for which the edges weight's graphql_field_name = field_name.
         //Case 1: This edge was found in incoming edges. This means that a child table is refering
         //to this parent_table in the database. In that case this relation is one_to_many
@@ -276,7 +297,7 @@ impl ServerSidePoggers {
         //we're looking for a child field we're accessing the left most value
         while let Some(edge) = incoming_edges.next_edge(&self.g) {
             if self.g[edge].graphql_field_name.0 == field_name {
-                return (edge, true);
+                return Ok((edge, true));
             }
         }
 
@@ -289,11 +310,14 @@ impl ServerSidePoggers {
         //most graphql_field_name tuple value (parent field name)
         while let Some(edge) = outgoing_edges.next_edge(&self.g) {
             if self.g[edge].graphql_field_name.1 == field_name {
-                return (edge, false);
+                return Ok((edge, false));
             }
         }
         let gql_type = self.g[node_index].table_name.to_case(Case::UpperCamel);
-        panic!("{} does not have selection {}", gql_type, field_name);
+        Err(format!(
+            "{} does not have selection {}",
+            gql_type, field_name
+        ))
     }
     fn table_alias(local_id: u8) -> String {
         ["__table_", &local_id.to_string(), "__"].concat()
