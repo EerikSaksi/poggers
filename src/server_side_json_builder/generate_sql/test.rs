@@ -1,5 +1,4 @@
 use crate::internal_schema_info::create;
-
 fn test_sql_equality(actual: String, expected: &str) {
     let mut actual_iter = actual.split_ascii_whitespace().peekable();
 

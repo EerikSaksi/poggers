@@ -60,6 +60,8 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         if let Some(parent_table_name) = parent_table_name {
             let parent_index = find_or_create_node(&mut g, &parent_table_name);
 
+
+            //find edge or create one if missing
             let edge = match g.find_edge(child_index, parent_index) {
                 Some(e) => e,
                 None => g.add_edge(
@@ -74,6 +76,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
                     },
                 ),
             };
+
             let parent_column: String = current_row.get("parent_column");
             handle_foreign_key(&mut g, parent_index, edge, &parent_column, &column_name);
         }
@@ -136,6 +139,8 @@ fn handle_foreign_key(
     new_parent_pk: &str,
     new_child_fk: &str,
 ) {
+    //check if the parent already has this primary key. If not we need to insert it into the parent
+    //first, before we know where it goes into the child
     let parent_pk_index = g[node]
         .primary_keys
         .iter()
@@ -162,4 +167,5 @@ fn handle_foreign_key(
             g[edge].foreign_keys[right_most] = new_child_fk.to_string();
         }
     }
+
 }

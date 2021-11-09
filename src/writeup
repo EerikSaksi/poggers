@@ -1232,3 +1232,8 @@ while (true){
 
 This doesn't actually break the row building loop, but the for i in range... loop. So it did nothing. Luckily I figured it out but still an annoying bug.
 
+
+# Validation
+After doing some investigation I found that the async-graphql parser library has a query validation module. The issue is, that this module is private. I figured out that I could fork async-graphql, just to make this module public. After doing some digging, I figured out how I could use the validator:
+
+I need to export my schema to the async-graphql format. Currently I'm only representing my schema internally so that my query builder can use it, but not so that async-graphql works. In order to do so, I pretty much just need to create types (for every table) and their GraphQL fields. Once I have this async-graphql schema representation, I can parse the document with async-graphql-parser (as I have before) pass this parsed document and the async-graphql schema, and check if there are any errors. If there are no errors I can pass this ExecutableDocument on to my query builder as usual.

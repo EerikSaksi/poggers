@@ -8,8 +8,6 @@ use async_graphql_parser::{parse_query, Positioned};
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
-use std::ops::Range;
-
 use super::TableQueryInfo;
 
 pub struct ServerSidePoggers {
