@@ -1237,3 +1237,59 @@ This doesn't actually break the row building loop, but the for i in range... loo
 After doing some investigation I found that the async-graphql parser library has a query validation module. The issue is, that this module is private. I figured out that I could fork async-graphql, just to make this module public. After doing some digging, I figured out how I could use the validator:
 
 I need to export my schema to the async-graphql format. Currently I'm only representing my schema internally so that my query builder can use it, but not so that async-graphql works. In order to do so, I pretty much just need to create types (for every table) and their GraphQL fields. Once I have this async-graphql schema representation, I can parse the document with async-graphql-parser (as I have before) pass this parsed document and the async-graphql schema, and check if there are any errors. If there are no errors I can pass this ExecutableDocument on to my query builder as usual.
+
+After testing around a bit and adding debug statements in async-graphql code, I was able to get validation (partially) working. async-graphql seems to perform some validation during the actual execution process. When I specified that a comment has a text field (and nothing else) this is what happens:
+
+No errors
+	query {
+		comments {
+			text
+		}
+	}
+This is a valid query (true positive)
+
+Error (comments has no selection) 
+	query {
+		comments {
+		}
+	}
+This does not syntactically make sense (we aren't selecting any comments data) true negative
+
+No error
+	query {
+		comments {
+			nonExistentField
+		}
+	}
+Comments has no subfield nonExistentField (false positive)
+
+Error (cows does not exist)
+	query {
+		cows {
+			nonExistentField
+		}
+	}
+There is no root query cows (true positive)
+
+Essentially, the validator catches any syntax errors and rules which are agnostic of the schema itself (such as not selecting subfields). The validator is able to check that root queries are correct, and that they receive the correct arguments (cows is not a defined query). But it does not check whether children are requested correct subfields. Luckily our query builder already throws an error if we try to request a non existent field (which I left for debugging purposes)
+
+if node.terminal_fields.contains(child_field) {
+	build_child(...)
+}
+else if node.incoming_edges.contains(child_field) {
+	build_foreign(...)
+}
+else {
+	throw Error("child_field not found in ${node.name}s edges")
+}
+
+We need to make the error useful to the end user: It should say something like "Comment does not have field nonExistentField" rather than something related to my internal logic. This error throw is also unrecoverable (panic). This error shouldn't crash the server, instead the server should check if the query builder threw any errors, and then send the query over. By combining the rules and visitors of async-graphql and my own error throws, we've essentially solved validation. 
+
+The next step was to create logic that can transform our internal representation into an async-graphql representation. Since we are validating that users only pick fields that exist from children, we only need to pass the root queries to async-graphql.
+
+
+
+
+
+
+

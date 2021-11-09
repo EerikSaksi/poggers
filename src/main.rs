@@ -11,15 +11,15 @@ use build_schema::internal_schema_info;
 use std::collections::BTreeMap;
 
 fn main() {
-    //let mut fields: IndexMap<String, MetaField> = IndexMap::new();
-    //fields.insert(
+    let mut comment_fields: IndexMap<String, MetaField> = IndexMap::new();
+    //comment_fields.insert(
     //    "text".to_string(),
     //    MetaField {
     //        name: "text".to_string(),
     //        visible: None,
     //        description: None,
     //        cache_control: Default::default(),
-    //        ty: "string".to_string(),
+    //        ty: "String".to_string(),
     //        args: IndexMap::new(),
     //        external: false,
     //        requires: None,
@@ -29,11 +29,25 @@ fn main() {
     //    },
     //);
     let mut types: BTreeMap<String, MetaType> = BTreeMap::new();
+    types.insert(
+        "Comment".to_string(),
+        MetaType::Object {
+            fields: comment_fields,
+            name: "comment".to_string(),
+            keys: None,
+            extends: false,
+            visible: None,
+            description: None,
+            cache_control: Default::default(),
+            rust_typename: "comment",
+            is_subscription: false,
+        },
+    );
     let mut fields: IndexMap<String, MetaField> = IndexMap::new();
     fields.insert(
-        "eight".to_string(),
+        "comments".to_string(),
         MetaField {
-            name: "eight".to_string(),
+            name: "comments".to_string(),
             visible: None,
             description: None,
             cache_control: Default::default(),
@@ -51,7 +65,7 @@ fn main() {
         "query".to_string(),
         MetaType::Object {
             fields,
-            name: "query".to_string(),
+            name: "comments".to_string(),
             keys: None,
             extends: false,
             visible: None,
@@ -67,9 +81,15 @@ fn main() {
         ..Default::default()
     };
     let query = "
-        query noice {
-            eight
+        query {
+            comments {
+                nonexistent
+            }
+
         }";
     let doc = parse_query(query).unwrap();
-    check_rules(&registry, &doc, None, async_graphql::ValidationMode::Strict).unwrap();
+    match check_rules(&registry, &doc, None, async_graphql::ValidationMode::Strict) {
+        Ok(_) => println!("No errors"),
+        Err(e) => println!("Got error {:?}", e),
+    }
 }
