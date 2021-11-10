@@ -1,4 +1,4 @@
-use crate::build_schema::create;
+use crate::{build_schema::create, server_side_json_builder::generate_sql::JsonBuilderContext};
 
 #[test]
 fn column_offsets() {
@@ -16,7 +16,7 @@ fn column_offsets() {
             }
           }
         }";
-    let (_, table_query_infos, _) = pogg.build_root(query).unwrap();
+    let JsonBuilderContext { sql_query, table_query_infos, root_key_name, root_query_is_many } = pogg.build_root(query).unwrap();
     assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
 }

@@ -27,6 +27,13 @@ pub struct ServerSidePoggers {
     pub num_select_cols: usize,
     registry: Registry,
 }
+#[derive(Debug)]
+pub struct JsonBuilderContext {
+    pub sql_query: String,
+    pub table_query_infos: Vec<TableQueryInfo>,
+    pub root_key_name: String,
+    pub root_query_is_many: bool,
+}
 
 #[allow(dead_code)]
 impl ServerSidePoggers {
@@ -44,10 +51,7 @@ impl ServerSidePoggers {
         }
     }
 
-    pub fn build_root(
-        &mut self,
-        query: &str,
-    ) -> Result<(String, Vec<TableQueryInfo>, String), String> {
+    pub fn build_root(&mut self, query: &str) -> Result<JsonBuilderContext, String> {
         let ast;
         match parse_query::<&str>(query) {
             Ok(tree) => ast = tree,
@@ -79,11 +83,12 @@ impl ServerSidePoggers {
     fn visit_query(
         &mut self,
         selection_set: Positioned<SelectionSet>,
-    ) -> Result<(String, Vec<TableQueryInfo>, String), String> {
+    ) -> Result<JsonBuilderContext, String> {
         let mut select = String::from("SELECT ");
         let mut from = String::from(" FROM ");
         let mut order_by = String::new();
-        let mut table_query_info: Vec<TableQueryInfo> = vec![];
+        let mut table_query_infos: Vec<TableQueryInfo> = vec![];
+        let mut root_query_is_many = true;
 
         let root_key_name: &str;
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
@@ -101,7 +106,7 @@ impl ServerSidePoggers {
                 &mut select,
                 &mut from,
                 &mut order_by,
-                &mut table_query_info,
+                &mut table_query_infos,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
             ) {
@@ -111,6 +116,7 @@ impl ServerSidePoggers {
                 Selection::Field(Positioned { pos: _, node }) => {
                     if let Some((_, arg_val)) = node.arguments.get(0) {
                         {
+                            root_query_is_many = false;
                             from.push_str(" WHERE ");
                             from.push_str(" __table_0__.");
                             from.push_str(self.g[node_index].primary_keys.get(0).unwrap());
@@ -129,18 +135,20 @@ impl ServerSidePoggers {
         select.drain(select.len() - 2..select.len());
 
         match order_by.is_empty() {
-            true => Ok((
-                [select, from].concat(),
-                table_query_info,
-                root_key_name.to_owned(),
-            )),
+            true => Ok(JsonBuilderContext {
+                sql_query: [select, from].concat(),
+                table_query_infos,
+                root_key_name: root_key_name.to_owned(),
+                root_query_is_many,
+            }),
             false => {
                 order_by.drain(order_by.len() - 2..order_by.len());
-                Ok((
-                    [&select, &from, " ORDER BY ", &order_by].concat(),
-                    table_query_info,
-                    root_key_name.to_owned(),
-                ))
+                Ok(JsonBuilderContext {
+                    sql_query: [&select, &from, " ORDER BY ", &order_by].concat(),
+                    table_query_infos,
+                    root_key_name: root_key_name.to_owned(),
+                    root_query_is_many,
+                })
             }
         }
     }
@@ -150,7 +158,7 @@ impl ServerSidePoggers {
         select: &mut String,
         from: &mut String,
         order_by: &mut String,
-        table_query_info: &mut Vec<TableQueryInfo>,
+        table_query_infos: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
     ) -> Result<(), String> {
@@ -277,7 +285,7 @@ impl ServerSidePoggers {
                     }
                 }
             }
-            table_query_info.push(TableQueryInfo {
+            table_query_infos.push(TableQueryInfo {
                 graphql_fields,
                 //the value at which primary keys start is the column offset before we started
                 //adding any new columns (column offset was copied before we started modifiying it
@@ -289,7 +297,7 @@ impl ServerSidePoggers {
 
             for child in children {
                 if let Err(e) =
-                    self.build_selection(select, from, order_by, table_query_info, child.0, child.1)
+                    self.build_selection(select, from, order_by, table_query_infos, child.0, child.1)
                 {
                     return Err(e);
                 }

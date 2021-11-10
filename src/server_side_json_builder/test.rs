@@ -7,10 +7,10 @@ fn convert_gql(gql_query: &str) -> String {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query).unwrap();
-    println!("{}", sql_query);
-    let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
-    JsonBuilder::new(table_query_infos, root_key_name).convert(rows)
+    let ctx = pogg.build_root(gql_query).unwrap();
+    let sql = &ctx.sql_query;
+    let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
+    JsonBuilder::new(ctx).convert(rows)
 }
 #[allow(dead_code)]
 fn write_json_to_file(res: &str) {
@@ -407,5 +407,4 @@ fn with_argument() {
         .len();
     write_json_to_file(&res);
     assert_eq!(site_user_len, 1);
-
 }

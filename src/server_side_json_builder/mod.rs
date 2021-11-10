@@ -3,6 +3,7 @@
 mod test;
 
 pub use self::generate_sql::ServerSidePoggers;
+use crate::server_side_json_builder::generate_sql::JsonBuilderContext;
 use chrono::{DateTime, Utc};
 use postgres::Row;
 use std::ops::Range;
@@ -25,11 +26,12 @@ pub struct JsonBuilder {
     closures: Vec<Box<dyn Fn(&Row, usize) -> String>>,
     table_query_infos: Vec<TableQueryInfo>,
     root_key_name: String,
+    root_query_is_many: bool,
 }
 
 #[allow(dead_code)]
 impl JsonBuilder {
-    pub fn new(table_query_infos: Vec<TableQueryInfo>, root_key_name: String) -> Self {
+    pub fn new(ctx: JsonBuilderContext) -> Self {
         JsonBuilder {
             closures: vec![
                 Box::new(|row, index| {
@@ -110,8 +112,9 @@ impl JsonBuilder {
                     }
                 }),
             ],
-            table_query_infos,
-            root_key_name,
+            root_key_name: ctx.root_key_name,
+            table_query_infos: ctx.table_query_infos,
+            root_query_is_many: ctx.root_query_is_many,
         }
     }
 
