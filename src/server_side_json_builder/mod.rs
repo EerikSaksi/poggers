@@ -131,7 +131,12 @@ impl JsonBuilder {
         let first_row;
         match row_iter.next() {
             Some(row) => first_row = row,
-            None => return String::from("]}"),
+            None => {
+                //either empty list or null
+                s.push_str(if self.root_query_is_many { "]" } else { "null" });
+                s.push('}');
+                return s;
+            }
         }
         s.push('{');
         self.build_one_root_parent(&mut s, first_row, &mut row_iter);
@@ -151,11 +156,9 @@ impl JsonBuilder {
         //drop trailing comma (not allowed in some JSON parsers)
         s.drain(s.len() - 1..s.len());
 
+        s.push('}');
         if self.root_query_is_many {
-            s.push_str("}]");
-        }
-        else {
-            s.push('}');
+            s.push(']');
         }
         s.push('}');
         s
