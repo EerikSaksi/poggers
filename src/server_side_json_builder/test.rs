@@ -398,8 +398,7 @@ fn with_argument() {
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    p
-        .unwrap()
+    p.unwrap()
         .get("siteUser")
         .unwrap()
         .as_object()
@@ -422,7 +421,38 @@ fn invalid_id() {
             }
         }";
     let res = convert_gql(gql_query);
-    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     p.unwrap().get("siteUser").unwrap().as_null().unwrap();
+}
+
+//we add limit 0 to this query to ensure an empty query set, and check if we still return an empty
+//array
+#[test]
+fn test_empty_many_query() {
+    let gql_query = "
+        query{
+          siteUsers{
+            id
+            creationdate
+            aboutme
+            jsonfield
+            age
+          }
+        }";
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let mut client =
+        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+    let ctx = pogg.build_root(gql_query).unwrap();
+    let sql = &ctx.sql_query;
+    let rows = client.query(&*[sql, " limit 0"].concat(), &[]).unwrap();
+    let res = JsonBuilder::new(ctx).convert(rows);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    let users_len = p
+        .unwrap()
+        .get("siteUsers")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .len();
+    assert_eq!(users_len, 0);
 }

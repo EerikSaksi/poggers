@@ -13,7 +13,6 @@ use async_graphql::{
     registry::Registry,
     Positioned,
 };
-use async_graphql_value::Value;
 use convert_case::{Case, Casing};
 use petgraph::{
     graph::DiGraph,
