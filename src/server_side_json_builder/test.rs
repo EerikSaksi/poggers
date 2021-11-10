@@ -8,9 +8,9 @@ fn convert_gql(gql_query: &str) -> String {
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let (sql_query, table_query_infos, root_key_name) = pogg.build_root(gql_query).unwrap();
+    println!("{}", sql_query);
     let rows = client.query(&*[&sql_query, ""].concat(), &[]).unwrap();
-    let to_return = JsonBuilder::new(table_query_infos, root_key_name).convert(rows);
-    to_return
+    JsonBuilder::new(table_query_infos, root_key_name).convert(rows)
 }
 #[allow(dead_code)]
 fn write_json_to_file(res: &str) {
@@ -383,4 +383,29 @@ fn composite_join() {
         }
         Err(e) => panic!("{}", e),
     }
+}
+
+#[test]
+fn with_argument() {
+    let gql_query = "
+        query{
+            siteUser(id: 13) {
+                displayname
+                posts{
+                    title
+                }
+            }
+        }";
+    let res = convert_gql(gql_query);
+    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    let site_user_len = p
+        .unwrap()
+        .get("siteUser")
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .len();
+    write_json_to_file(&res);
+    assert_eq!(site_user_len, 1);
+
 }

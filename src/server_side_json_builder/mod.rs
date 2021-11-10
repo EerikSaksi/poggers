@@ -127,7 +127,7 @@ impl JsonBuilder {
             None => return String::from("]}"),
         }
         s.push('{');
-        self.build_one_root_parent(&mut s, &first_row, &mut row_iter);
+        self.build_one_root_parent(&mut s, first_row, &mut row_iter);
         let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = row_iter.next() {
             //one left of the start of the next tables cols is primary key
@@ -136,7 +136,7 @@ impl JsonBuilder {
                 //parent changed
                 s.drain(s.len() - 1..s.len());
                 s.push_str(&["},{"].concat());
-                self.build_one_root_parent(&mut s, &row, &mut row_iter)
+                self.build_one_root_parent(&mut s, row, &mut row_iter)
             }
             last_pk = pk;
         }
@@ -168,7 +168,7 @@ impl JsonBuilder {
                             .primary_key_range
                             .start,
                     );
-                    s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
+                    s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
                     if child_pk.is_some() {
                         let parent_pks_range =
                             &self.table_query_infos.get(0).unwrap().primary_key_range;
@@ -340,7 +340,7 @@ impl JsonBuilder {
     fn build_foreign_singular<'a, I>(
         &self,
         s: &mut String,
-        key: &String,
+        key: &str,
         row: &'a Row,
         row_iter: &mut std::iter::Peekable<I>,
         col_offset: usize,
@@ -357,7 +357,7 @@ impl JsonBuilder {
             .start;
 
         let child_pk: Option<i32> = row.get(pk_col_offset);
-        s.push_str(&[&JsonBuilder::stringify(&key), ":"].concat());
+        s.push_str(&[&JsonBuilder::stringify(key), ":"].concat());
         if child_pk.is_some() {
             self.build_one_child(s, row, row_iter, pk_col_offset + 1, table_index + 1);
         } else {
@@ -369,7 +369,7 @@ impl JsonBuilder {
     fn build_foreign<'a, I>(
         &self,
         s: &mut String,
-        key: &String,
+        key: &str,
         row: &'a Row,
         row_iter: &mut std::iter::Peekable<I>,
         col_offset: usize,
@@ -385,7 +385,7 @@ impl JsonBuilder {
                 .primary_key_range
                 .end,
         );
-        s.push_str(&[&JsonBuilder::stringify(&key), ":["].concat());
+        s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
         if child_pk.is_some() {
             let parent_pks_range = &self
                 .table_query_infos
@@ -403,21 +403,13 @@ impl JsonBuilder {
     fn build_terminal(
         &self,
         s: &mut String,
-        key: &String,
+        key: &str,
         closure_index: usize,
         row: &Row,
         col_offset: usize,
     ) -> usize {
-        let col_val = self.closures[closure_index](&row, col_offset);
-        s.push_str(
-            &[
-                &JsonBuilder::stringify(&key),
-                ":",
-                &col_val.to_string(),
-                ",",
-            ]
-            .concat(),
-        );
+        let col_val = self.closures[closure_index](row, col_offset);
+        s.push_str(&[&JsonBuilder::stringify(key), ":", &col_val, ","].concat());
         col_offset + 1
     }
 }

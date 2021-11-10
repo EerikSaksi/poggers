@@ -4,18 +4,21 @@ mod test;
 use super::TableQueryInfo;
 use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use crate::server_side_json_builder::ColumnInfo;
-use async_graphql::parser::{
-    parse_query,
-    types::{DocumentOperations, Selection, SelectionSet},
-    Error,
+use async_graphql::{
+    check_rules,
+    parser::{
+        parse_query,
+        types::{DocumentOperations, Selection, SelectionSet},
+    },
+    registry::Registry,
+    Positioned,
 };
-use async_graphql::Positioned;
-
-use async_graphql::check_rules;
-use async_graphql::registry::Registry;
+use async_graphql_value::Value;
 use convert_case::{Case, Casing};
-use petgraph::graph::DiGraph;
-use petgraph::prelude::{EdgeIndex, NodeIndex};
+use petgraph::{
+    graph::DiGraph,
+    prelude::{EdgeIndex, NodeIndex},
+};
 use std::collections::HashMap;
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
@@ -104,12 +107,25 @@ impl ServerSidePoggers {
             ) {
                 return Err(e);
             }
+            match &selection_set.node.items.get(0).unwrap().node {
+                Selection::Field(Positioned { pos: _, node }) => {
+                    if let Some((_, arg_val)) = node.arguments.get(0) {
+                        {
+                            from.push_str(" WHERE ");
+                            from.push_str(" __table_0__.");
+                            from.push_str(self.g[node_index].primary_keys.get(0).unwrap());
+                            from.push_str(" = ");
+                            from.push_str(&arg_val.to_string());
+                        }
+                    }
+                }
+                _ => panic!("Didn't get Selection::field"),
+            }
         } else {
             panic!("First selection_set item isn't a field");
         }
 
-        //we don't necessarily need to order (e.g if no joins) so check if there are any fields to
-        //order and only then concat " ORDER BY " and the orderable column
+        //remove trailing comma from select
         select.drain(select.len() - 2..select.len());
 
         match order_by.is_empty() {

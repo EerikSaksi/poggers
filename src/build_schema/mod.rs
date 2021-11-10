@@ -44,7 +44,6 @@ static POG_NULLABLE_JSON: usize = 13;
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
 
     for current_row in read_database::read_tables(database_url).unwrap().iter() {
         let table_name: String = current_row.get("table_name");
@@ -53,12 +52,16 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         let is_primary: bool = current_row.get("is_primary");
         let nullable: &str = current_row.get("is_nullable");
         let child_index = find_or_create_node(&mut g, &table_name);
+
+        //if this is a primary key and we have not added it yet (a child might add it for us if it
+        //needs to add its foreign keys) then add it
         if is_primary && !g[child_index].primary_keys.contains(&column_name) {
             g[child_index].primary_keys.push(column_name.to_string());
         }
 
+        //create this child, or find it if already exists
+        //
         let child_index = find_or_create_node(&mut g, &table_name);
-
         if let Some(parent_table_name) = parent_table_name {
             let parent_index = find_or_create_node(&mut g, &parent_table_name);
 
@@ -81,6 +84,8 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             let parent_column: String = current_row.get("parent_column");
             handle_foreign_key(&mut g, parent_index, edge, &parent_column, &column_name);
         }
+
+        //depending on the value of the datatype select the correct closure index
         let data_type: &str = current_row.get("data_type");
         let data_type_index = match nullable {
             "YES" => match data_type {
@@ -108,11 +113,30 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         g[child_index]
             .field_to_types
             .insert(column_name.to_camel_case(), (column_name, data_type_index));
+    }
+    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+    for node_index in g.node_indices() {
+        let GraphQLType {
+            table_name,
+            primary_keys,
+            field_to_types: _,
+        } = &g[node_index];
+
+        //many query (no filter)
         query_to_type.insert(
             table_name.clone().to_plural().to_camel_case(),
             QueryEdgeInfo {
-                node_index: child_index,
+                node_index,
                 is_many: true,
+            },
+        );
+
+        //to one (by primary key)
+        query_to_type.insert(
+            table_name.clone().to_camel_case(),
+            QueryEdgeInfo {
+                node_index,
+                is_many: false,
             },
         );
     }

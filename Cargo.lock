@@ -24,7 +24,7 @@ dependencies = [
 [[package]]
 name = "async-graphql"
 version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#df2a8fd1eb0f660038ab331528bf575d2fa17849"
+source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
 dependencies = [
  "async-graphql-derive",
  "async-graphql-parser 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
@@ -51,7 +51,7 @@ dependencies = [
 [[package]]
 name = "async-graphql-derive"
 version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#df2a8fd1eb0f660038ab331528bf575d2fa17849"
+source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
 dependencies = [
  "Inflector",
  "async-graphql-parser 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
@@ -79,7 +79,7 @@ dependencies = [
 [[package]]
 name = "async-graphql-parser"
 version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#df2a8fd1eb0f660038ab331528bf575d2fa17849"
+source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
 dependencies = [
  "async-graphql-value 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
  "pest",
@@ -103,7 +103,7 @@ dependencies = [
 [[package]]
 name = "async-graphql-value"
 version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#df2a8fd1eb0f660038ab331528bf575d2fa17849"
+source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
 dependencies = [
  "bytes",
  "indexmap",

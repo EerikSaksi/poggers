@@ -106,3 +106,4 @@ fn test_no_root() {
         " --> 3:9\n  |\n3 |         }\n  |         ^---\n  |\n  = expected selection"
     );
 }
+
