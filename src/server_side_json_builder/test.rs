@@ -398,13 +398,11 @@ fn with_argument() {
         }";
     let res = convert_gql(gql_query);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
-    let site_user_len = p
+    write_json_to_file(&res);
+    let site_user = p
         .unwrap()
         .get("siteUser")
         .unwrap()
-        .as_array()
-        .unwrap()
-        .len();
-    write_json_to_file(&res);
-    assert_eq!(site_user_len, 1);
+        .as_object()
+        .unwrap();
 }

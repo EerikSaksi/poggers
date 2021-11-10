@@ -121,7 +121,11 @@ impl JsonBuilder {
     pub fn convert(&self, rows: Vec<Row>) -> String {
         //the first row requires special treatment, we need to add the initial braces, and we need
         //there is no previous pks to determine if this row should be
-        let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":["].concat();
+        let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":"].concat();
+
+        if self.root_query_is_many {
+            s.push('[');
+        }
 
         let mut row_iter = rows.iter().peekable();
         let first_row;
@@ -146,7 +150,14 @@ impl JsonBuilder {
 
         //drop trailing comma (not allowed in some JSON parsers)
         s.drain(s.len() - 1..s.len());
-        s.push_str("}]}");
+
+        if self.root_query_is_many {
+            s.push_str("}]");
+        }
+        else {
+            s.push('}');
+        }
+        s.push('}');
         s
     }
     fn build_one_root_parent<'a, I>(
