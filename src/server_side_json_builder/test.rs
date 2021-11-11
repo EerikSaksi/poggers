@@ -3,14 +3,15 @@ use crate::build_schema::create;
 use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
 
-fn convert_gql(gql_query: &str) -> String {
+fn convert_gql(gql_query: &str) -> Value {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
-    JsonBuilder::new(ctx).convert(rows)
+    let res = JsonBuilder::new(ctx).convert(rows);
+    serde_json::from_str(&*res).unwrap()
 }
 #[allow(dead_code)]
 fn write_json_to_file(res: &str) {
@@ -37,30 +38,23 @@ fn test_random_user() {
           }
         }";
 
-    let res = convert_gql(gql_query);
+    let p = convert_gql(gql_query);
 
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-
-    match p {
-        Ok(p) => {
-            let site_users = p.get("siteUsers").unwrap();
-            //test specific user sampled at random
-            let user = site_users
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|user| user.get("id").unwrap() == 13)
-                .unwrap()
-                .as_object()
-                .unwrap();
-            assert_eq!(user.get("reputation").unwrap(), 28971);
-            assert_eq!(user.get("views").unwrap(), 3534);
-            assert_eq!(user.get("upvotes").unwrap(), 4879);
-            assert_eq!(user.get("downvotes").unwrap(), 207);
-            assert_eq!(user.get("posts").unwrap().as_array().unwrap().len(), 535);
-        }
-        Err(e) => panic!("{}", e),
-    }
+    let site_users = p.get("siteUsers").unwrap();
+    //test specific user sampled at random
+    let user = site_users
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user.get("id").unwrap() == 13)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert_eq!(user.get("reputation").unwrap(), 28971);
+    assert_eq!(user.get("views").unwrap(), 3534);
+    assert_eq!(user.get("upvotes").unwrap(), 4879);
+    assert_eq!(user.get("downvotes").unwrap(), 207);
+    assert_eq!(user.get("posts").unwrap().as_array().unwrap().len(), 535);
 }
 
 #[test]
@@ -79,30 +73,24 @@ fn all_posts_fetched() {
             }
           }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(p) => {
-            let mut num_users = 0;
-            let site_users = p.get("siteUsers").unwrap();
-            let num_posts = site_users.as_array().unwrap().iter().fold(0, |cumm, user| {
-                num_users += 1;
-                let obj = user.as_object().unwrap();
-                let posts = obj.get("posts").unwrap().as_array().unwrap();
-                cumm + posts.len()
-            });
+    let p = convert_gql(gql_query);
+    let mut num_users = 0;
+    let site_users = p.get("siteUsers").unwrap();
+    let num_posts = site_users.as_array().unwrap().iter().fold(0, |cumm, user| {
+        num_users += 1;
+        let obj = user.as_object().unwrap();
+        let posts = obj.get("posts").unwrap().as_array().unwrap();
+        cumm + posts.len()
+    });
 
-            //select count(*) from post where post.owneruserid is not null;
-            assert_eq!(num_posts, 17575);
-            assert_eq!(
-                num_users,
-                16429,
-                "Missing {} users. 10512 users don't have posts (did you left join)",
-                16429 - num_users
-            );
-        }
-        Err(e) => panic!("{}", e),
-    }
+    //select count(*) from post where post.owneruserid is not null;
+    assert_eq!(num_posts, 17575);
+    assert_eq!(
+        num_users,
+        16429,
+        "Missing {} users. 10512 users don't have posts (did you left join)",
+        16429 - num_users
+    );
 }
 
 #[test]
@@ -122,22 +110,16 @@ fn all_posts_belong_to_parent() {
             }
           }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(p) => {
-            let site_users = p.get("siteUsers").unwrap();
-            site_users.as_array().unwrap().iter().for_each(|user| {
-                let obj = user.as_object().unwrap();
-                let user_id = obj.get("id").unwrap().as_i64();
-                let posts = obj.get("posts").unwrap().as_array().unwrap();
-                assert!(posts
-                    .iter()
-                    .all(|post| post.get("owneruserid").unwrap().as_i64() == user_id))
-            });
-        }
-        Err(e) => panic!("{}", e),
-    }
+    let p = convert_gql(gql_query);
+    let site_users = p.get("siteUsers").unwrap();
+    site_users.as_array().unwrap().iter().for_each(|user| {
+        let obj = user.as_object().unwrap();
+        let user_id = obj.get("id").unwrap().as_i64();
+        let posts = obj.get("posts").unwrap().as_array().unwrap();
+        assert!(posts
+            .iter()
+            .all(|post| post.get("owneruserid").unwrap().as_i64() == user_id))
+    });
 }
 
 #[test]
@@ -149,20 +131,14 @@ fn non_nullable_string_fields() {
             displayname
           }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(p) => {
-            let site_users = p.get("siteUsers").unwrap();
-            site_users.as_array().unwrap().iter().for_each(|user| {
-                //test non nullable fields defined for all users
-                let obj = user.as_object().unwrap();
-                obj.get("id").unwrap().as_i64().unwrap();
-                obj.get("displayname").unwrap().as_str().unwrap();
-            });
-        }
-        Err(e) => panic!("{}", e),
-    }
+    let p = convert_gql(gql_query);
+    let site_users = p.get("siteUsers").unwrap();
+    site_users.as_array().unwrap().iter().for_each(|user| {
+        //test non nullable fields defined for all users
+        let obj = user.as_object().unwrap();
+        obj.get("id").unwrap().as_i64().unwrap();
+        obj.get("displayname").unwrap().as_str().unwrap();
+    });
 }
 
 #[test]
@@ -188,40 +164,34 @@ fn three_way_join() {
             }
           }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
+    let p = convert_gql(gql_query);
     let mut num_users = 0;
     let mut num_posts = 0;
     let mut num_comments = 0;
-    match p {
-        Ok(p) => {
-            let site_users = p.get("siteUsers").unwrap();
-            site_users.as_array().unwrap().iter().for_each(|user| {
-                num_users += 1;
-                user.get("posts")
+    let site_users = p.get("siteUsers").unwrap();
+    site_users.as_array().unwrap().iter().for_each(|user| {
+        num_users += 1;
+        user.get("posts")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .for_each(|post| {
+                num_posts += 1;
+                post.get("comments")
                     .unwrap()
                     .as_array()
                     .unwrap()
                     .iter()
-                    .for_each(|post| {
-                        num_posts += 1;
-                        post.get("comments")
-                            .unwrap()
-                            .as_array()
-                            .unwrap()
-                            .iter()
-                            .for_each(|comment| {
-                                num_comments += 1;
-                                assert_eq!(
-                                    comment.get("postid").unwrap().as_i64(),
-                                    post.get("id").unwrap().as_i64()
-                                )
-                            })
-                    });
+                    .for_each(|comment| {
+                        num_comments += 1;
+                        assert_eq!(
+                            comment.get("postid").unwrap().as_i64(),
+                            post.get("id").unwrap().as_i64()
+                        )
+                    })
             });
-        }
-        Err(e) => panic!("{}", e),
-    }
+    });
     //select count(*) from site_user
     assert_eq!(num_users, 16429, "Mismatched user count");
 
@@ -245,23 +215,17 @@ fn join_foreign_field_not_last() {
             views
           }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(p) => {
-            let site_users = p.get("siteUsers").unwrap();
-            site_users.as_array().unwrap().iter().for_each(|user| {
-                let obj = user.as_object().unwrap();
-                obj.get("views").unwrap().as_i64().unwrap();
-                let posts = obj.get("posts").unwrap().as_array().unwrap();
-                let user_id = obj.get("id").unwrap().as_i64().unwrap();
-                for post in posts {
-                    assert_eq!(post.get("owneruserid").unwrap().as_i64().unwrap(), user_id)
-                }
-            })
+    let p = convert_gql(gql_query);
+    let site_users = p.get("siteUsers").unwrap();
+    site_users.as_array().unwrap().iter().for_each(|user| {
+        let obj = user.as_object().unwrap();
+        obj.get("views").unwrap().as_i64().unwrap();
+        let posts = obj.get("posts").unwrap().as_array().unwrap();
+        let user_id = obj.get("id").unwrap().as_i64().unwrap();
+        for post in posts {
+            assert_eq!(post.get("owneruserid").unwrap().as_i64().unwrap(), user_id)
         }
-        Err(e) => panic!("{}", e),
-    }
+    })
 }
 
 //#[test]
@@ -309,12 +273,7 @@ fn weird_types_and_nullability() {
             age
           }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(_) => {}
-        Err(e) => panic!("{}", e),
-    }
+    let p = convert_gql(gql_query);
 }
 
 #[test]
@@ -331,27 +290,20 @@ fn child_to_parent() {
                 }
             }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(p) => {
-            let posts = p.get("posts").unwrap().as_array().unwrap();
-            for post in posts {
-                let user = post.get("siteUser").unwrap();
-                if user.is_null() {
-                    assert!(post.get("owneruserid").unwrap().is_null());
-                } else {
-                    let user = user.as_object().unwrap();
-                    user.get("displayname").unwrap().as_str().unwrap();
-                    assert_eq!(
-                        post.get("owneruserid").unwrap().as_i64().unwrap(),
-                        user.get("id").unwrap().as_i64().unwrap()
-                    );
-                }
-            }
+    let p = convert_gql(gql_query);
+    let posts = p.get("posts").unwrap().as_array().unwrap();
+    for post in posts {
+        let user = post.get("siteUser").unwrap();
+        if user.is_null() {
+            assert!(post.get("owneruserid").unwrap().is_null());
+        } else {
+            let user = user.as_object().unwrap();
+            user.get("displayname").unwrap().as_str().unwrap();
+            assert_eq!(
+                post.get("owneruserid").unwrap().as_i64().unwrap(),
+                user.get("id").unwrap().as_i64().unwrap()
+            );
         }
-
-        Err(e) => panic!("{}", e),
     }
 }
 
@@ -368,20 +320,14 @@ fn composite_join() {
                 }
               }
             }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    match p {
-        Ok(p) => {
-            for parent in p.get("parentTables").unwrap().as_array().unwrap() {
-                let id1 = parent.get("id1").unwrap().as_i64();
-                let id2 = parent.get("id2").unwrap().as_i64();
-                for child in parent.get("childTables").unwrap().as_array().unwrap() {
-                    assert_eq!(id1, child.get("parentId1").unwrap().as_i64());
-                    assert_eq!(id2, child.get("parentId2").unwrap().as_i64());
-                }
-            }
+    let p = convert_gql(gql_query);
+    for parent in p.get("parentTables").unwrap().as_array().unwrap() {
+        let id1 = parent.get("id1").unwrap().as_i64();
+        let id2 = parent.get("id2").unwrap().as_i64();
+        for child in parent.get("childTables").unwrap().as_array().unwrap() {
+            assert_eq!(id1, child.get("parentId1").unwrap().as_i64());
+            assert_eq!(id2, child.get("parentId2").unwrap().as_i64());
         }
-        Err(e) => panic!("{}", e),
     }
 }
 
@@ -396,14 +342,8 @@ fn with_argument() {
                 }
             }
         }";
-    let res = convert_gql(gql_query);
-    write_json_to_file(&res);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    p.unwrap()
-        .get("siteUser")
-        .unwrap()
-        .as_object()
-        .unwrap();
+    let p = convert_gql(gql_query);
+    p.get("siteUser").unwrap().as_object().unwrap();
 }
 
 #[test]
@@ -417,9 +357,8 @@ fn invalid_id() {
                 }
             }
         }";
-    let res = convert_gql(gql_query);
-    let p: Result<Value, Error> = serde_json::from_str(&*res);
-    p.unwrap().get("siteUser").unwrap().as_null().unwrap();
+    let p = convert_gql(gql_query);
+    p.get("siteUser").unwrap().as_null().unwrap();
 }
 
 //we add limit 0 to this query to ensure an empty query set, and check if we still return an empty
@@ -452,4 +391,17 @@ fn test_empty_many_query() {
         .unwrap()
         .len();
     assert_eq!(users_len, 0);
+}
+
+#[test]
+fn test_select_one_compound() {
+    let gql_query = "
+        query{
+          parentTable(id1: 0, id2: 10){
+            id1
+            id2
+          }
+        }
+        ";
+    let p = convert_gql(gql_query);
 }

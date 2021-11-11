@@ -57,20 +57,6 @@ impl ServerSidePoggers {
             Ok(tree) => ast = tree,
             Err(e) => return Err(e.to_string()),
         }
-        if let Err(e) = check_rules(
-            &self.registry,
-            &ast,
-            None,
-            async_graphql::ValidationMode::Strict,
-        ) {
-            return Err(e
-                .iter()
-                .find(|err| !err.message.is_empty())
-                .unwrap()
-                .message
-                .to_string());
-        }
-
         match ast.operations {
             DocumentOperations::Single(Positioned { node, pos: _ }) => {
                 self.visit_query(node.selection_set)

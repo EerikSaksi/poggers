@@ -43,7 +43,7 @@ static POG_NULLABLE_JSON: usize = 13;
 
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo, > = DiGraph::new();
 
     for current_row in read_database::read_tables(database_url).unwrap().iter() {
         let table_name: String = current_row.get("table_name");
