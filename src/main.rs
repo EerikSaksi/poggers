@@ -1,8 +1,5 @@
 mod build_schema;
-mod handle_query;
 mod server_side_json_builder;
-use async_graphql::check_rules;
-use async_graphql::parser::parse_query;
 
 fn main() {
     let pogg = build_schema::create(

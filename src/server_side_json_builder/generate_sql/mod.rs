@@ -2,7 +2,7 @@
 #[path = "./test.rs"]
 mod test;
 use super::TableQueryInfo;
-use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
+use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, Operation};
 use crate::server_side_json_builder::ColumnInfo;
 use async_graphql::{
     parser::{
@@ -20,7 +20,7 @@ use petgraph::{
 use std::collections::HashMap;
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    pub query_to_type: HashMap<String, QueryEdgeInfo>,
+    pub query_to_type: HashMap<String, Operation>,
     pub local_id: u8,
     pub num_select_cols: usize,
 }
@@ -36,7 +36,7 @@ pub struct JsonBuilderContext {
 impl ServerSidePoggers {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-        query_to_type: HashMap<String, QueryEdgeInfo>,
+        query_to_type: HashMap<String, Operation>,
     ) -> ServerSidePoggers {
         ServerSidePoggers {
             g,
@@ -76,9 +76,13 @@ impl ServerSidePoggers {
             let node_index: NodeIndex;
             root_key_name = field.node.name.node.as_str();
             match self.query_to_type.get(root_key_name) {
-                Some(query_info) => {
-                    node_index = query_info.node_index;
-                    is_many = query_info.is_many;
+                Some(operation) => {
+                    if let Operation::Query(i_m, node) = operation {
+                        node_index = *node;
+                        is_many = *i_m;
+                    } else {
+                        return Err(format!("No query named \"{}\"", root_key_name));
+                    }
                 }
                 None => return Err(format!("No query named \"{}\"", root_key_name)),
             }

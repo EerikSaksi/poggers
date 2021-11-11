@@ -1,3 +1,4 @@
+mod mutation_builder;
 mod read_database;
 #[cfg(test)]
 #[path = "./test.rs"]
@@ -8,6 +9,8 @@ use inflector::Inflector;
 use petgraph::graph::DiGraph;
 use petgraph::prelude::{EdgeIndex, NodeIndex};
 use std::collections::HashMap;
+
+use self::mutation_builder::build_mutations;
 
 pub struct GraphQLType {
     pub field_to_types: HashMap<String, (String, usize)>,
@@ -21,9 +24,8 @@ pub struct GraphQLEdgeInfo {
     pub foreign_keys: Vec<String>,
 }
 
-pub struct QueryEdgeInfo {
-    pub is_many: bool,
-    pub node_index: NodeIndex<u32>,
+pub enum Operation {
+    Query(bool, NodeIndex<u32>),
 }
 static POG_INT: usize = 0;
 static POG_STR: usize = 1;
@@ -113,32 +115,27 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             .field_to_types
             .insert(column_name.to_camel_case(), (column_name, data_type_index));
     }
-    let mut query_to_type: HashMap<String, QueryEdgeInfo> = HashMap::new();
+    let mut query_to_type: HashMap<String, Operation> = HashMap::new();
     for node_index in g.node_indices() {
         let GraphQLType {
             table_name,
-            primary_keys,
+            primary_keys: _,
             field_to_types: _,
         } = &g[node_index];
 
         //many query (no filter)
         query_to_type.insert(
             table_name.clone().to_plural().to_camel_case(),
-            QueryEdgeInfo {
-                node_index,
-                is_many: true,
-            },
+            Operation::Query(true, node_index),
         );
 
         //to one (by primary key)
         query_to_type.insert(
             table_name.clone().to_camel_case(),
-            QueryEdgeInfo {
-                node_index,
-                is_many: false,
-            },
+            Operation::Query(false, node_index),
         );
     }
+    build_mutations();
     ServerSidePoggers::new(g, query_to_type)
 }
 fn find_or_create_node(
@@ -168,7 +165,7 @@ fn handle_foreign_key(
     let parent_pk_index = g[node]
         .primary_keys
         .iter()
-        .position(|pk| pk == &new_parent_pk);
+        .position(|pk| pk == new_parent_pk);
 
     //the index of the childs fk needs to match the index of the parent's pk
     match parent_pk_index {
