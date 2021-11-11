@@ -14,6 +14,7 @@ use async_graphql::{
     Positioned,
 };
 use convert_case::{Case, Casing};
+use inflector::Inflector;
 use petgraph::{
     graph::DiGraph,
     prelude::{EdgeIndex, NodeIndex},
@@ -113,15 +114,33 @@ impl ServerSidePoggers {
             }
             match &selection_set.node.items.get(0).unwrap().node {
                 Selection::Field(Positioned { pos: _, node }) => {
-                    if let Some((_, arg_val)) = node.arguments.get(0) {
-                        {
-                            root_query_is_many = false;
-                            from.push_str(" WHERE ");
-                            from.push_str(" __table_0__.");
-                            from.push_str(self.g[node_index].primary_keys.get(0).unwrap());
-                            from.push_str(" = ");
-                            from.push_str(&arg_val.to_string());
-                        }
+                    //if the value of the first (or only) primary key  was provided, we can assume
+                    //that we can build a where clause for all (or one) primay keys
+                    if node
+                        .get_argument(
+                            &self.g[node_index]
+                                .primary_keys
+                                .get(0)
+                                .unwrap()
+                                .to_camel_case(),
+                        )
+                        .is_some()
+                    {
+                        root_query_is_many = false;
+                        let where_clause = &self.g[node_index]
+                            .primary_keys
+                            .iter()
+                            .map(|pk| {
+                                format!(
+                                    "__table_0__.{} = {}",
+                                    pk,
+                                    node.get_argument(&pk.to_camel_case()).unwrap()
+                                )
+                            })
+                            .collect::<Vec<String>>()
+                            .join(" and ");
+                        from.push_str(" where ");
+                        from.push_str(where_clause);
                     }
                 }
                 _ => panic!("Didn't get Selection::field"),
@@ -173,7 +192,7 @@ impl ServerSidePoggers {
             for (i, pk) in self.g[node_index].primary_keys.iter().enumerate() {
                 select.push_str(&current_alias);
                 select.push('.');
-                select.push_str(&pk);
+                select.push_str(pk);
                 select.push_str(" AS ");
                 select.push_str(" __t");
                 select.push_str(&id_copy.to_string());
@@ -209,7 +228,7 @@ impl ServerSidePoggers {
                                 for pk in &self.g[node_index].primary_keys {
                                     order_by.push_str(&current_alias);
                                     order_by.push('.');
-                                    order_by.push_str(&pk);
+                                    order_by.push_str(pk);
                                     order_by.push_str(", ");
                                 }
                             }
@@ -295,9 +314,14 @@ impl ServerSidePoggers {
             });
 
             for child in children {
-                if let Err(e) =
-                    self.build_selection(select, from, order_by, table_query_infos, child.0, child.1)
-                {
+                if let Err(e) = self.build_selection(
+                    select,
+                    from,
+                    order_by,
+                    table_query_infos,
+                    child.0,
+                    child.1,
+                ) {
                     return Err(e);
                 }
             }

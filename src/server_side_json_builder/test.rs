@@ -397,15 +397,12 @@ fn with_argument() {
             }
         }";
     let res = convert_gql(gql_query);
+    write_json_to_file(&res);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     p.unwrap()
         .get("siteUser")
         .unwrap()
         .as_object()
-        .unwrap()
-        .get("posts")
-        .unwrap()
-        .as_array()
         .unwrap();
 }
 

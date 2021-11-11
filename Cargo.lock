@@ -24,11 +24,11 @@ dependencies = [
 [[package]]
 name = "async-graphql"
 version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
+source = "git+https://github.com/EerikSaksi/async-graphql#01586b12be275dbe7c793cf6b32ca606b5982513"
 dependencies = [
  "async-graphql-derive",
- "async-graphql-parser 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
- "async-graphql-value 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
+ "async-graphql-parser 2.11.1",
+ "async-graphql-value 2.11.1",
  "async-stream",
  "async-trait",
  "bytes",
@@ -51,10 +51,10 @@ dependencies = [
 [[package]]
 name = "async-graphql-derive"
 version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
+source = "git+https://github.com/EerikSaksi/async-graphql#01586b12be275dbe7c793cf6b32ca606b5982513"
 dependencies = [
  "Inflector",
- "async-graphql-parser 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
+ "async-graphql-parser 2.11.1",
  "darling",
  "proc-macro-crate",
  "proc-macro2",
@@ -66,10 +66,9 @@ dependencies = [
 [[package]]
 name = "async-graphql-parser"
 version = "2.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e55774fe8c3573dcfb7e8c597124d8d3fb710218ef07c3950ece55d1bece3a24"
+source = "git+https://github.com/EerikSaksi/async-graphql#01586b12be275dbe7c793cf6b32ca606b5982513"
 dependencies = [
- "async-graphql-value 2.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-value 2.11.1",
  "pest",
  "pest_derive",
  "serde",
@@ -78,10 +77,11 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-parser"
-version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
+version = "2.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "577755fa1e7ceb416d08b9a8bed8238a6b1a73fe70239941ce28f1e8fb10e3c0"
 dependencies = [
- "async-graphql-value 2.11.1 (git+https://github.com/EerikSaksi/async-graphql)",
+ "async-graphql-value 2.11.2",
  "pest",
  "pest_derive",
  "serde",
@@ -91,8 +91,7 @@ dependencies = [
 [[package]]
 name = "async-graphql-value"
 version = "2.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7542e6498a7b022f558886b7eb014095dba4d308a7f12ca6e8978a387a536f3d"
+source = "git+https://github.com/EerikSaksi/async-graphql#01586b12be275dbe7c793cf6b32ca606b5982513"
 dependencies = [
  "bytes",
  "indexmap",
@@ -102,8 +101,9 @@ dependencies = [
 
 [[package]]
 name = "async-graphql-value"
-version = "2.11.1"
-source = "git+https://github.com/EerikSaksi/async-graphql#5b652c4ec911271a57ea7706ddc116c4e76a3f48"
+version = "2.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c6b117b6c084e6ea3c18493935ceba018a44da3135dc4d393ea2dbb40aea936"
 dependencies = [
  "bytes",
  "indexmap",
@@ -842,8 +842,8 @@ version = "0.1.0"
 dependencies = [
  "Inflector",
  "async-graphql",
- "async-graphql-parser 2.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "async-graphql-value 2.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "async-graphql-parser 2.11.2",
+ "async-graphql-value 2.11.2",
  "chrono",
  "convert_case",
  "petgraph",
