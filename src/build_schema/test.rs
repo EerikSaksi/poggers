@@ -162,3 +162,14 @@ fn check_nullability() {
         assert_eq!(user_node.field_to_types.get(key).unwrap().1, expected);
     }
 }
+
+#[test]
+fn test_delete_mutation_creation() {
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let query_to_type = pogg.query_to_type;
+    assert!(
+        query_to_type.contains_key("deleteMutationTest"),
+        "{:?} actually contains keys",
+        query_to_type.keys()
+    )
+}

@@ -26,6 +26,7 @@ pub struct GraphQLEdgeInfo {
 
 pub enum Operation {
     Query(bool, NodeIndex<u32>),
+    Delete(NodeIndex<u32>),
 }
 static POG_INT: usize = 0;
 static POG_STR: usize = 1;
@@ -135,7 +136,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             Operation::Query(false, node_index),
         );
     }
-    build_mutations();
+    build_mutations(&g, &mut query_to_type);
     ServerSidePoggers::new(g, query_to_type)
 }
 fn find_or_create_node(

@@ -65,7 +65,7 @@ impl ServerSidePoggers {
         &mut self,
         selection_set: Positioned<SelectionSet>,
     ) -> Result<JsonBuilderContext, String> {
-        let mut select = String::from("SELECT ");
+        let mut selections = String::new();
         let mut from = String::from(" FROM ");
         let mut order_by = String::new();
         let mut table_query_infos: Vec<TableQueryInfo> = vec![];
@@ -76,77 +76,102 @@ impl ServerSidePoggers {
             let node_index: NodeIndex;
             root_key_name = field.node.name.node.as_str();
             match self.query_to_type.get(root_key_name) {
-                Some(operation) => {
-                    if let Operation::Query(i_m, node) = operation {
+                Some(operation) => match operation {
+                    Operation::Query(i_m, node) => {
                         node_index = *node;
                         is_many = *i_m;
-                    } else {
-                        return Err(format!("No query named \"{}\"", root_key_name));
-                    }
-                }
-                None => return Err(format!("No query named \"{}\"", root_key_name)),
-            }
 
-            from.push_str(&self.g[node_index].table_name);
-            from.push_str(" AS __table_0__");
-            if let Err(e) = self.build_selection(
-                &mut select,
-                &mut from,
-                &mut order_by,
-                &mut table_query_infos,
-                selection_set.node.items.get(0).unwrap(),
-                node_index,
-            ) {
-                return Err(e);
-            }
-            match &selection_set.node.items.get(0).unwrap().node {
-                Selection::Field(Positioned { pos: _, node }) => {
-                    //if the value of the first (or only) primary key  was provided, we can assume
-                    //that we can build a where clause for all (or one) primay keys
-                    if !is_many {
-                        from.push_str(" where ");
-                        for pk in &self.g[node_index].primary_keys {
-                            match node.get_argument(&pk.to_camel_case()) {
-                                Some(pk_val) => {
-                                    from.push_str(&format!("__table_0__.{} = {} and ", pk, pk_val))
+                        from.push_str(&self.g[node_index].table_name);
+                        from.push_str(" AS __table_0__");
+                        if let Err(e) = self.build_selection(
+                            &mut selections,
+                            &mut from,
+                            &mut order_by,
+                            &mut table_query_infos,
+                            selection_set.node.items.get(0).unwrap(),
+                            node_index,
+                        ) {
+                            return Err(e);
+                        }
+                        match &selection_set.node.items.get(0).unwrap().node {
+                            Selection::Field(Positioned { pos: _, node }) => {
+                                //if the value of the first (or only) primary key  was provided, we can assume
+                                //that we can build a where clause for all (or one) primay keys
+                                if !is_many {
+                                    from.push_str(" where ");
+                                    for pk in &self.g[node_index].primary_keys {
+                                        match node.get_argument(&pk.to_camel_case()) {
+                                            Some(pk_val) => from.push_str(&format!(
+                                                "__table_0__.{} = {} and ",
+                                                pk, pk_val
+                                            )),
+                                            None => {
+                                                return Err(format!("Expected input field {}", pk))
+                                            }
+                                        }
+                                    }
+                                    from.drain(from.len() - 5..from.len());
                                 }
-                                None => return Err(format!("Expected input field {}", pk)),
+                            }
+                            _ => panic!("Didn't get Selection::field"),
+                        }
+
+                        //remove trailing comma from select
+                        selections.drain(selections.len() - 2..selections.len());
+
+                        match order_by.is_empty() {
+                            true => Ok(JsonBuilderContext {
+                                sql_query: ["SELECT ", &selections, &from].concat(),
+                                table_query_infos,
+                                root_key_name: root_key_name.to_owned(),
+                                root_query_is_many: is_many,
+                            }),
+                            false => {
+                                order_by.drain(order_by.len() - 2..order_by.len());
+                                Ok(JsonBuilderContext {
+                                    sql_query: [
+                                        "SELECT ",
+                                        &selections,
+                                        &from,
+                                        " ORDER BY ",
+                                        &order_by,
+                                    ]
+                                    .concat(),
+                                    table_query_infos,
+                                    root_key_name: root_key_name.to_owned(),
+                                    root_query_is_many: is_many,
+                                })
                             }
                         }
-                        from.drain(from.len() - 5..from.len());
                     }
-                }
-                _ => panic!("Didn't get Selection::field"),
+
+                    Operation::Delete(node_index) => {
+                        self.build_selection(
+                            &mut selections,
+                            &mut from,
+                            &mut order_by,
+                            &mut table_query_infos,
+                            selection_set.node.items.get(0).unwrap(),
+                            *node_index,
+                        );
+                        Ok(JsonBuilderContext {
+                            sql_query: "ok".to_string(),
+                            table_query_infos,
+                            root_key_name: root_key_name.to_owned(),
+                            root_query_is_many: false,
+                        })
+                    }
+                },
+                None => return Err(format!("No operation named \"{}\"", root_key_name)),
             }
         } else {
             panic!("First selection_set item isn't a field");
-        }
-
-        //remove trailing comma from select
-        select.drain(select.len() - 2..select.len());
-
-        match order_by.is_empty() {
-            true => Ok(JsonBuilderContext {
-                sql_query: [select, from].concat(),
-                table_query_infos,
-                root_key_name: root_key_name.to_owned(),
-                root_query_is_many: is_many,
-            }),
-            false => {
-                order_by.drain(order_by.len() - 2..order_by.len());
-                Ok(JsonBuilderContext {
-                    sql_query: [&select, &from, " ORDER BY ", &order_by].concat(),
-                    table_query_infos,
-                    root_key_name: root_key_name.to_owned(),
-                    root_query_is_many: is_many,
-                })
-            }
         }
     }
 
     fn build_selection(
         &mut self,
-        select: &mut String,
+        selections: &mut String,
         from: &mut String,
         order_by: &mut String,
         table_query_infos: &mut Vec<TableQueryInfo>,
@@ -163,15 +188,15 @@ impl ServerSidePoggers {
             //we need to add all primary keys of this particular table (so we know how to group
             //separate objects)
             for (i, pk) in self.g[node_index].primary_keys.iter().enumerate() {
-                select.push_str(&current_alias);
-                select.push('.');
-                select.push_str(pk);
-                select.push_str(" AS ");
-                select.push_str(" __t");
-                select.push_str(&id_copy.to_string());
-                select.push_str("_pk");
-                select.push_str(&i.to_string());
-                select.push_str("__, ");
+                selections.push_str(&current_alias);
+                selections.push('.');
+                selections.push_str(pk);
+                selections.push_str(" AS ");
+                selections.push_str(" __t");
+                selections.push_str(&id_copy.to_string());
+                selections.push_str("_pk");
+                selections.push_str(&i.to_string());
+                selections.push_str("__, ");
             }
 
             let mut encountered_join = false;
@@ -185,12 +210,13 @@ impl ServerSidePoggers {
                             let column_name = &[&current_alias, ".", &column_info.0].concat();
                             graphql_fields
                                 .push(ColumnInfo::Terminal(child_name.to_string(), column_info.1));
-                            select.push_str(column_name);
-                            select.push_str(" as __t");
-                            select.push_str(&id_copy.to_string());
-                            select.push_str("_c");
-                            select.push_str(&(self.num_select_cols - column_offset).to_string());
-                            select.push_str("__, ");
+                            selections.push_str(column_name);
+                            selections.push_str(" as __t");
+                            selections.push_str(&id_copy.to_string());
+                            selections.push_str("_c");
+                            selections
+                                .push_str(&(self.num_select_cols - column_offset).to_string());
+                            selections.push_str("__, ");
                             self.num_select_cols += 1;
                         }
                         None => {
@@ -288,7 +314,7 @@ impl ServerSidePoggers {
 
             for child in children {
                 if let Err(e) = self.build_selection(
-                    select,
+                    selections,
                     from,
                     order_by,
                     table_query_infos,

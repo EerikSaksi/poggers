@@ -33,7 +33,7 @@ fn test_invalid_root_query() {
     let err = pogg.build_root(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
-        "No query named \"commentos\""
+        "No operation named \"commentos\""
     );
 }
 #[test]

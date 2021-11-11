@@ -14,6 +14,26 @@ fn convert_gql(gql_query: &str) -> Value {
     let res = JsonBuilder::new(ctx).convert(rows);
     serde_json::from_str(&*res).unwrap()
 }
+fn mutation_test_fixtures() -> Client {
+    let mut client =
+        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+    client.query("delete from mutation_test", &[]).unwrap();
+    let values = (0..100)
+        .map(|i| format!("({}, '{}', {}.5)",i, i, i))
+        .collect::<Vec<String>>()
+        .join(", ");
+
+    client
+        .query(
+            &format!(
+                "insert into mutation_test(id, non_nullable_str, nullable_float) values {}",
+                values
+            ),
+            &[],
+        )
+        .unwrap();
+    client
+}
 #[allow(dead_code)]
 fn write_json_to_file(res: &str) {
     use std::fs::File;
@@ -408,4 +428,27 @@ fn test_select_one_compound() {
     let parent_table = p.get("parentTable").unwrap().as_object().unwrap();
     assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 0);
     assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
+}
+
+#[test]
+fn delete_one_id() {
+    let mut client = mutation_test_fixtures();
+    let gql_query = "
+        mutation{
+          deleteMutationTest(id: 1){
+            nonNullableStr
+          }
+        }
+        ";
+    let p = convert_gql(gql_query);
+    let deleted_str: Option<String> = client
+        .query(
+            "select non_nullable_str from mutation_test where id = 1",
+            &[],
+        )
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get("non_nullable_str");
+    assert!(deleted_str.is_none());
 }
