@@ -16,7 +16,7 @@ fn column_offsets() {
             }
           }
         }";
-    let JsonBuilderContext { sql_query, table_query_infos, root_key_name, root_query_is_many } = pogg.build_root(query).unwrap();
+    let JsonBuilderContext { sql_query: _, table_query_infos, root_key_name, root_query_is_many } = pogg.build_root(query).unwrap();
     assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
 }
@@ -33,7 +33,7 @@ fn test_invalid_root_query() {
     let err = pogg.build_root(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
-        "Unknown field \"commentos\" on type \"query\". Did you mean \"comments\"?"
+        "No query named \"commentos\""
     );
 }
 #[test]

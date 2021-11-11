@@ -5,12 +5,10 @@ use super::TableQueryInfo;
 use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, QueryEdgeInfo};
 use crate::server_side_json_builder::ColumnInfo;
 use async_graphql::{
-    check_rules,
     parser::{
         parse_query,
         types::{DocumentOperations, Selection, SelectionSet},
     },
-    registry::Registry,
     Positioned,
 };
 use convert_case::{Case, Casing};
@@ -25,7 +23,6 @@ pub struct ServerSidePoggers {
     pub query_to_type: HashMap<String, QueryEdgeInfo>,
     pub local_id: u8,
     pub num_select_cols: usize,
-    registry: Registry,
 }
 #[derive(Debug)]
 pub struct JsonBuilderContext {
@@ -40,14 +37,12 @@ impl ServerSidePoggers {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
         query_to_type: HashMap<String, QueryEdgeInfo>,
-        registry: Registry,
     ) -> ServerSidePoggers {
         ServerSidePoggers {
             g,
             query_to_type,
             local_id: 0,
             num_select_cols: 0,
-            registry,
         }
     }
 
@@ -74,18 +69,20 @@ impl ServerSidePoggers {
         let mut from = String::from(" FROM ");
         let mut order_by = String::new();
         let mut table_query_infos: Vec<TableQueryInfo> = vec![];
-        let mut root_query_is_many = true;
 
         let root_key_name: &str;
+        let is_many: bool;
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
-            let node_index;
+            let node_index: NodeIndex;
             root_key_name = field.node.name.node.as_str();
-            //we need to wrap this so that query_type is dropped, and copy out the is_many and
-            //node_index fields to satisfy the borrow checker
-            {
-                let query_type = self.query_to_type.get(root_key_name).unwrap();
-                node_index = query_type.node_index;
+            match self.query_to_type.get(root_key_name) {
+                Some(query_info) => {
+                    node_index = query_info.node_index;
+                    is_many = query_info.is_many;
+                }
+                None => return Err(format!("No query named \"{}\"", root_key_name)),
             }
+
             from.push_str(&self.g[node_index].table_name);
             from.push_str(" AS __table_0__");
             if let Err(e) = self.build_selection(
@@ -102,31 +99,17 @@ impl ServerSidePoggers {
                 Selection::Field(Positioned { pos: _, node }) => {
                     //if the value of the first (or only) primary key  was provided, we can assume
                     //that we can build a where clause for all (or one) primay keys
-                    if node
-                        .get_argument(
-                            &self.g[node_index]
-                                .primary_keys
-                                .get(0)
-                                .unwrap()
-                                .to_camel_case(),
-                        )
-                        .is_some()
-                    {
-                        root_query_is_many = false;
-                        let where_clause = &self.g[node_index]
-                            .primary_keys
-                            .iter()
-                            .map(|pk| {
-                                format!(
-                                    "__table_0__.{} = {}",
-                                    pk,
-                                    node.get_argument(&pk.to_camel_case()).unwrap()
-                                )
-                            })
-                            .collect::<Vec<String>>()
-                            .join(" and ");
+                    if !is_many {
                         from.push_str(" where ");
-                        from.push_str(where_clause);
+                        for pk in &self.g[node_index].primary_keys {
+                            match node.get_argument(&pk.to_camel_case()) {
+                                Some(pk_val) => {
+                                    from.push_str(&format!("__table_0__.{} = {} and ", pk, pk_val))
+                                }
+                                None => return Err(format!("Expected input field {}", pk)),
+                            }
+                        }
+                        from.drain(from.len() - 5..from.len());
                     }
                 }
                 _ => panic!("Didn't get Selection::field"),
@@ -143,7 +126,7 @@ impl ServerSidePoggers {
                 sql_query: [select, from].concat(),
                 table_query_infos,
                 root_key_name: root_key_name.to_owned(),
-                root_query_is_many,
+                root_query_is_many: is_many,
             }),
             false => {
                 order_by.drain(order_by.len() - 2..order_by.len());
@@ -151,7 +134,7 @@ impl ServerSidePoggers {
                     sql_query: [&select, &from, " ORDER BY ", &order_by].concat(),
                     table_query_infos,
                     root_key_name: root_key_name.to_owned(),
-                    root_query_is_many,
+                    root_query_is_many: is_many,
                 })
             }
         }

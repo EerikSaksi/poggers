@@ -9,6 +9,7 @@ fn convert_gql(gql_query: &str) -> Value {
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
+    println!("\n{}\n", sql);
     let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
     let res = JsonBuilder::new(ctx).convert(rows);
     serde_json::from_str(&*res).unwrap()
@@ -404,4 +405,7 @@ fn test_select_one_compound() {
         }
         ";
     let p = convert_gql(gql_query);
+    let parent_table = p.get("parentTable").unwrap().as_object().unwrap();
+    assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 0);
+    assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
 }

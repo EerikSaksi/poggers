@@ -1,4 +1,3 @@
-mod async_graphql_schema;
 mod read_database;
 #[cfg(test)]
 #[path = "./test.rs"]
@@ -43,7 +42,7 @@ static POG_NULLABLE_JSON: usize = 13;
 
 #[allow(dead_code)]
 pub fn create(database_url: &str) -> ServerSidePoggers {
-    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo, > = DiGraph::new();
+    let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
 
     for current_row in read_database::read_tables(database_url).unwrap().iter() {
         let table_name: String = current_row.get("table_name");
@@ -140,8 +139,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             },
         );
     }
-    let registry = async_graphql_schema::internal_to_async(&query_to_type);
-    ServerSidePoggers::new(g, query_to_type, registry)
+    ServerSidePoggers::new(g, query_to_type)
 }
 fn find_or_create_node(
     g: &mut DiGraph<GraphQLType, GraphQLEdgeInfo>,
