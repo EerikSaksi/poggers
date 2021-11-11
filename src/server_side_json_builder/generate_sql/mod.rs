@@ -75,94 +75,92 @@ impl ServerSidePoggers {
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
             let node_index: NodeIndex;
             root_key_name = field.node.name.node.as_str();
+
+            let operation;
             match self.query_to_type.get(root_key_name) {
-                Some(operation) => match operation {
-                    Operation::Query(i_m, node) => {
-                        node_index = *node;
-                        is_many = *i_m;
+                Some(op) => operation = op.clone(),
+                None => return Err(format!("No operation named \"{}\"", root_key_name)),
+            }
 
-                        from.push_str(&self.g[node_index].table_name);
-                        from.push_str(" AS __table_0__");
-                        if let Err(e) = self.build_selection(
-                            &mut selections,
-                            &mut from,
-                            &mut order_by,
-                            &mut table_query_infos,
-                            selection_set.node.items.get(0).unwrap(),
-                            node_index,
-                        ) {
-                            return Err(e);
-                        }
-                        match &selection_set.node.items.get(0).unwrap().node {
-                            Selection::Field(Positioned { pos: _, node }) => {
-                                //if the value of the first (or only) primary key  was provided, we can assume
-                                //that we can build a where clause for all (or one) primay keys
-                                if !is_many {
-                                    from.push_str(" where ");
-                                    for pk in &self.g[node_index].primary_keys {
-                                        match node.get_argument(&pk.to_camel_case()) {
-                                            Some(pk_val) => from.push_str(&format!(
-                                                "__table_0__.{} = {} and ",
-                                                pk, pk_val
-                                            )),
-                                            None => {
-                                                return Err(format!("Expected input field {}", pk))
-                                            }
-                                        }
+            match operation {
+                Operation::Query(i_m, node) => {
+                    node_index = node;
+                    is_many = i_m;
+
+                    from.push_str(&self.g[node_index].table_name);
+                    from.push_str(" AS __table_0__");
+                    if let Err(e) = self.build_selection(
+                        &mut selections,
+                        &mut from,
+                        &mut order_by,
+                        &mut table_query_infos,
+                        selection_set.node.items.get(0).unwrap(),
+                        node_index,
+                    ) {
+                        return Err(e);
+                    }
+                    match &selection_set.node.items.get(0).unwrap().node {
+                        Selection::Field(Positioned { pos: _, node }) => {
+                            //if the value of the first (or only) primary key  was provided, we can assume
+                            //that we can build a where clause for all (or one) primay keys
+                            if !is_many {
+                                from.push_str(" where ");
+                                for pk in &self.g[node_index].primary_keys {
+                                    match node.get_argument(&pk.to_camel_case()) {
+                                        Some(pk_val) => from.push_str(&format!(
+                                            "__table_0__.{} = {} and ",
+                                            pk, pk_val
+                                        )),
+                                        None => return Err(format!("Expected input field {}", pk)),
                                     }
-                                    from.drain(from.len() - 5..from.len());
                                 }
+                                from.drain(from.len() - 5..from.len());
                             }
-                            _ => panic!("Didn't get Selection::field"),
                         }
+                        _ => panic!("Didn't get Selection::field"),
+                    }
 
-                        //remove trailing comma from select
-                        selections.drain(selections.len() - 2..selections.len());
+                    //remove trailing comma from select
+                    selections.drain(selections.len() - 2..selections.len());
 
-                        match order_by.is_empty() {
-                            true => Ok(JsonBuilderContext {
-                                sql_query: ["SELECT ", &selections, &from].concat(),
+                    match order_by.is_empty() {
+                        true => Ok(JsonBuilderContext {
+                            sql_query: ["SELECT ", &selections, &from].concat(),
+                            table_query_infos,
+                            root_key_name: root_key_name.to_owned(),
+                            root_query_is_many: is_many,
+                        }),
+                        false => {
+                            order_by.drain(order_by.len() - 2..order_by.len());
+                            Ok(JsonBuilderContext {
+                                sql_query: ["SELECT ", &selections, &from, " ORDER BY ", &order_by]
+                                    .concat(),
                                 table_query_infos,
                                 root_key_name: root_key_name.to_owned(),
                                 root_query_is_many: is_many,
-                            }),
-                            false => {
-                                order_by.drain(order_by.len() - 2..order_by.len());
-                                Ok(JsonBuilderContext {
-                                    sql_query: [
-                                        "SELECT ",
-                                        &selections,
-                                        &from,
-                                        " ORDER BY ",
-                                        &order_by,
-                                    ]
-                                    .concat(),
-                                    table_query_infos,
-                                    root_key_name: root_key_name.to_owned(),
-                                    root_query_is_many: is_many,
-                                })
-                            }
+                            })
                         }
                     }
+                }
 
-                    Operation::Delete(node_index) => {
-                        self.build_selection(
-                            &mut selections,
-                            &mut from,
-                            &mut order_by,
-                            &mut table_query_infos,
-                            selection_set.node.items.get(0).unwrap(),
-                            *node_index,
-                        );
-                        Ok(JsonBuilderContext {
-                            sql_query: "ok".to_string(),
-                            table_query_infos,
-                            root_key_name: root_key_name.to_owned(),
-                            root_query_is_many: false,
-                        })
+                Operation::Delete(node_index) => {
+                    if let Err(e) = self.build_selection(
+                        &mut selections,
+                        &mut from,
+                        &mut order_by,
+                        &mut table_query_infos,
+                        selection_set.node.items.get(0).unwrap(),
+                        node_index,
+                    ) {
+                        return Err(e);
                     }
-                },
-                None => return Err(format!("No operation named \"{}\"", root_key_name)),
+                    Ok(JsonBuilderContext {
+                        sql_query: "ok".to_string(),
+                        table_query_infos,
+                        root_key_name: root_key_name.to_owned(),
+                        root_query_is_many: false,
+                    })
+                }
             }
         } else {
             panic!("First selection_set item isn't a field");

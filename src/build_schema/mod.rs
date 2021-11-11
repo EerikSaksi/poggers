@@ -24,6 +24,7 @@ pub struct GraphQLEdgeInfo {
     pub foreign_keys: Vec<String>,
 }
 
+#[derive(Clone)]
 pub enum Operation {
     Query(bool, NodeIndex<u32>),
     Delete(NodeIndex<u32>),
