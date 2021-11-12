@@ -14,13 +14,13 @@ fn column_offsets() {
               id
               posttypeid
             }
-          }
+          }j
         }";
     let JsonBuilderContext {
         sql_query: _,
         table_query_infos,
-        root_key_name,
-        root_query_is_many,
+        root_key_name:_,
+        root_query_is_many:_,
     } = pogg.build_root(query).unwrap();
     assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);

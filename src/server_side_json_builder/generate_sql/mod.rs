@@ -111,7 +111,7 @@ impl ServerSidePoggers {
                                             "__table_0__.{} = {} and ",
                                             pk, pk_val
                                         )),
-                                        none => return Err(format!("Expected input field {}", pk)),
+                                        None => return Err(format!("Expected input field {}", pk)),
                                     }
                                 }
                                 from.drain(from.len() - 5..from.len());

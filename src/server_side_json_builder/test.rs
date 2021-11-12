@@ -18,15 +18,19 @@ fn mutation_test_fixtures() -> Client {
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     client.query("delete from mutation_test", &[]).unwrap();
+    let post_ids = client.query("select id from post limit 100", &[]).unwrap();
     let values = (0..100)
-        .map(|i| format!("({}, '{}', {}.5)",i, i, i))
+        .map(|i| {
+            let post_id: i32 = post_ids.get(i).unwrap().get(0);
+            format!("({}, '{}', {}.5, {})", i, i, i, post_id)
+        })
         .collect::<Vec<String>>()
         .join(", ");
 
     client
         .query(
             &format!(
-                "insert into mutation_test(id, non_nullable_str, nullable_float) values {}",
+                "insert into mutation_test(id, non_nullable_str, nullable_float, post_id) values {}",
                 values
             ),
             &[],
@@ -440,15 +444,24 @@ fn delete_one_id() {
           }
         }
         ";
-    let p = convert_gql(gql_query);
-    let deleted_str: Option<String> = client
+    convert_gql(gql_query);
+    if let Some(row) = client
         .query(
             "select non_nullable_str from mutation_test where id = 1",
             &[],
         )
         .unwrap()
         .get(0)
+    {
+        panic!("Got row {:?}", row)
+    }
+
+    //verify no other deletions
+    let count: i64 = client
+        .query("select count(*) from mutation_test", &[])
         .unwrap()
-        .get("non_nullable_str");
-    assert!(deleted_str.is_none());
+        .get(0)
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 99);
 }
