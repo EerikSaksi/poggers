@@ -67,124 +67,96 @@ impl ServerSidePoggers {
     ) -> Result<JsonBuilderContext, String> {
         let mut selections = String::new();
         let mut from = String::from(" FROM ");
+        let mut filter = String::from(" WHERE ");
         let mut order_by = String::new();
         let mut table_query_infos: Vec<TableQueryInfo> = vec![];
 
         let root_key_name: &str;
-        let is_many: bool;
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
-            let node_index: NodeIndex;
             root_key_name = field.node.name.node.as_str();
 
+            //clone operation (or if invalid throw error)
             let operation;
             match self.query_to_type.get(root_key_name) {
                 Some(op) => operation = op.clone(),
                 None => return Err(format!("No operation named \"{}\"", root_key_name)),
             }
 
-            match operation {
-                Operation::Query(i_m, node) => {
-                    node_index = node;
-                    is_many = i_m;
+            //we want to extract include_filter (whether we should build the where a = b clause)
+            //we need this as we need to know whether we are expecting arguments (and to throw an
+            //error if we don't receive them)
 
-                    from.push_str(&self.g[node_index].table_name);
-                    from.push_str(" AS __table_0__");
-                    if let Err(e) = self.build_selection(
-                        &mut selections,
-                        &mut from,
-                        &mut order_by,
-                        &mut table_query_infos,
-                        selection_set.node.items.get(0).unwrap(),
-                        node_index,
-                    ) {
-                        return Err(e);
-                    }
-                    match &selection_set.node.items.get(0).unwrap().node {
-                        Selection::Field(Positioned { pos: _, node }) => {
-                            //if the value of the first (or only) primary key  was provided, we can assume
-                            //that we can build a where clause for all (or one) primay keys
-                            if !is_many {
-                                from.push_str(" where ");
-                                for pk in &self.g[node_index].primary_keys {
-                                    match node.get_argument(&pk.to_camel_case()) {
-                                        Some(pk_val) => from.push_str(&format!(
-                                            "__table_0__.{} = {} and ",
-                                            pk, pk_val
-                                        )),
-                                        None => return Err(format!("Expected input field {}", pk)),
-                                    }
-                                }
-                                from.drain(from.len() - 5..from.len());
+            //extract node index from the operation (this can be used to perform shared logic
+            //between operations)
+            let (include_filter, node_index) = match operation {
+                Operation::Query(is_many, node_index) => (!is_many, node_index),
+                Operation::Delete(node_index) => (true, node_index),
+            };
+            from.push_str(&self.g[node_index].table_name);
+            from.push_str(" AS __table_0__");
+            if let Err(e) = self.build_selection(
+                &mut selections,
+                &mut from,
+                &mut order_by,
+                &mut table_query_infos,
+                selection_set.node.items.get(0).unwrap(),
+                node_index,
+            ) {
+                return Err(e);
+            }
+
+            if include_filter {
+                match &selection_set.node.items.get(0).unwrap().node {
+                    Selection::Field(Positioned { pos: _, node }) => {
+                        //if the value of the first (or only) primary key  was provided, we can assume
+                        //that we can build a where clause for all (or one) primay keys
+                        for pk in &self.g[node_index].primary_keys {
+                            match node.get_argument(&pk.to_camel_case()) {
+                                Some(pk_val) => filter
+                                    .push_str(&format!("__table_0__.{} = {} and ", pk, pk_val)),
+                                None => return Err(format!("Expected input field {}", pk)),
                             }
                         }
-                        _ => panic!("didn't get selection::field"),
+                        filter.drain(filter.len() - 4..filter.len());
                     }
-
-                    //remove trailing comma from select
-                    selections.drain(selections.len() - 2..selections.len());
-
-                    match order_by.is_empty() {
-                        true => Ok(JsonBuilderContext {
-                            sql_query: ["SELECT ", &selections, &from].concat(),
-                            table_query_infos,
-                            root_key_name: root_key_name.to_owned(),
-                            root_query_is_many: is_many,
-                        }),
-                        false => {
-                            order_by.drain(order_by.len() - 2..order_by.len());
-                            Ok(JsonBuilderContext {
-                                sql_query: ["SELECT ", &selections, &from, " ORDER BY ", &order_by]
-                                    .concat(),
-                                table_query_infos,
-                                root_key_name: root_key_name.to_owned(),
-                                root_query_is_many: is_many,
-                            })
-                        }
-                    }
+                    _ => panic!("Didn't get Selection::Field"),
                 }
+            }
 
-                Operation::Delete(node_index) => {
-                    if let Err(e) = self.build_selection(
-                        &mut selections,
-                        &mut from,
-                        &mut order_by,
-                        &mut table_query_infos,
-                        selection_set.node.items.get(0).unwrap(),
-                        node_index,
-                    ) {
-                        return Err(e);
+            //remove trailing comma from select
+            selections.drain(selections.len() - 2..selections.len());
+
+            match operation {
+                Operation::Query(root_query_is_many, _) => {
+                    let mut sql_query = ["SELECT ", &selections, &from].concat();
+                    if !root_query_is_many {
+                        sql_query.push_str(&filter);
                     }
-                    let mut where_str = String::new();
-                    match &selection_set.node.items.get(0).unwrap().node {
-                        Selection::Field(Positioned { pos: _, node }) => {
-                            //if the value of the first (or only) primary key  was provided, we can assume
-                            //that we can build a where clause for all (or one) primay keys
-                            for pk in &self.g[node_index].primary_keys {
-                                match node.get_argument(&pk.to_camel_case()) {
-                                    Some(pk_val) => {
-                                        where_str.push_str(&format!("{} = {} and ", pk, pk_val))
-                                    }
-                                    None => return Err(format!("Expected input field {}", pk)),
-                                }
-                            }
-                            from.drain(from.len() - 5..from.len());
-                        }
-                        _ => panic!("didn't get selection::field"),
+                    if !order_by.is_empty() {
+                        order_by.drain(order_by.len() - 2..order_by.len());
+                        sql_query.push_str(" ORDER BY ");
+                        sql_query.push_str(&order_by);
                     }
-                    //remove trailing " and " 
-                    where_str.drain(where_str.len() - 5..where_str.len());
-                    //remove trailing comma from select
-                    selections.drain(selections.len() - 2..selections.len());
                     Ok(JsonBuilderContext {
-                        sql_query: [
-                            "DELETE FROM ",
-                            &self.g[node_index].table_name,
-                            " AS __table_0__ WHERE ",
-                            &where_str,
-                            " RETURNING ",
-                            &selections,
-                        ]
-                        .concat(),
+                        sql_query,
+                        table_query_infos,
+                        root_key_name: root_key_name.to_owned(),
+                        root_query_is_many,
+                    })
+                }
+                Operation::Delete(_) => {
+                    let sql_query = [
+                        "WITH __table_0__ AS ( DELETE FROM ",
+                        &self.g[node_index].table_name,
+                        " AS __table_0__",
+                        &filter,
+                        "RETURNING *) SELECT ",
+                        &selections,
+                        " FROM __table_0__",
+                    ]
+                    .concat();
+                    Ok(JsonBuilderContext {
+                        sql_query,
                         table_query_infos,
                         root_key_name: root_key_name.to_owned(),
                         root_query_is_many: false,

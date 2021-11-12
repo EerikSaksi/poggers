@@ -3,7 +3,7 @@ use crate::build_schema::create;
 use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
 
-fn convert_gql(gql_query: &str) -> Value {
+fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
@@ -12,6 +12,12 @@ fn convert_gql(gql_query: &str) -> Value {
     println!("\n{}\n", sql);
     let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
     let res = JsonBuilder::new(ctx).convert(rows);
+    if write_to_file {
+        use std::fs::File;
+        use std::io::prelude::*;
+        let mut file = File::create("foo.json").unwrap();
+        file.write_all(res.as_bytes()).unwrap();
+    }
     serde_json::from_str(&*res).unwrap()
 }
 fn mutation_test_fixtures() -> Client {
@@ -38,13 +44,6 @@ fn mutation_test_fixtures() -> Client {
         .unwrap();
     client
 }
-#[allow(dead_code)]
-fn write_json_to_file(res: &str) {
-    use std::fs::File;
-    use std::io::prelude::*;
-    let mut file = File::create("foo.json").unwrap();
-    file.write_all(res.as_bytes()).unwrap();
-}
 
 #[test]
 fn test_random_user() {
@@ -63,7 +62,7 @@ fn test_random_user() {
           }
         }";
 
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
 
     let site_users = p.get("siteUsers").unwrap();
     //test specific user sampled at random
@@ -98,7 +97,7 @@ fn all_posts_fetched() {
             }
           }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let mut num_users = 0;
     let site_users = p.get("siteUsers").unwrap();
     let num_posts = site_users.as_array().unwrap().iter().fold(0, |cumm, user| {
@@ -135,7 +134,7 @@ fn all_posts_belong_to_parent() {
             }
           }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
@@ -156,7 +155,7 @@ fn non_nullable_string_fields() {
             displayname
           }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         //test non nullable fields defined for all users
@@ -189,7 +188,7 @@ fn three_way_join() {
             }
           }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let mut num_users = 0;
     let mut num_posts = 0;
     let mut num_comments = 0;
@@ -240,7 +239,7 @@ fn join_foreign_field_not_last() {
             views
           }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
@@ -298,7 +297,7 @@ fn weird_types_and_nullability() {
             age
           }
         }";
-    convert_gql(gql_query);
+    convert_gql(gql_query, false);
 }
 
 #[test]
@@ -315,7 +314,7 @@ fn child_to_parent() {
                 }
             }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let posts = p.get("posts").unwrap().as_array().unwrap();
     for post in posts {
         let user = post.get("siteUser").unwrap();
@@ -345,7 +344,7 @@ fn composite_join() {
                 }
               }
             }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     for parent in p.get("parentTables").unwrap().as_array().unwrap() {
         let id1 = parent.get("id1").unwrap().as_i64();
         let id2 = parent.get("id2").unwrap().as_i64();
@@ -367,7 +366,7 @@ fn with_argument() {
                 }
             }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     p.get("siteUser").unwrap().as_object().unwrap();
 }
 
@@ -382,7 +381,7 @@ fn invalid_id() {
                 }
             }
         }";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, true);
     p.get("siteUser").unwrap().as_null().unwrap();
 }
 
@@ -428,7 +427,7 @@ fn test_select_one_compound() {
           }
         }
         ";
-    let p = convert_gql(gql_query);
+    let p = convert_gql(gql_query, false);
     let parent_table = p.get("parentTable").unwrap().as_object().unwrap();
     assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 0);
     assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
@@ -444,7 +443,7 @@ fn delete_one_id() {
           }
         }
         ";
-    convert_gql(gql_query);
+    convert_gql(gql_query, false);
     if let Some(row) = client
         .query(
             "select non_nullable_str from mutation_test where id = 1",
