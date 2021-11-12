@@ -298,7 +298,7 @@ fn weird_types_and_nullability() {
             age
           }
         }";
-    let p = convert_gql(gql_query);
+    convert_gql(gql_query);
 }
 
 #[test]
