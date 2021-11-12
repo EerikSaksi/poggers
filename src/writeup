@@ -1292,3 +1292,65 @@ I managed to get this working. Essentially, I pass the internal representation t
 I started to work on queries returning only one element. Essentially, so far no queries have taken any arguments, and all rows have been returned. If the user provides the primary key of a table, they should be able to get a specific row. I have been working on this. I am currently testing this with just single integer id columns, and will generalize this for other fields, such as unique constraints. I also intend to add helpful parameters to modify the query building, such as first/last n rows, order_by column, filter, etc. 
 
 Implementing this was very easy: I simply checked if the GraphQL query provided any arguments, and if so I simply added a where id = input clause. This is of course very generalized and will not work if we add e.g an first/last clause. Another issue that arose is that our builder assumes the root query is always a list, which has worked so far. Our query builder should provide a root_query_is_many field so that our builder knows to use {} or [] on the root.
+
+
+I started working on mutations (these are insert update delete in the database world). The first thing I did was turn the QueryInfo structure into an enum
+
+struct QueryInfo {
+	node_index: NodeIndex<u32>, 
+	is_many: bool
+}
+
+Into
+
+enum Operation{
+	Query(NodeIndex<u32>, bool), 
+	Delete(NodeIndex<u32>)
+}
+
+The query resolver HashMap was changed to operation_resolver (from String -> QueryInfo to String -> Operation). During query building. I did not have to change any logic related to building Queries, but I did have to specify they were Queries. I decided to start with Deletion, as it only required the primary keys as input (delete by primary key) rather than update (update by primary key, and specify the fields to update), or inserts (require primary keys, non nullabe fields, and optional nullable fields).
+
+Delete Queries were generated almost exactly the same as select one queries (select one queries are simply table_name.to_camel()), delete queries delete + table_name.to_upper_camel() (to create a query like deleteAuthorComment for a table author_comment). 
+
+Next I had to conditionally construct the delete SQL query. The delete queries should ideally also return the deleted object (just good practice, many frontend applications will request the deleted item id from cache, or alert the user "you deleted {deletedPost.title}") In order to implement this I used the following format
+
+
+with __deleted__ as (
+  delete from
+    post
+  where
+    (id = 1) returning *
+)
+select
+  (post.id)
+from
+  __deleted__;
+
+This is a nice way to do it as lets you even join data together. It even lets a user join data with the deleted row, e.g get comments by deleted post 
+with __deleted__ as (
+  delete from
+    post
+  where
+    (id = 1) returning *
+)
+
+select
+  (post.id, comment.text)
+from
+  __deleted__ join comment on __deleted__.id = comment.postid
+
+
+My visitor builds multiple strings variables, selections (SELECT a, b, c), from (FROM table_1 JOIN table_2...) filter (WHERE id = 1) and order_by (ORDER BY parent.id). These 4 are then concatenated in order to create a regular select query (selections + from + filter + order_by). I realized that I could simply format these differently in order to create the delete query (letting me avoid rewriting a visitor). Here is the general format
+
+
+with __table_0__ as (
+  delete from
+		${root_table}
+		${filter}
+    returning *
+)
+${selections}
+from
+	${orderBy}
+
+This was pretty nice, as I was simply able to use a bit of string manipulation to reuse logic. This also meant that implementing the deletion logic only required conditional formatting (build the strings the same as we did before, but this time format depending on operation type).
