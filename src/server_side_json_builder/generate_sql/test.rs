@@ -16,7 +16,12 @@ fn column_offsets() {
             }
           }
         }";
-    let JsonBuilderContext { sql_query: _, table_query_infos, root_key_name, root_query_is_many } = pogg.build_root(query).unwrap();
+    let JsonBuilderContext {
+        sql_query: _,
+        table_query_infos,
+        root_key_name,
+        root_query_is_many,
+    } = pogg.build_root(query).unwrap();
     assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
 }
@@ -31,10 +36,7 @@ fn test_invalid_root_query() {
           }
         }";
     let err = pogg.build_root(query).expect_err("Wasn't Err");
-    assert_eq!(
-        err.as_str(),
-        "No operation named \"commentos\""
-    );
+    assert_eq!(err.as_str(), "No operation named \"commentos\"");
 }
 #[test]
 fn test_invalid_syntax() {
@@ -107,3 +109,17 @@ fn test_no_root() {
     );
 }
 
+#[test]
+fn delete_mutation() {
+    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let gql_query = "
+        mutation{
+          deleteMutationTest(id: 1){
+            nonNullableStr
+          }
+        }
+        ";
+
+    let ctx = pogg.build_root(gql_query).unwrap();
+    assert_eq!(ctx.sql_query, "DELETE FROM mutation_test AS __table_0__ WHERE id = 1 RETURNING __table_0__.id AS  __t0_pk0__, __table_0__.non_nullable_str AS __t0_c0__");
+}

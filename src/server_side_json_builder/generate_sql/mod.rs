@@ -111,13 +111,13 @@ impl ServerSidePoggers {
                                             "__table_0__.{} = {} and ",
                                             pk, pk_val
                                         )),
-                                        None => return Err(format!("Expected input field {}", pk)),
+                                        none => return Err(format!("Expected input field {}", pk)),
                                     }
                                 }
                                 from.drain(from.len() - 5..from.len());
                             }
                         }
-                        _ => panic!("Didn't get Selection::field"),
+                        _ => panic!("didn't get selection::field"),
                     }
 
                     //remove trailing comma from select
@@ -154,8 +154,37 @@ impl ServerSidePoggers {
                     ) {
                         return Err(e);
                     }
+                    let mut where_str = String::new();
+                    match &selection_set.node.items.get(0).unwrap().node {
+                        Selection::Field(Positioned { pos: _, node }) => {
+                            //if the value of the first (or only) primary key  was provided, we can assume
+                            //that we can build a where clause for all (or one) primay keys
+                            for pk in &self.g[node_index].primary_keys {
+                                match node.get_argument(&pk.to_camel_case()) {
+                                    Some(pk_val) => {
+                                        where_str.push_str(&format!("{} = {} and ", pk, pk_val))
+                                    }
+                                    None => return Err(format!("Expected input field {}", pk)),
+                                }
+                            }
+                            from.drain(from.len() - 5..from.len());
+                        }
+                        _ => panic!("didn't get selection::field"),
+                    }
+                    //remove trailing " and " 
+                    where_str.drain(where_str.len() - 5..where_str.len());
+                    //remove trailing comma from select
+                    selections.drain(selections.len() - 2..selections.len());
                     Ok(JsonBuilderContext {
-                        sql_query: "ok".to_string(),
+                        sql_query: [
+                            "DELETE FROM ",
+                            &self.g[node_index].table_name,
+                            " AS __table_0__ WHERE ",
+                            &where_str,
+                            " RETURNING ",
+                            &selections,
+                        ]
+                        .concat(),
                         table_query_infos,
                         root_key_name: root_key_name.to_owned(),
                         root_query_is_many: false,
@@ -209,7 +238,7 @@ impl ServerSidePoggers {
                             graphql_fields
                                 .push(ColumnInfo::Terminal(child_name.to_string(), column_info.1));
                             selections.push_str(column_name);
-                            selections.push_str(" as __t");
+                            selections.push_str(" AS __t");
                             selections.push_str(&id_copy.to_string());
                             selections.push_str("_c");
                             selections
