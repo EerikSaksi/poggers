@@ -7,7 +7,7 @@ use crate::server_side_json_builder::ColumnInfo;
 use async_graphql::{
     parser::{
         parse_query,
-        types::{DocumentOperations, Selection, SelectionSet},
+        types::{DocumentOperations, Selection, SelectionSet, Value},
     },
     Positioned,
 };
@@ -66,7 +66,7 @@ impl ServerSidePoggers {
         selection_set: Positioned<SelectionSet>,
     ) -> Result<JsonBuilderContext, String> {
         let mut selections = String::new();
-        let mut from = String::from(" FROM ");
+        let mut from = String::new();
         let mut filter = String::from(" WHERE ");
         let mut order_by = String::new();
         let mut table_query_infos: Vec<TableQueryInfo> = vec![];
@@ -88,12 +88,11 @@ impl ServerSidePoggers {
 
             //extract node index from the operation (this can be used to perform shared logic
             //between operations)
-            let (include_filter, node_index) = match operation {
-                Operation::Query(is_many, node_index) => (!is_many, node_index),
-                Operation::Delete(node_index) => (true, node_index),
+            let (is_many, node_index) = match operation {
+                Operation::Query(is_many, node_index) => (is_many, node_index),
+                Operation::Delete(node_index) => (false, node_index),
+                Operation::Update(node_index) => (false, node_index),
             };
-            from.push_str(&self.g[node_index].table_name);
-            from.push_str(" AS __table_0__");
             if let Err(e) = self.build_selection(
                 &mut selections,
                 &mut from,
@@ -105,7 +104,7 @@ impl ServerSidePoggers {
                 return Err(e);
             }
 
-            if include_filter {
+            if !is_many {
                 match &selection_set.node.items.get(0).unwrap().node {
                     Selection::Field(Positioned { pos: _, node }) => {
                         //if the value of the first (or only) primary key  was provided, we can assume
@@ -126,9 +125,17 @@ impl ServerSidePoggers {
             //remove trailing comma from select
             selections.drain(selections.len() - 2..selections.len());
 
-            match operation {
+            let sql_query = match operation {
                 Operation::Query(root_query_is_many, _) => {
-                    let mut sql_query = ["SELECT ", &selections, &from].concat();
+                    let mut sql_query = [
+                        "SELECT ",
+                        &selections,
+                        " FROM ",
+                        &self.g[node_index].table_name,
+                        " AS __table_0__ ",
+                        &from,
+                    ]
+                    .concat();
                     if !root_query_is_many {
                         sql_query.push_str(&filter);
                     }
@@ -137,32 +144,76 @@ impl ServerSidePoggers {
                         sql_query.push_str(" ORDER BY ");
                         sql_query.push_str(&order_by);
                     }
-                    Ok(JsonBuilderContext {
-                        sql_query,
-                        table_query_infos,
-                        root_key_name: root_key_name.to_owned(),
-                        root_query_is_many,
-                    })
+                    sql_query
                 }
-                Operation::Delete(_) => {
-                    let sql_query = [
-                        "WITH __table_0__ AS ( DELETE FROM ",
+                Operation::Delete(_) => [
+                    "WITH __table_0__ AS ( DELETE FROM ",
+                    &self.g[node_index].table_name,
+                    " AS __table_0__ ",
+                    &filter,
+                    "RETURNING *) SELECT ",
+                    &selections,
+                    " FROM __table_0__",
+                    &from,
+                ]
+                .concat(),
+                Operation::Update(_) => {
+                    let mut sql_query = [
+                        "WITH __table_0__ AS ( UPDATE ",
                         &self.g[node_index].table_name,
-                        " AS __table_0__",
-                        &filter,
-                        "RETURNING *) SELECT ",
-                        &selections,
-                        " FROM __table_0__",
+                        " AS __table_0__ SET ",
                     ]
                     .concat();
-                    Ok(JsonBuilderContext {
-                        sql_query,
-                        table_query_infos,
-                        root_key_name: root_key_name.to_owned(),
-                        root_query_is_many: false,
-                    })
+                    match &selection_set.node.items.get(0).unwrap().node {
+                        Selection::Field(Positioned { pos: _, node }) => {
+                            match node.get_argument("patch") {
+                                Some(patch) => match &patch.node {
+                                    Value::Object(patch) => {
+                                        for arg in patch.keys() {
+                                            match self.g[node_index]
+                                                .field_to_types
+                                                .get(&arg.to_string())
+                                            {
+                                                Some((col_name, _)) => {
+                                                    sql_query.push_str(&format!(
+                                                        "{} = {},",
+                                                        col_name,
+                                                        patch.get(arg).unwrap()
+                                                    ));
+                                                }
+                                                None => {
+                                                    return Err(format!(
+                                                        "Patch received unexpected argument {}",
+                                                        arg
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    _ => return Err("Patch wasn't an object".to_string()),
+                                },
+                                None => return Err("Didn't get expected patch input".to_string()),
+                            }
+                        }
+                        _ => panic!("Didn't get Selection::Field"),
+                    }
+                    //remove trailing comma
+                    sql_query.drain(sql_query.len() - 1..sql_query.len());
+                    sql_query.push_str(&filter);
+                    sql_query.push_str(" RETURNING *) SELECT ");
+                    sql_query.push_str(&selections);
+                    sql_query.push_str(" FROM __table_0__");
+                    sql_query.push_str(&from);
+                    sql_query
                 }
-            }
+            };
+
+            Ok(JsonBuilderContext {
+                sql_query,
+                table_query_infos,
+                root_key_name: root_key_name.to_owned(),
+                root_query_is_many: is_many,
+            })
         } else {
             panic!("First selection_set item isn't a field");
         }
@@ -190,7 +241,7 @@ impl ServerSidePoggers {
                 selections.push_str(&current_alias);
                 selections.push('.');
                 selections.push_str(pk);
-                selections.push_str(" AS ");
+                selections.push_str(" AS");
                 selections.push_str(" __t");
                 selections.push_str(&id_copy.to_string());
                 selections.push_str("_pk");

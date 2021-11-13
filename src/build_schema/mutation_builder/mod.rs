@@ -11,8 +11,20 @@ pub fn build_mutations(
 ) {
     for node_index in g.node_indices() {
         query_to_type.insert(
-            ["delete", &g[node_index].table_name.to_case(Case::UpperCamel)].concat(),
+            [
+                "delete",
+                &g[node_index].table_name.to_case(Case::UpperCamel),
+            ]
+            .concat(),
             Operation::Delete(node_index),
+        );
+        query_to_type.insert(
+            [
+                "update",
+                &g[node_index].table_name.to_case(Case::UpperCamel),
+            ]
+            .concat(),
+            Operation::Update(node_index),
         );
     }
 }

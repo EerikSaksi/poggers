@@ -119,8 +119,7 @@ fn delete_mutation() {
           }
         }
         ";
-
-    
     let ctx = pogg.build_root(gql_query).unwrap();
     assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM mutation_test AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS  __t0_pk0__, __table_0__.nullable_float AS __t0_c0__ FROM __table_0__");
 }
+

@@ -28,6 +28,7 @@ pub struct GraphQLEdgeInfo {
 pub enum Operation {
     Query(bool, NodeIndex<u32>),
     Delete(NodeIndex<u32>),
+    Update(NodeIndex<u32>),
 }
 static POG_INT: usize = 0;
 static POG_STR: usize = 1;

@@ -1,6 +1,3 @@
-#[cfg(test)]
-#[path = "./test.rs"]
-mod test;
 use postgres::{Client, NoTls, Row};
 
 pub fn read_tables(database_url: &str) -> Result<Vec<Row>, postgres::Error> {
@@ -124,9 +121,4 @@ pub fn read_type_information() -> Result<Vec<Row>, postgres::Error> {
         &[],
     )?;
     Ok(rows)
-}
-
-//https://stackoverflow.com/questions/1152260/how-to-list-table-foreign-keys (I added the group by because the code doesn't work for multiple constraints with the same name across tables)
-pub fn constraint_subquery<'a>() -> &'a str {
-    ""
 }

@@ -381,7 +381,7 @@ fn invalid_id() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, true);
+    let p = convert_gql(gql_query, false);
     p.get("siteUser").unwrap().as_null().unwrap();
 }
 
@@ -433,8 +433,9 @@ fn test_select_one_compound() {
     assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
 }
 
+//kinda janky but these need to run sequentially
 #[test]
-fn delete_one_id() {
+fn mutation_tests() {
     let mut client = mutation_test_fixtures();
     let gql_query = "
         mutation{
@@ -443,7 +444,7 @@ fn delete_one_id() {
           }
         }
         ";
-    convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false);
     if let Some(row) = client
         .query(
             "select non_nullable_str from mutation_test where id = 1",
@@ -452,15 +453,64 @@ fn delete_one_id() {
         .unwrap()
         .get(0)
     {
-        panic!("Got row {:?}", row)
+        panic!("Got row {:?}, expected row to be deleted", row)
     }
 
-    //verify no other deletions
-    let count: i64 = client
-        .query("select count(*) from mutation_test", &[])
+    assert_eq!(
+        p.get("deleteMutationTest")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .get("nonNullableStr")
+            .unwrap()
+            .as_str()
+            .unwrap(),
+        "1"
+    );
+
+    let gql_query = "
+        mutation{
+          deleteMutationTest(id: 2){
+              id 
+              post{
+                  title
+              }
+          }
+        }
+        ";
+    let p = convert_gql(gql_query, false);
+    p.get("deleteMutationTest")
         .unwrap()
-        .get(0)
+        .get("post")
         .unwrap()
-        .get(0);
-    assert_eq!(count, 99);
+        .as_object()
+        .unwrap()
+        .get("title")
+        .unwrap()
+        .as_str();
+
+    assert_eq!(
+        p.get("deleteMutationTest")
+            .unwrap()
+            .get("id")
+            .unwrap()
+            .as_i64()
+            .unwrap(),
+        2
+    );
+
+    let mut client = mutation_test_fixtures();
+    let gql_query = "
+        mutation{
+          updateMutationTest(id: 3, patch: {nullableFloat: 1.23}){
+            nullableFloat
+          }
+        }
+    ";
+    convert_gql(gql_query, true);
+    let rows = client
+        .query("select nullable_float from mutation_test where id = 3", &[])
+        .unwrap();
+    let nullable_float: f64 = rows.get(0).unwrap().get(0);
+    assert_eq!(nullable_float, 1.23);
 }
