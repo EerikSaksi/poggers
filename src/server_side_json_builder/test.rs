@@ -507,7 +507,7 @@ fn mutation_tests() {
           }
         }
     ";
-    convert_gql(gql_query, true);
+    convert_gql(gql_query, false);
     let rows = client
         .query("select nullable_float from mutation_test where id = 3", &[])
         .unwrap();

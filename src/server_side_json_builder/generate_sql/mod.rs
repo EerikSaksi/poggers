@@ -1,3 +1,4 @@
+mod component_builder;
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
@@ -7,7 +8,7 @@ use crate::server_side_json_builder::ColumnInfo;
 use async_graphql::{
     parser::{
         parse_query,
-        types::{DocumentOperations, Selection, SelectionSet, Value},
+        types::{DocumentOperations, Selection, SelectionSet},
     },
     Positioned,
 };
@@ -31,7 +32,7 @@ pub struct JsonBuilderContext {
     pub root_key_name: String,
     pub root_query_is_many: bool,
 }
-struct SqlQueryComponents {
+pub struct SqlQueryComponents {
     selections: String,
     from: String,
     filter: String,
@@ -70,8 +71,7 @@ impl ServerSidePoggers {
     fn visit_query(
         &mut self,
         selection_set: Positioned<SelectionSet>,
-    ) 
-        -> Result<JsonBuilderContext, String> {
+    ) -> Result<JsonBuilderContext, String> {
         let mut sql = SqlQueryComponents {
             selections: String::new(),
             from: String::new(),
@@ -134,87 +134,28 @@ impl ServerSidePoggers {
             sql.selections
                 .drain(sql.selections.len() - 2..sql.selections.len());
 
-            let sql_query = match operation {
+            let sql_query;
+            match operation {
                 Operation::Query(root_query_is_many, _) => {
-                    let mut sql_query = [
-                        "SELECT ",
-                        &sql.selections,
-                        " from ",
+                    sql_query = component_builder::query(
+                        &mut sql,
                         &self.g[node_index].table_name,
-                        " AS __table_0__ ",
-                        &sql.from,
-                    ]
-                    .concat();
-                    if !root_query_is_many {
-                        sql_query.push_str(&sql.filter);
-                    }
-                    if !sql.order_by.is_empty() {
-                        sql.order_by
-                            .drain(sql.order_by.len() - 2..sql.order_by.len());
-                        sql_query.push_str(" ORDER BY ");
-                        sql_query.push_str(&sql.order_by);
-                    }
-                    sql_query
+                        root_query_is_many,
+                    );
                 }
-                Operation::Delete(_) => [
-                    "WITH __table_0__ AS ( DELETE FROM ",
-                    &self.g[node_index].table_name,
-                    " AS __table_0__ ",
-                    &sql.filter,
-                    "RETURNING *) SELECT ",
-                    &sql.selections,
-                    " FROM __table_0__",
-                    &sql.from,
-                ]
-                .concat(),
+                Operation::Delete(_) => {
+                    sql_query = component_builder::delete(&sql, &self.g[node_index].table_name);
+                }
                 Operation::Update(_) => {
-                    let mut sql_query = [
-                        "WITH __table_0__ AS ( UPDATE ",
+                    match component_builder::update(
+                        &sql,
                         &self.g[node_index].table_name,
-                        " AS __table_0__ SET ",
-                    ]
-                    .concat();
-                    match &selection_set.node.items.get(0).unwrap().node {
-                        Selection::Field(Positioned { pos: _, node }) => {
-                            match node.get_argument("patch") {
-                                Some(patch) => match &patch.node {
-                                    Value::Object(patch) => {
-                                        for arg in patch.keys() {
-                                            match self.g[node_index]
-                                                .field_to_types
-                                                .get(&arg.to_string())
-                                            {
-                                                Some((col_name, _)) => {
-                                                    sql_query.push_str(&format!(
-                                                        "{} = {},",
-                                                        col_name,
-                                                        patch.get(arg).unwrap()
-                                                    ));
-                                                }
-                                                None => {
-                                                    return Err(format!(
-                                                        "Patch received unexpected argument {}",
-                                                        arg
-                                                    ));
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ => return Err("Patch wasn't an object".to_string()),
-                                },
-                                None => return Err("Didn't get expected patch input".to_string()),
-                            }
-                        }
-                        _ => panic!("Didn't get Selection::Field"),
+                        &selection_set,
+                        &self.g[node_index].field_to_types,
+                    ) {
+                        Ok(val) => sql_query = val,
+                        Err(e) => return Err(e),
                     }
-                    //remove trailing comma
-                    sql_query.drain(sql_query.len() - 1..sql_query.len());
-                    sql_query.push_str(&sql.filter);
-                    sql_query.push_str(" RETURNING *) SELECT ");
-                    sql_query.push_str(&sql.selections);
-                    sql_query.push_str(" from __table_0__");
-                    sql_query.push_str(&sql.from);
-                    sql_query
                 }
             };
 
