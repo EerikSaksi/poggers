@@ -31,6 +31,12 @@ pub struct JsonBuilderContext {
     pub root_key_name: String,
     pub root_query_is_many: bool,
 }
+struct SqlQueryComponents {
+    selections: String,
+    from: String,
+    filter: String,
+    order_by: String,
+}
 
 #[allow(dead_code)]
 impl ServerSidePoggers {
@@ -64,11 +70,14 @@ impl ServerSidePoggers {
     fn visit_query(
         &mut self,
         selection_set: Positioned<SelectionSet>,
-    ) -> Result<JsonBuilderContext, String> {
-        let mut selections = String::new();
-        let mut from = String::new();
-        let mut filter = String::from(" WHERE ");
-        let mut order_by = String::new();
+    ) 
+        -> Result<JsonBuilderContext, String> {
+        let mut sql = SqlQueryComponents {
+            selections: String::new(),
+            from: String::new(),
+            filter: String::from(" WHERE "),
+            order_by: String::new(),
+        };
         let mut table_query_infos: Vec<TableQueryInfo> = vec![];
 
         let root_key_name: &str;
@@ -86,7 +95,7 @@ impl ServerSidePoggers {
             //we need this as we need to know whether we are expecting arguments (and to throw an
             //error if we don't receive them)
 
-            //extract node index from the operation (this can be used to perform shared logic
+            //extract node index sql.from the operation (this can be used to perform shared logic
             //between operations)
             let (is_many, node_index) = match operation {
                 Operation::Query(is_many, node_index) => (is_many, node_index),
@@ -94,9 +103,7 @@ impl ServerSidePoggers {
                 Operation::Update(node_index) => (false, node_index),
             };
             if let Err(e) = self.build_selection(
-                &mut selections,
-                &mut from,
-                &mut order_by,
+                &mut sql,
                 &mut table_query_infos,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
@@ -111,38 +118,41 @@ impl ServerSidePoggers {
                         //that we can build a where clause for all (or one) primay keys
                         for pk in &self.g[node_index].primary_keys {
                             match node.get_argument(&pk.to_camel_case()) {
-                                Some(pk_val) => filter
+                                Some(pk_val) => sql
+                                    .filter
                                     .push_str(&format!("__table_0__.{} = {} and ", pk, pk_val)),
                                 None => return Err(format!("Expected input field {}", pk)),
                             }
                         }
-                        filter.drain(filter.len() - 4..filter.len());
+                        sql.filter.drain(sql.filter.len() - 4..sql.filter.len());
                     }
                     _ => panic!("Didn't get Selection::Field"),
                 }
             }
 
-            //remove trailing comma from select
-            selections.drain(selections.len() - 2..selections.len());
+            //remove trailing comma sql.from select
+            sql.selections
+                .drain(sql.selections.len() - 2..sql.selections.len());
 
             let sql_query = match operation {
                 Operation::Query(root_query_is_many, _) => {
                     let mut sql_query = [
                         "SELECT ",
-                        &selections,
-                        " FROM ",
+                        &sql.selections,
+                        " from ",
                         &self.g[node_index].table_name,
                         " AS __table_0__ ",
-                        &from,
+                        &sql.from,
                     ]
                     .concat();
                     if !root_query_is_many {
-                        sql_query.push_str(&filter);
+                        sql_query.push_str(&sql.filter);
                     }
-                    if !order_by.is_empty() {
-                        order_by.drain(order_by.len() - 2..order_by.len());
+                    if !sql.order_by.is_empty() {
+                        sql.order_by
+                            .drain(sql.order_by.len() - 2..sql.order_by.len());
                         sql_query.push_str(" ORDER BY ");
-                        sql_query.push_str(&order_by);
+                        sql_query.push_str(&sql.order_by);
                     }
                     sql_query
                 }
@@ -150,11 +160,11 @@ impl ServerSidePoggers {
                     "WITH __table_0__ AS ( DELETE FROM ",
                     &self.g[node_index].table_name,
                     " AS __table_0__ ",
-                    &filter,
+                    &sql.filter,
                     "RETURNING *) SELECT ",
-                    &selections,
+                    &sql.selections,
                     " FROM __table_0__",
-                    &from,
+                    &sql.from,
                 ]
                 .concat(),
                 Operation::Update(_) => {
@@ -199,11 +209,11 @@ impl ServerSidePoggers {
                     }
                     //remove trailing comma
                     sql_query.drain(sql_query.len() - 1..sql_query.len());
-                    sql_query.push_str(&filter);
+                    sql_query.push_str(&sql.filter);
                     sql_query.push_str(" RETURNING *) SELECT ");
-                    sql_query.push_str(&selections);
-                    sql_query.push_str(" FROM __table_0__");
-                    sql_query.push_str(&from);
+                    sql_query.push_str(&sql.selections);
+                    sql_query.push_str(" from __table_0__");
+                    sql_query.push_str(&sql.from);
                     sql_query
                 }
             };
@@ -221,13 +231,17 @@ impl ServerSidePoggers {
 
     fn build_selection(
         &mut self,
-        selections: &mut String,
-        from: &mut String,
-        order_by: &mut String,
+        sql: &mut SqlQueryComponents,
         table_query_infos: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
     ) -> Result<(), String> {
+        let SqlQueryComponents {
+            from,
+            selections,
+            filter: _,
+            order_by,
+        } = sql;
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             //this field is terminal
@@ -363,14 +377,7 @@ impl ServerSidePoggers {
             });
 
             for child in children {
-                if let Err(e) = self.build_selection(
-                    selections,
-                    from,
-                    order_by,
-                    table_query_infos,
-                    child.0,
-                    child.1,
-                ) {
+                if let Err(e) = self.build_selection(sql, table_query_infos, child.0, child.1) {
                     return Err(e);
                 }
             }
