@@ -94,24 +94,21 @@ pub fn insert(
     .concat();
     match &selection_set.node.items.get(0).unwrap().node {
         Selection::Field(Positioned { pos: _, node }) => {
-            let (mut col_names, mut vals) = node.arguments.iter().fold(
-                (String::from("("), String::from(" VALUES(")),
-                |(mut col_names, mut vals), (new_name, new_val)| {
-                    match field_to_types.get(&new_name.to_string()) {
-                        Some((col_name, _)) => {
-                            col_names.push_str(&col_name.to_string());
-                            vals.push_str(&value_to_string(&new_val.node));
-                        }
-                        None => {
-                            return Err(format!("Received unexpected argument {}", new_name));
-                        }
+            let mut col_names = String::from("(");
+            let mut vals = String::from(" VALUES(");
+            for (new_name, new_val) in &node.arguments {
+                match field_to_types.get(&new_name.to_string()) {
+                    Some((col_name, _)) => {
+                        col_names.push_str(&col_name.to_string());
+                        vals.push_str(&value_to_string(&new_val.node));
+                        col_names.push(',');
+                        vals.push(',');
                     }
-                    col_names.push(',');
-                    vals.push_str(&value_to_string(&new_val.node));
-                    vals.push(',');
-                    (col_names, vals)
-                },
-            );
+                    None => {
+                        return Err(format!("Received unexpected argument {}", new_name));
+                    }
+                }
+            }
             //replace trailing commas with close bracket
             col_names.pop();
             col_names.push(')');
