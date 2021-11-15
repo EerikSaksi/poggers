@@ -101,7 +101,6 @@ fn test_no_root() {
     let query = "
         query{
         }";
-
     let err = pogg.build_root(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),

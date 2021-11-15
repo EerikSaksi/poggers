@@ -1354,3 +1354,13 @@ from
 	${orderBy}
 
 This was pretty nice, as I was simply able to use a bit of string manipulation to reuse logic. This also meant that implementing the deletion logic only required conditional formatting (build the strings the same as we did before, but this time format depending on operation type).
+
+I decided to split up the query visitor and the final query visitor data builders. The visitor returns a SqlQueryComponents struct instance. 
+pub struct SqlQueryComponents {
+    selections: String,
+    from: String,
+    filter: String,
+    order_by: String,
+}
+
+This SqlQueryComponents struct is passed to the query merger, which uses these fields to build the query depending on the operation (e.g if delete place filter in one place, otherwise in another place)

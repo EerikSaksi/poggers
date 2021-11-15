@@ -513,4 +513,38 @@ fn mutation_tests() {
         .unwrap();
     let nullable_float: f64 = rows.get(0).unwrap().get(0);
     assert_eq!(nullable_float, 1.23);
+
+    let gql_query = "
+        mutation{
+          updateMutationTest(id: 4, patch: {nonNullableStr: \"newValue\"}){
+            nonNullableStr
+          }
+        }
+    ";
+    convert_gql(gql_query, false);
+    let rows = client
+        .query(
+            "select non_nullable_str from mutation_test where id = 4",
+            &[],
+        )
+        .unwrap();
+    let new_value: &str = rows.get(0).unwrap().get(0);
+    assert_eq!(new_value, "newValue");
+
+    let gql_query = "
+        mutation{
+          updateMutationTest(id: 5, patch: {nonNullableStr: \"'newValue'\"}){
+            nonNullableStr
+          }
+        }
+    ";
+    convert_gql(gql_query, false);
+    let rows = client
+        .query(
+            "select non_nullable_str from mutation_test where id = 5",
+            &[],
+        )
+        .unwrap();
+    let new_value: &str = rows.get(0).unwrap().get(0);
+    assert_eq!(new_value, "'newValue'");
 }

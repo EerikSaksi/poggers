@@ -101,6 +101,7 @@ impl ServerSidePoggers {
                 Operation::Query(is_many, node_index) => (is_many, node_index),
                 Operation::Delete(node_index) => (false, node_index),
                 Operation::Update(node_index) => (false, node_index),
+                Operation::Insert(node_index) => (false, node_index),
             };
             if let Err(e) = self.build_selection(
                 &mut sql,
@@ -157,6 +158,7 @@ impl ServerSidePoggers {
                         Err(e) => return Err(e),
                     }
                 }
+                Operation::Insert(_) => unimplemented!()
             };
 
             Ok(JsonBuilderContext {

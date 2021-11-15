@@ -1,6 +1,7 @@
 use crate::server_side_json_builder::generate_sql::SqlQueryComponents;
+use async_graphql::indexmap::IndexMap;
 use async_graphql::parser::types::{Selection, SelectionSet, Value};
-use async_graphql::Positioned;
+use async_graphql::{Name, Positioned};
 use std::collections::HashMap;
 
 pub fn query(sql: &mut SqlQueryComponents, table_name: &str, is_many: bool) -> String {
@@ -54,22 +55,14 @@ pub fn update(
     match &selection_set.node.items.get(0).unwrap().node {
         Selection::Field(Positioned { pos: _, node }) => match node.get_argument("patch") {
             Some(patch) => match &patch.node {
-                Value::Object(patch) => {
-                    for arg in patch.keys() {
-                        match field_to_types.get(&arg.to_string()) {
-                            Some((col_name, _)) => {
-                                sql_query.push_str(&format!(
-                                    "{} = {},",
-                                    col_name,
-                                    patch.get(arg).unwrap()
-                                ));
-                            }
-                            None => {
-                                return Err(format!("Patch received unexpected argument {}", arg));
-                            }
+                Value::Object(patch) => match field_extractor(patch, field_to_types) {
+                    Ok(col_name_vals) => {
+                        for (col, val) in col_name_vals {
+                            sql_query.push_str(&[&col, "=", &val, ","].concat());
                         }
                     }
-                }
+                    Err(e) => return Err(e),
+                },
                 _ => return Err("Patch wasn't an object".to_string()),
             },
             None => return Err("Didn't get expected patch input".to_string()),
@@ -84,4 +77,27 @@ pub fn update(
     sql_query.push_str(" from __table_0__");
     sql_query.push_str(&sql.from);
     Ok(sql_query)
+}
+fn field_extractor(
+    input_fields: &IndexMap<Name, Value>,
+    field_to_types: &HashMap<String, (String, usize)>,
+) -> Result<HashMap<String, String>, String> {
+    let mut col_name_vals: HashMap<String, String> = HashMap::new();
+    for arg in input_fields.keys() {
+        match field_to_types.get(&arg.to_string()) {
+            Some((col_name, _)) => {
+                col_name_vals.insert(
+                    col_name.to_string(),
+                    match input_fields.get(arg).unwrap() {
+                        Value::String(s) => ["'", &s.replace("'", "''"), "'"].concat(),
+                        other => other.to_string(),
+                    },
+                );
+            }
+            None => {
+                return Err(format!("Patch received unexpected argument {}", arg));
+            }
+        }
+    }
+    Ok(col_name_vals)
 }
