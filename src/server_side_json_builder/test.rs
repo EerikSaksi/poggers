@@ -42,6 +42,19 @@ fn mutation_test_fixtures() -> Client {
             &[],
         )
         .unwrap();
+    let values = (0..100)
+        .map(|i| format!("({}, '{}', {})", i, i, (i / 10)))
+        .collect::<Vec<String>>()
+        .join(", ");
+    client
+        .query(
+            &format!(
+                "insert into mutation_test_child(id, name, mutation_test_id) values {}",
+                values
+            ),
+            &[],
+        )
+        .unwrap();
     client
 }
 
@@ -548,8 +561,6 @@ fn mutation_tests() {
     let new_value: &str = rows.get(0).unwrap().get(0);
     assert_eq!(new_value, "'newValue'");
 
-
-
     let gql_query = "
         mutation{
           updateMutationTest(id: 6, patch: {nonNullableStr: \"'asdf'\", nullableFloat: 6.89}){
@@ -603,4 +614,34 @@ fn mutation_tests() {
         }
     ";
     convert_gql(gql_query, false);
+    let rows = client
+        .query(
+            "select non_nullable_str, nullable_float from mutation_test where id = 102",
+            &[],
+        )
+        .unwrap();
+    let name: &str = rows.get(0).unwrap().get("non_nullable_str");
+    assert_eq!(name, "inserted");
+
+    let gql_query = "
+        mutation{
+          deleteMutationTest(id: 5){
+            id
+            mutationTestChilds {
+                mutationTestId
+                name
+            }
+          }
+        }
+    ";
+    if let Some(res) = convert_gql(gql_query, false)
+        .get("deleteMutationTest")
+    {
+        let id = res.get("id").unwrap().as_i64().unwrap();
+        for child in res.get("mutationTestChilds").unwrap().as_array().unwrap() {
+            assert_eq!(id, child.get("mutationTestId").unwrap().as_i64().unwrap());
+        }
+    } else {
+        panic!("Couldn't parse deleteMutationTest");
+    }
 }

@@ -26,22 +26,19 @@ pub fn query(sql: &mut SqlQueryComponents, table_name: &str, is_many: bool) -> S
     sql_query
 }
 
-pub fn delete(sql: &SqlQueryComponents, table_name: &str) -> String {
-    [
+pub fn delete(sql: &mut SqlQueryComponents, table_name: &str) -> String {
+    let sql_query = [
         "WITH __table_0__ AS ( DELETE FROM ",
         table_name,
-        " AS __table_0__ ",
+        " AS __table_0__",
         &sql.filter,
-        "RETURNING *) SELECT ",
-        &sql.selections,
-        " FROM __table_0__",
-        &sql.from,
     ]
-    .concat()
+    .concat();
+    mutation_selections(sql_query, sql).unwrap()
 }
 
 pub fn update(
-    sql: &SqlQueryComponents,
+    sql: &mut SqlQueryComponents,
     table_name: &str,
     selection_set: &Positioned<SelectionSet>,
     field_to_types: &HashMap<String, (String, usize)>,
@@ -81,7 +78,7 @@ pub fn update(
 }
 
 pub fn insert(
-    sql: &SqlQueryComponents,
+    sql: &mut SqlQueryComponents,
     table_name: &str,
     selection_set: &Positioned<SelectionSet>,
     field_to_types: &HashMap<String, (String, usize)>,
@@ -119,11 +116,7 @@ pub fn insert(
         }
         _ => panic!("Didn't get Selection::Field"),
     }
-    sql_query.push_str(" RETURNING *) SELECT ");
-    sql_query.push_str(&sql.selections);
-    sql_query.push_str(" FROM __table_0__");
-    sql_query.push_str(&sql.from);
-    Ok(sql_query)
+    mutation_selections(sql_query, sql)
 }
 
 fn field_extractor(
@@ -145,6 +138,23 @@ fn field_extractor(
         }
     }
     Ok(col_name_vals)
+}
+
+fn mutation_selections(
+    mut sql_query: String,
+    sql: &mut SqlQueryComponents,
+) -> Result<String, String> {
+    sql_query.push_str("RETURNING *) SELECT ");
+    sql_query.push_str(&sql.selections);
+    sql_query.push_str(" FROM __table_0__");
+    sql_query.push_str(&sql.from);
+    if !sql.order_by.is_empty() {
+        sql.order_by
+            .drain(sql.order_by.len() - 2..sql.order_by.len());
+        sql_query.push_str(" ORDER BY ");
+        sql_query.push_str(&sql.order_by);
+    }
+    Ok(sql_query)
 }
 
 fn value_to_string(val: &Value) -> String {

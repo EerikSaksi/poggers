@@ -145,11 +145,11 @@ impl ServerSidePoggers {
                     );
                 }
                 Operation::Delete(_) => {
-                    sql_query = component_builder::delete(&sql, &self.g[node_index].table_name);
+                    sql_query = component_builder::delete(&mut sql, &self.g[node_index].table_name);
                 }
                 Operation::Update(_) => {
                     match component_builder::update(
-                        &sql,
+                        &mut sql,
                         &self.g[node_index].table_name,
                         &selection_set,
                         &self.g[node_index].field_to_types,
@@ -160,7 +160,7 @@ impl ServerSidePoggers {
                 }
                 Operation::Insert(_) => {
                     match component_builder::insert(
-                        &sql,
+                        &mut sql,
                         &self.g[node_index].table_name,
                         &selection_set,
                         &self.g[node_index].field_to_types,

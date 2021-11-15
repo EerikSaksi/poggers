@@ -1364,3 +1364,32 @@ pub struct SqlQueryComponents {
 }
 
 This SqlQueryComponents struct is passed to the query merger, which uses these fields to build the query depending on the operation (e.g if delete place filter in one place, otherwise in another place)
+
+Once I wrote the delete method it was pretty easy to create update and insert methods. 
+
+WITH __table_0__ AS (
+  INSERT INTO
+    post (id, title)
+  VALUES
+    (1, 'My hamster died') RETURNING *
+)
+SELECT
+  __table_0__.id AS __t0_pk0__,
+  __table_0__.title AS __t0_c0__
+FROM
+  __table_0__
+
+WITH __table_0__ AS (
+  UPDATE post 
+  SET TITLE = 'Nevermind he was just sleeping' RETURNING *
+	WHERE id = 1
+)
+SELECT
+  __table_0__.id AS __t0_pk0__,
+  __table_0__.title AS __t0_c0__
+FROM
+  __table_0__
+
+In both cases, we make use of the SQLQueryComponents. For all 3 mutations (insert update delete) the select statement is the same. The only real difference is whether there is a where (only in delete/update but not insert) and whether we have to format non primary key arguments (not the case in delete but is in insert update).
+
+
