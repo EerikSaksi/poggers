@@ -70,6 +70,7 @@ pub fn update(
         _ => panic!("Didn't get Selection::Field"),
     }
     //remove trailing comma
+
     sql_query.drain(sql_query.len() - 1..sql_query.len());
     sql_query.push_str(&sql.filter);
     sql_query.push_str(" RETURNING *) SELECT ");
@@ -78,6 +79,46 @@ pub fn update(
     sql_query.push_str(&sql.from);
     Ok(sql_query)
 }
+
+pub fn insert(
+    sql: &SqlQueryComponents,
+    table_name: &str,
+    selection_set: &Positioned<SelectionSet>,
+) -> String {
+    let mut sql_query = [
+        "WITH __table_0__ AS ( INSERT INTO ",
+        table_name,
+        " AS __table_0__ ",
+        "RETURNING *) SELECT ",
+    ]
+    .concat();
+    match &selection_set.node.items.get(0).unwrap().node {
+        Selection::Field(Positioned { pos: _, node }) => {
+            for (col, val) in col_name_vals {
+                sql_query.push_str(&[&col, "=", &val, ","].concat());
+            }
+        }
+        _ => panic!("Didn't get Selection::Field"),
+    }
+
+    //let col_name_vals = field_extractor(input_fields, field_to_types)
+    //[
+    //    "WITH __table_0__ AS ( DELETE FROM ",
+    //    table_name,
+    //    " AS __table_0__ ",
+    //    inser
+    //    "RETURNING *) SELECT ",
+    //    &sql.selections,
+    //    " FROM __table_0__",
+    //    &sql.from,
+    //]
+    //.concat()
+    sql_query.push_str(&sql.selections);
+    sql_query.push_str(" FROM __table_0__");
+    sql_query.push_str(&sql.from);
+    sql_query
+}
+
 fn field_extractor(
     input_fields: &IndexMap<Name, Value>,
     field_to_types: &HashMap<String, (String, usize)>,
@@ -88,10 +129,7 @@ fn field_extractor(
             Some((col_name, _)) => {
                 col_name_vals.insert(
                     col_name.to_string(),
-                    match input_fields.get(arg).unwrap() {
-                        Value::String(s) => ["'", &s.replace("'", "''"), "'"].concat(),
-                        other => other.to_string(),
-                    },
+                    value_to_string(input_fields.get(arg).unwrap()),
                 );
             }
             None => {
@@ -100,4 +138,11 @@ fn field_extractor(
         }
     }
     Ok(col_name_vals)
+}
+
+fn value_to_string(val: &Value) -> String {
+    match val {
+        Value::String(s) => ["'", &s.replace("'", "''"), "'"].concat(),
+        other => other.to_string(),
+    }
 }
