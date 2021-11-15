@@ -547,4 +547,50 @@ fn mutation_tests() {
         .unwrap();
     let new_value: &str = rows.get(0).unwrap().get(0);
     assert_eq!(new_value, "'newValue'");
+
+
+
+    let gql_query = "
+        mutation{
+          updateMutationTest(id: 6, patch: {nonNullableStr: \"'asdf'\", nullableFloat: 6.89}){
+              nonNullableStr
+              nullableFloat
+          }
+        }
+    ";
+    match convert_gql(gql_query, false)
+        .get("updateMutationTest")
+        .unwrap()
+        .as_object()
+    {
+        Some(update_mutation_test) => {
+            assert_eq!(
+                update_mutation_test
+                    .get("nonNullableStr")
+                    .unwrap()
+                    .as_str()
+                    .unwrap(),
+                "'asdf'"
+            );
+            assert_eq!(
+                update_mutation_test
+                    .get("nullableFloat")
+                    .unwrap()
+                    .as_f64()
+                    .unwrap(),
+                6.89
+            );
+        }
+        None => panic!("update_mutation_test failed"),
+    }
+    let rows = client
+        .query(
+            "select non_nullable_str, nullable_float from mutation_test where id = 6",
+            &[],
+        )
+        .unwrap();
+    let new_str: &str = rows.get(0).unwrap().get("non_nullable_str");
+    assert_eq!(new_str, "'asdf'");
+    let float: f64 = rows.get(0).unwrap().get("nullable_float");
+    assert_eq!(float, 6.89);
 }
