@@ -158,7 +158,17 @@ impl ServerSidePoggers {
                         Err(e) => return Err(e),
                     }
                 }
-                Operation::Insert(_) => unimplemented!()
+                Operation::Insert(_) => {
+                    match component_builder::insert(
+                        &sql,
+                        &self.g[node_index].table_name,
+                        &selection_set,
+                        &self.g[node_index].field_to_types,
+                    ) {
+                        Ok(val) => sql_query = val,
+                        Err(e) => return Err(e),
+                    }
+                }
             };
 
             Ok(JsonBuilderContext {

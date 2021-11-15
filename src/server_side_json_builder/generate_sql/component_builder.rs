@@ -84,39 +84,49 @@ pub fn insert(
     sql: &SqlQueryComponents,
     table_name: &str,
     selection_set: &Positioned<SelectionSet>,
-) -> String {
+    field_to_types: &HashMap<String, (String, usize)>,
+) -> Result<String, String> {
     let mut sql_query = [
         "WITH __table_0__ AS ( INSERT INTO ",
         table_name,
-        " AS __table_0__ ",
-        "RETURNING *) SELECT ",
+        " AS __table_0__",
     ]
     .concat();
     match &selection_set.node.items.get(0).unwrap().node {
         Selection::Field(Positioned { pos: _, node }) => {
-            for (col, val) in col_name_vals {
-                sql_query.push_str(&[&col, "=", &val, ","].concat());
-            }
+            let (mut col_names, mut vals) = node.arguments.iter().fold(
+                (String::from("("), String::from(" VALUES(")),
+                |(mut col_names, mut vals), (new_name, new_val)| {
+                    match field_to_types.get(&new_name.to_string()) {
+                        Some((col_name, _)) => {
+                            col_names.push_str(&col_name.to_string());
+                            vals.push_str(&value_to_string(&new_val.node));
+                        }
+                        None => {
+                            return Err(format!("Received unexpected argument {}", new_name));
+                        }
+                    }
+                    col_names.push(',');
+                    vals.push_str(&value_to_string(&new_val.node));
+                    vals.push(',');
+                    (col_names, vals)
+                },
+            );
+            //replace trailing commas with close bracket
+            col_names.pop();
+            col_names.push(')');
+            vals.pop();
+            vals.push(')');
+            sql_query.push_str(&col_names);
+            sql_query.push_str(&vals);
         }
         _ => panic!("Didn't get Selection::Field"),
     }
-
-    //let col_name_vals = field_extractor(input_fields, field_to_types)
-    //[
-    //    "WITH __table_0__ AS ( DELETE FROM ",
-    //    table_name,
-    //    " AS __table_0__ ",
-    //    inser
-    //    "RETURNING *) SELECT ",
-    //    &sql.selections,
-    //    " FROM __table_0__",
-    //    &sql.from,
-    //]
-    //.concat()
+    sql_query.push_str(" RETURNING *) SELECT ");
     sql_query.push_str(&sql.selections);
     sql_query.push_str(" FROM __table_0__");
     sql_query.push_str(&sql.from);
-    sql_query
+    Ok(sql_query)
 }
 
 fn field_extractor(

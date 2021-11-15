@@ -26,5 +26,13 @@ pub fn build_mutations(
             .concat(),
             Operation::Update(node_index),
         );
+        query_to_type.insert(
+            [
+                "insert",
+                &g[node_index].table_name.to_case(Case::UpperCamel),
+            ]
+            .concat(),
+            Operation::Insert(node_index),
+        );
     }
 }

@@ -593,4 +593,14 @@ fn mutation_tests() {
     assert_eq!(new_str, "'asdf'");
     let float: f64 = rows.get(0).unwrap().get("nullable_float");
     assert_eq!(float, 6.89);
+
+    let gql_query = "
+        mutation{
+          insertMutationTest(id: 102, nonNullableStr: \"inserted\", nullableFloat: 432.10){
+              nonNullableStr
+              nullableFloat
+          }
+        }
+    ";
+    convert_gql(gql_query, false);
 }
