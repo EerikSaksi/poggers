@@ -41,7 +41,7 @@ with
       pg_catalog.pg_namespace as nsp
       left join pg_catalog.pg_description as dsc on dsc.objoid = nsp.oid and dsc.classoid = 'pg_catalog.pg_namespace'::regclass
     where
-      nsp.nspname = any ($1)
+      nsp.nspname = 'public'
     order by
       nsp.nspname
   ),
@@ -127,7 +127,7 @@ with
         where pro2.pronamespace = pro.pronamespace
         and pro2.proname = pro.proname
       ) = 1 and
-      ($2 is true or not exists(
+      (true is true or not exists(
         select 1
         from pg_catalog.pg_depend
         where pg_depend.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass
@@ -178,7 +178,7 @@ with
       -- We don't want classes that will clash with GraphQL (treat them as private)
       rel.relname not like E'\\\\_\\\\_%' and
       rel.relkind in ('r', 'v', 'm', 'c', 'f') and
-      ($2 is true or not exists(
+      (true is true or not exists(
         select 1
         from pg_catalog.pg_depend
         where pg_depend.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass

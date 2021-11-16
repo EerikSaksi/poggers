@@ -19,11 +19,11 @@ pub fn make_instrospection_query(
 -- - `$2`: set true to include functions/tables/etc that come from extensions
 with ",
     if !pg_ignore_rbac {"recursive"} else {""},
-  "${!pgIgnoreRBAC ? \"recursive\" : \"\"} accessible_roles(_oid) as (
+  " accessible_roles(_oid) as (
     select oid _oid, pg_roles.*
     from pg_roles
-    where rolname = current_user
-    ${!pgIgnoreRBAC ? unionRBAC : \"\"}
+    where rolname = current_user",
+    if !pg_ignore_rbac {union_rbac} else {""}, "
   ),
   -- @see https://www.postgresql.org/docs/9.5/static/catalog-pg-namespace.html
   namespace as (
@@ -36,7 +36,7 @@ with ",
       pg_catalog.pg_namespace as nsp
       left join pg_catalog.pg_description as dsc on dsc.objoid = nsp.oid and dsc.classoid = 'pg_catalog.pg_namespace'::regclass
     where
-      nsp.nspname = any ($1)
+      nsp.nspname = 'public'
     order by
       nsp.nspname
   ),
@@ -80,17 +80,19 @@ with ",
       -- arguments.
       -- TODO: Variadic arguments.
       pro.provariadic = 0 and
-      -- Filter our aggregate functions and window functions.
-      ${serverVersionNum >= 110000 ? \"pro.prokind = 'f'\" : \"pro.proisagg = false and pro.proiswindow = false\"} and
-      ${
-        pgLegacyFunctionsOnly
-          ? `\
+      -- Filter our aggregate functions and window functions. ",
+      if server_version_num >= 110000 {"pro.prokind = 'f'"} else  {"pro.proisagg = false and pro.proiswindow = false"}, " and ",
+      if pg_legacy_functions_only
+          {
+          "
       -- We want to make sure the argument mode for all of our arguments is
       -- `IN` which means `proargmodes` will be null.
       pro.proargmodes is null and
       -- Do not select procedures that return `RECORD` (oid 2249).
-      pro.prorettype operator(pg_catalog.<>) 2249 and`
-          : `\
+      pro.prorettype operator(pg_catalog.<>) 2249 and"
+      }
+        else  {
+            "
       -- We want to make sure the argument modes for all of our arguments are
       -- `IN`, `OUT`, `INOUT`, or `TABLE` (not `VARIADIC`).
       (pro.proargmodes is null or pro.proargmodes operator(pg_catalog.<@) array['i','o','b','t']::\"char\"[]) and
@@ -98,8 +100,8 @@ with ",
       -- have `OUT`, `INOUT`, or `TABLE` arguments to define the return type.
       (pro.prorettype operator(pg_catalog.<>) 2249 or pro.proargmodes && array['o','b','t']::\"char\"[]) and
       -- Do not select procedures that have `RECORD` arguments.
-      (pro.proallargtypes is null or not (pro.proallargtypes operator(pg_catalog.@>) array[2249::oid])) and`
-      }
+      (pro.proallargtypes is null or not (pro.proallargtypes operator(pg_catalog.@>) array[2249::oid])) and"}, 
+        "
       -- Do not select procedures that create range types. These are utility
       -- functions that really don’t need to be exposed in an API.
       pro.proname not in (
@@ -122,7 +124,7 @@ with ",
         where pro2.pronamespace = pro.pronamespace
         and pro2.proname = pro.proname
       ) = 1 and
-      ($2 is true or not exists(
+      (true is true or not exists(
         select 1
         from pg_catalog.pg_depend
         where pg_depend.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass
@@ -173,7 +175,7 @@ with ",
       -- We don't want classes that will clash with GraphQL (treat them as private)
       rel.relname not like E'\\\\_\\\\_%' and
       rel.relkind in ('r', 'v', 'm', 'c', 'f') and
-      ($2 is true or not exists(
+      (true is true or not exists(
         select 1
         from pg_catalog.pg_depend
         where pg_depend.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass
@@ -195,8 +197,9 @@ with ",
       att.atttypid as \"typeId\",
       nullif(att.atttypmod, -1) as \"typeModifier\",
       att.attnotnull as \"isNotNull\",
-      att.atthasdef as \"hasDefault\",
-      ${serverVersionNum >= 100000 ? \"att.attidentity\" : \"''\"} as \"identity\",
+      att.atthasdef as \"hasDefault\",",
+      
+      if server_version_num >= 100000 {"att.attidentity"}  else {"''"}, " as \"identity\",
       exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'SELECT')) as \"aclSelectable\",
       exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'INSERT')) as \"aclInsertable\",
       exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'UPDATE')) as \"aclUpdatable\",
@@ -369,18 +372,18 @@ with ",
       idx.indpred is not null as \"isPartial\", -- if true, index is not on on rows.
       idx.indkey as \"attributeNums\",
       am.amname as \"indexType\",
-      ${
-        serverVersionNum >= 90600
-          ? `\
-      (
-        select array_agg(pg_index_column_has_property(idx.indexrelid,n::int2,'asc'))
-        from unnest(idx.indkey) with ordinality as ord(key,n)
-      ) as \"attributePropertiesAsc\",
-      (
-        select array_agg(pg_index_column_has_property(idx.indexrelid,n::int2,'nulls_first'))
-        from unnest(idx.indkey) with ordinality as ord(key,n)
-      ) as \"attributePropertiesNullsFirst\",`
-          : \"\"
+      if serverVersionNum >= 90600
+      {
+          (
+            select array_agg(pg_index_column_has_property(idx.indexrelid,n::int2,'asc'))
+            from unnest(idx.indkey) with ordinality as ord(key,n)
+          ) as \"attributePropertiesAsc\",
+          (
+            select array_agg(pg_index_column_has_property(idx.indexrelid,n::int2,'nulls_first'))
+            from unnest(idx.indkey) with ordinality as ord(key,n)
+          ) as \"attributePropertiesNullsFirst\",`
+      }
+      else    {\"\"}
       }
       dsc.description as \"description\"
     from
@@ -418,33 +421,40 @@ select row_to_json(x) as object from indexes as x
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use std::process::Command;
     #[test]
     fn test_same_output() {
-        let expected_output = std::str::from_utf8(
-            &Command::new("npx")
-                .arg("ts-node")
-                .arg("./src/build_schema/postgraphile_query/postgraphile_query.ts")
-                .output()
-                .unwrap()
-                .stdout,
-        );
-        let expected = expected_output.unwrap().split_whitespace();
+        match Command::new("npx")
+            .arg("ts-node")
+            .arg("./src/build_schema/postgraphile_query/postgraphile_query.ts")
+            .output()
+        {
+            Ok(expected_output) => {
+                let expected = std::str::from_utf8(&expected_output.stdout)
+                    .unwrap()
+                    .split_ascii_whitespace();
+                let mut actual_cumm = String::new();
+                let mut expected_cumm = String::new();
 
-        let mut actual_cumm = String::new();
-        let mut expected_cumm = String::new();
+                for (actual_word, expected_word) in
+                    make_instrospection_query(99999999, false, false)
+                        .split_ascii_whitespace()
+                        .zip(expected)
+                {
+                    actual_cumm.push_str(actual_word);
+                    expected_cumm.push_str(expected_word);
+                    actual_cumm.push(' ');
+                    expected_cumm.push(' ');
+                    if actual_word != expected_word {
+                        println!("Actual\n{}\n", actual_cumm);
+                        panic!("Expected \n{}\n", expected_cumm);
+                    }
+                }
+            }
 
-        //for (actual_word, expected_word) in         //    .split_ascii_whitespace()
-        //    .into_iter()
-        //    .zip(expected)
-        //{
-        //    actual_cumm.push_str(actual_word);
-        //    expected_cumm.push_str(expected_word);
-        //    if actual_word != expected_word {
-        //        println!("Actual\n{}\n", actual_cumm);
-        //        panic!("Expected \n{}\n", expected_cumm);
-        //    }
-        //}
+            Err(e) => panic!("{}", e),
+        }
     }
 }
