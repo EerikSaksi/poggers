@@ -1392,4 +1392,89 @@ FROM
 
 In both cases, we make use of the SQLQueryComponents. For all 3 mutations (insert update delete) the select statement is the same. The only real difference is whether there is a where (only in delete/update but not insert) and whether we have to format non primary key arguments (not the case in delete but is in insert update).
 
+I realized that a lot of my missing features involved extracting metadata from the Postgres database. After doing some research, I found Postgraphile's introspection query. I also verified that this was under an MIT license, but I still credited it everywhere I used it in my own software. Essentially, it returns a bunch of JSON about tables, types, constraints, attributes, etc in JSON format. 
+
+The first thing I had to do to get the query compatible in Rust was to replace all ternary expressions that Postgres used. Rust does not support, so I had to use different syntax.
+
 All in all this is a nice way to handle the logic. We have one part which simply fetches data from the query, and leverages database metadata to do so, and another which simply bundles this data together depending on the operation type.
+
+As an example, Postgraphile conditionally executes SQL depending on the Postgres version (to maintain compatibility). 
+server_version_num >= 110000 ? "pro.prokind = 'f'" : "pro.proisagg = false and pro.proiswindow = false"
+
+I had to replace this with the following if/else
+if server_version_num >= 110000 {"pro.prokind = 'f'"} else {"pro.proisagg = false and pro.proiswindow = false"}
+
+I also setup tests to ensure that the output of my Rust version was the same as Postgraphile's output to prevent any logical issues (that aren't syntax errors Postgres wouldn't catch).
+
+The query produces a bunch of JSON objects, each with a "kind" field, which describes what kind of entity it is (e.g attribute table constraint) and then fields describing this fields (different types of entities have different fields). Here is an example of the PgClass interface (this describes a table):
+
+export interface PgClass {
+  kind: PgEntityKind.CLASS;
+  id: string;
+  name: string;
+  comment: string | void;
+  description: string | void;
+  classKind: string;
+  namespaceId: string;
+  namespaceName: string;
+  typeId: string;
+  isSelectable: boolean;
+  isInsertable: boolean;
+  isUpdatable: boolean;
+  isDeletable: boolean;
+  isExtensionConfigurationTable: boolean;
+  namespace: PgNamespace;
+  type: PgType;
+  tags: SmartTags;
+  attributes: Array<PgAttribute>;
+  constraints: Array<PgConstraint>;
+  foreignConstraints: Array<PgConstraint>;
+  primaryKeyConstraint: PgConstraint | void;
+  aclSelectable: boolean;
+  aclInsertable: boolean;
+  aclUpdatable: boolean;
+  aclDeletable: boolean;
+  canUseAsterisk: boolean;
+}
+
+
+I copied this into Rust by converting the data types into corresponding rust types, and converting the fields to snake case (Rust convention). I derived Deserialize, which is a serde_json feature, which lets you interpret JSON as struct (without manually implementing {id: obj.get("id"), name: obj.get("name"), ...})
+#derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClassData {
+    id: String,
+    name: String,
+    comment: Option<String>,
+    description: Option<String>,
+    class_kind: String,
+    namespace_id: String,
+    namespace_name: String,
+    type_id: String,
+    is_selectable: bool,
+    is_insertable: bool,
+    is_updatable: bool,
+    is_deletable: bool,
+    is_extension_configuration_table: bool,
+    namespace: PgNamespace,
+    type: PgType,
+    tags: SmartTags,
+    attributes: Vec<PgAttribute>,
+    constraints: Vec<PgConstraint>,
+    foreign_constraints: Vec<PgConstraint>,
+    primary_key_constraint: Option<PgConstraint>,
+    acl_selectable: bool,
+    acl_insertable: bool,
+    acl_updatable: bool,
+    acl_deletable: bool,
+    can_use_asterisk: bool,
+}
+
+I created an Enum which contained all the kinds of entities that I needed (for now). I will add procedures, indexes, e.g when I have the time. For now I need Class, Attributes, and Constraints to extract the data I already am. I needed to specify to serde that I'm expecting the fields in camel case (don't try read class_kind as class_kind, but classKind). This lets me adhere to naming conventions, but also avoid manually coding field extraction.
+pub enum PostgresEntity {
+    Class(ClassData),
+    Attribute(AttributeData),
+    Constraint(ConstraintData),
+}
+
+
+
