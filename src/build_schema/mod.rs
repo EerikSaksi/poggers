@@ -1,5 +1,4 @@
 mod mutation_builder;
-mod postgraphile_query;
 mod read_database;
 #[cfg(test)]
 #[path = "./test.rs"]
