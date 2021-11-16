@@ -1392,4 +1392,4 @@ FROM
 
 In both cases, we make use of the SQLQueryComponents. For all 3 mutations (insert update delete) the select statement is the same. The only real difference is whether there is a where (only in delete/update but not insert) and whether we have to format non primary key arguments (not the case in delete but is in insert update).
 
-
+All in all this is a nice way to handle the logic. We have one part which simply fetches data from the query, and leverages database metadata to do so, and another which simply bundles this data together depending on the operation type.
