@@ -199,7 +199,7 @@ with ",
       att.attnotnull as \"isNotNull\",
       att.atthasdef as \"hasDefault\",",
       
-      if server_version_num >= 100000 {"att.attidentity"}  else {"''"}, " as \"identity\",
+      if server_version_num >= 100000 {" att.attidentity"}  else {"''"}, " as \"identity\",
       exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'SELECT')) as \"aclSelectable\",
       exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'INSERT')) as \"aclInsertable\",
       exists(select 1 from accessible_roles where has_column_privilege(accessible_roles.oid, att.attrelid, att.attname, 'UPDATE')) as \"aclUpdatable\",
@@ -371,21 +371,20 @@ with ",
       idx.indisvalid as \"isValid\", -- if false, don't use for queries
       idx.indpred is not null as \"isPartial\", -- if true, index is not on on rows.
       idx.indkey as \"attributeNums\",
-      am.amname as \"indexType\",
-      if serverVersionNum >= 90600
+      am.amname as \"indexType\", ",
+      if server_version_num >= 90600
       {
-          (
+          "(
             select array_agg(pg_index_column_has_property(idx.indexrelid,n::int2,'asc'))
             from unnest(idx.indkey) with ordinality as ord(key,n)
           ) as \"attributePropertiesAsc\",
           (
             select array_agg(pg_index_column_has_property(idx.indexrelid,n::int2,'nulls_first'))
             from unnest(idx.indkey) with ordinality as ord(key,n)
-          ) as \"attributePropertiesNullsFirst\",`
+          ) as \"attributePropertiesNullsFirst\","
       }
-      else    {\"\"}
-      }
-      dsc.description as \"description\"
+      else  {""},
+    " dsc.description as \"description\"
     from
       pg_catalog.pg_index as idx
       inner join pg_catalog.pg_class idx_more on (idx.indexrelid = idx_more.oid)
