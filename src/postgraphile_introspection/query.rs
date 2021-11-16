@@ -1,4 +1,9 @@
-pub fn make_instrospection_query(
+use postgres::{Client, NoTls, Row};
+pub fn introspection_query_rows() -> Vec<Row> {
+    let mut client = Client::connect("postgres://postgres:postgres@localhost:5432/pets", NoTls).unwrap();
+    client.query(&make_instrospection_query(999999999, false, false), &[]).unwrap()
+}
+fn make_instrospection_query(
     server_version_num: i32,
     pg_legacy_functions_only: bool,
     pg_ignore_rbac: bool,
@@ -175,7 +180,8 @@ with ",
       -- We don't want classes that will clash with GraphQL (treat them as private)
       rel.relname not like E'\\\\_\\\\_%' and
       rel.relkind in ('r', 'v', 'm', 'c', 'f') and
-      (true is true or not exists(
+
+      (not exists(
         select 1
         from pg_catalog.pg_depend
         where pg_depend.refclassid = 'pg_catalog.pg_extension'::pg_catalog.regclass
@@ -417,6 +423,7 @@ union all
 select row_to_json(x) as object from indexes as x
 "].concat()
 }
+
 
 #[cfg(test)]
 mod test {

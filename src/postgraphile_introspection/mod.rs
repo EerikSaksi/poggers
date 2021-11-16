@@ -63,4 +63,43 @@ impl PostgresEntity {
     }
 }
 
-mod test {}
+#[cfg(test)]
+mod test {
+    use super::*;
+    use query::introspection_query_rows;
+    use serde_json::Value;
+
+    #[test]
+    fn all_tables_present() {
+        let rows = introspection_query_rows();
+        let mut tables: Vec<ClassData> = vec![];
+        for row in rows {
+            let val: Value = row.get(0);
+            if let Some(PostgresEntity::Class(data)) = PostgresEntity::from(val) {
+                tables.push(data);
+            }
+        }
+        let expected_names = [
+            "child_table",
+            "comment",
+            "foreign_primary_key",
+            "mutation_test",
+            "mutation_test_child",
+            "parent_table",
+            "post",
+            "posthistory",
+            "site_user",
+            "tag",
+            "vote",
+        ];
+        for expected_name in expected_names {
+            assert!(tables.iter().any(|table| table.name == expected_name));
+        }
+        assert_eq!(
+            expected_names.len(),
+            tables.len(),
+            "{:?}",
+            tables.iter().map(|d| d.name.to_owned()).collect::<Vec<String>>()
+        );
+    }
+}
