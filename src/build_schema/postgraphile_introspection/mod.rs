@@ -1,4 +1,5 @@
 pub mod query;
+pub use query::{introspection_query_data, IntrospectionOutput};
 use serde::Deserialize;
 use serde_json::{from_value, Value};
 
@@ -6,18 +7,22 @@ use serde_json::{from_value, Value};
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct ClassData {
-    id: String,
-    name: String,
-    comment: Option<String>,
-    description: Option<String>,
-    class_kind: String,
-    namespace_id: String,
-    namespace_name: String,
-    type_id: String,
-    is_selectable: bool,
-    is_insertable: bool,
-    is_updatable: bool,
-    is_deletable: bool,
+    pub id: String,
+    pub name: String,
+    pub comment: Option<String>,
+    pub description: Option<String>,
+    pub class_kind: String,
+    pub namespace_id: String,
+    pub namespace_name: String,
+    pub type_id: String,
+    pub is_selectable: bool,
+    pub is_insertable: bool,
+    pub is_updatable: bool,
+    pub is_deletable: bool,
+    pub acl_selectable: bool,
+    pub acl_insertable: bool,
+    pub acl_updatable: bool,
+    pub acl_deletable: bool,
     //namespace: PgNamespace,
     //type: PgType,
     //tags: SmartTags,
@@ -25,86 +30,82 @@ pub struct ClassData {
     //constraints: Array<PgConstraint>,
     //foreign_constraints: Array<PgConstraint>,
     //primary_key_constraint: Option<PgConstraint>,
-    acl_selectable: bool,
-    acl_insertable: bool,
-    acl_updatable: bool,
-    acl_deletable: bool,
 }
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct AttributeData {
-    class_id: String,
-    num: i32,
-    name: String,
-    comment: Option<String>,
-    description: Option<String>,
-    type_id: String,
-    //type_modifier: i32,
-    is_not_null: bool,
-    has_default: bool,
+    pub class_id: String,
+    pub num: i32,
+    pub name: String,
+    pub comment: Option<String>,
+    pub description: Option<String>,
+    pub type_id: String,
+    pub is_not_null: bool,
+    pub has_default: bool,
+    pub acl_selectable: bool,
+    pub acl_insertable: bool,
+    pub acl_updatable: bool,
+    pub is_indexed: Option<bool>,
+    pub is_unique: Option<bool>,
+    pub column_level_select_grant: bool,
     //identity: "" | "a" | "d",
     //class: ClassData,
     //type: PgType,
     //namespace: PgNamespace,
     //tags: SmartTags,
-    acl_selectable: bool,
-    acl_insertable: bool,
-    acl_updatable: bool,
-    is_indexed: Option<bool>,
-    is_unique: Option<bool>,
-    column_level_select_grant: bool,
+    //type_modifier: i32,
 }
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct ConstraintData {
-    id: String,
-    name: String,
-    //type: String,
-    class_id: String,
+    pub id: String,
+    pub name: String,
+    pub class_id: String,
+    pub foreign_class_id: Option<String>,
+    pub comment: Option<String>,
+    pub description: Option<String>,
+    pub key_attribute_nums: Vec<i32>,
+    pub foreign_key_attribute_nums: Vec<i32>,
+    pub is_indexed: Option<bool>,
     //class: PgClass,
-    foreign_class_id: Option<String>,
     //foreign_class: Option<PgClass>,
-    comment: Option<String>,
-    description: Option<String>,
-    key_attribute_nums: Vec<i32>,
     //key_attributes: Vec<AttributeData>,
-    foreign_key_attribute_nums: Vec<i32>,
     //foreign_key_attributes: Vec<AttributeData>,
     //namespace: PgNamespace,
-    is_indexed: Option<bool>,
     //tags: SmartTags,
     //is_fake: bool,
+    //type: String,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 pub struct TypeData {
-    id: String,
-    name: String,
-    comment: Option<String>,
-    description: Option<String>,
-    namespace_id: String,
-    namespace_name: String,
-    r#type: String,
-    category: String,
-    domain_is_not_null: bool,
-    array_item_type_id: Option<String>,
+    pub id: String,
+    pub name: String,
+    pub comment: Option<String>,
+    pub description: Option<String>,
+    pub namespace_id: String,
+    pub namespace_name: String,
+    pub r#type: String,
+    pub category: String,
+    pub domain_is_not_null: bool,
+    pub array_item_type_id: Option<String>,
+    pub type_length: Option<i32>,
+    pub is_pg_array: bool,
+    pub class_id: Option<String>,
+    pub domain_base_type_id: Option<String>,
+    pub domain_type_modifier: Option<i32>,
+    pub domain_has_default: bool,
+    pub enum_variants: Option<Vec<String>>,
+    pub range_sub_type_id: Option<String>,
+    //tags: SmartTags,
     //array_item_type: Option<PgType>,
     //array_type: Option<PgType>,
-    type_length: Option<i32>,
-    is_pg_array: bool,
-    class_id: Option<String>,
     //class: Option<PgClass>,
-    domain_base_type_id: Option<String>,
     //domain_base_type: Option<PgType>,
-    domain_type_modifier: Option<i32>,
-    domain_has_default: bool,
-    enum_variants: Option<Vec<String>>,
-    range_sub_type_id: Option<String>,
-    //tags: SmartTags,
 }
 
 //https://github.com/graphile/graphile-engine/blob/master/packages/graphile-build-pg/src/plugins/PgIntrospectionPlugin.ts
@@ -154,8 +155,6 @@ impl PostgresEntity {
 
 #[cfg(test)]
 mod test {
-    use crate::postgraphile_introspection::query::IntrospectionOutput;
-
     use super::*;
     use query::introspection_query_data;
 

@@ -1,4 +1,4 @@
-use crate::postgraphile_introspection::{ClassData, PostgresEntity, AttributeData, ConstraintData, TypeData};
+use crate::build_schema::postgraphile_introspection::{ClassData, PostgresEntity, AttributeData, ConstraintData, TypeData};
 use postgres::{Client, NoTls};
 use serde_json::Value;
 use std::collections::HashMap;
