@@ -80,6 +80,7 @@ mod test {
             }
         }
         let expected_names = [
+            "badge",
             "child_table",
             "comment",
             "foreign_primary_key",
@@ -95,11 +96,17 @@ mod test {
         for expected_name in expected_names {
             assert!(tables.iter().any(|table| table.name == expected_name));
         }
+        for table in &tables {
+            println!("{}", table.namespace_id);
+        }
         assert_eq!(
             expected_names.len(),
             tables.len(),
             "{:?}",
-            tables.iter().map(|d| d.name.to_owned()).collect::<Vec<String>>()
+            tables
+                .iter()
+                .map(|d| d.name.to_owned())
+                .collect::<Vec<String>>()
         );
     }
 }
