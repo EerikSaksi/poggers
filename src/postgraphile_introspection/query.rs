@@ -1,7 +1,35 @@
-use postgres::{Client, NoTls, Row};
-pub fn introspection_query_rows() -> Vec<Row> {
+use crate::postgraphile_introspection::{ClassData, PostgresEntity, AttributeData, ConstraintData, TypeData};
+use postgres::{Client, NoTls};
+use serde_json::Value;
+use std::collections::HashMap;
+
+pub struct IntrospectionOutput {
+    pub class_map: HashMap<String, ClassData>,
+    pub constraint_map: HashMap<String, ConstraintData>,
+    pub attribute_vec: Vec<AttributeData>,
+    pub type_map: HashMap<String, TypeData>
+}
+pub fn introspection_query_data() -> IntrospectionOutput {
     let mut client = Client::connect("postgres://postgres:postgres@localhost:5432/pets", NoTls).unwrap();
-    client.query(&make_instrospection_query(999999999, false, false), &[]).unwrap()
+    let rows = client.query(&make_instrospection_query(999999999, false, false), &[]).unwrap();
+    let mut output = IntrospectionOutput {
+        class_map: HashMap::new(),
+        constraint_map: HashMap::new(),
+        type_map: HashMap::new(),
+        attribute_vec: vec![],
+    };
+    for row in rows {
+        let val: Value = row.get(0);
+        if let Some(entity) = PostgresEntity::from(val) {
+            match entity{
+                PostgresEntity::Class(data) => {output.class_map.insert(data.id.to_string(), data);},
+                PostgresEntity::Attribute(data) => output.attribute_vec.push(data),
+                PostgresEntity::Constraint(data) => {output.constraint_map.insert(data.id.to_string(), data);},
+                PostgresEntity::Type(data) => {output.type_map.insert(data.id.to_string(), data);},
+            }
+        }
+    }
+    output
 }
 fn make_instrospection_query(
     server_version_num: i32,

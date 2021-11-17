@@ -1,10 +1,11 @@
-mod query;
+pub mod query;
 use serde::Deserialize;
 use serde_json::{from_value, Value};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ClassData {
+#[allow(dead_code)]
+pub struct ClassData {
     id: String,
     name: String,
     comment: Option<String>,
@@ -29,12 +30,90 @@ struct ClassData {
     acl_updatable: bool,
     acl_deletable: bool,
 }
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct AttributeData {
+    class_id: String,
+    num: i32,
+    name: String,
+    comment: Option<String>,
+    description: Option<String>,
+    type_id: String,
+    //type_modifier: i32,
+    is_not_null: bool,
+    has_default: bool,
+    //identity: "" | "a" | "d",
+    //class: ClassData,
+    //type: PgType,
+    //namespace: PgNamespace,
+    //tags: SmartTags,
+    acl_selectable: bool,
+    acl_insertable: bool,
+    acl_updatable: bool,
+    is_indexed: Option<bool>,
+    is_unique: Option<bool>,
+    column_level_select_grant: bool,
+}
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct ConstraintData {
+    id: String,
+    name: String,
+    //type: String,
+    class_id: String,
+    //class: PgClass,
+    foreign_class_id: Option<String>,
+    //foreign_class: Option<PgClass>,
+    comment: Option<String>,
+    description: Option<String>,
+    key_attribute_nums: Vec<i32>,
+    //key_attributes: Vec<AttributeData>,
+    foreign_key_attribute_nums: Vec<i32>,
+    //foreign_key_attributes: Vec<AttributeData>,
+    //namespace: PgNamespace,
+    is_indexed: Option<bool>,
+    //tags: SmartTags,
+    //is_fake: bool,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+pub struct TypeData {
+    id: String,
+    name: String,
+    comment: Option<String>,
+    description: Option<String>,
+    namespace_id: String,
+    namespace_name: String,
+    r#type: String,
+    category: String,
+    domain_is_not_null: bool,
+    array_item_type_id: Option<String>,
+    //array_item_type: Option<PgType>,
+    //array_type: Option<PgType>,
+    type_length: Option<i32>,
+    is_pg_array: bool,
+    class_id: Option<String>,
+    //class: Option<PgClass>,
+    domain_base_type_id: Option<String>,
+    //domain_base_type: Option<PgType>,
+    domain_type_modifier: Option<i32>,
+    domain_has_default: bool,
+    enum_variants: Option<Vec<String>>,
+    range_sub_type_id: Option<String>,
+    //tags: SmartTags,
+}
 
 //https://github.com/graphile/graphile-engine/blob/master/packages/graphile-build-pg/src/plugins/PgIntrospectionPlugin.ts
+#[allow(dead_code)]
 pub enum PostgresEntity {
     Class(ClassData),
-    Attribute,
-    Constraint,
+    Attribute(AttributeData),
+    Constraint(ConstraintData),
+    Type(TypeData),
 }
 
 impl PostgresEntity {
@@ -53,11 +132,21 @@ impl PostgresEntity {
         let kind = obj.get("kind").unwrap().as_str().unwrap();
         match kind {
             "class" => {
-                let to_return: ClassData = from_value(value).unwrap();
-                Some(PostgresEntity::Class(to_return))
+                let value_as_data: ClassData = from_value(value).unwrap();
+                Some(PostgresEntity::Class(value_as_data))
             }
-            "attribute" => Some(PostgresEntity::Attribute),
-            "constraint" => Some(PostgresEntity::Constraint),
+            "attribute" => {
+                let value_as_data: AttributeData = from_value(value).unwrap();
+                Some(PostgresEntity::Attribute(value_as_data))
+            }
+            "constraint" => {
+                let value_as_data: ConstraintData = from_value(value).unwrap();
+                Some(PostgresEntity::Constraint(value_as_data))
+            }
+            "type" => {
+                let value_as_data: TypeData = from_value(value).unwrap();
+                Some(PostgresEntity::Type(value_as_data))
+            }
             _ => None,
         }
     }
@@ -65,20 +154,66 @@ impl PostgresEntity {
 
 #[cfg(test)]
 mod test {
+    use crate::postgraphile_introspection::query::IntrospectionOutput;
+
     use super::*;
-    use query::introspection_query_rows;
-    use serde_json::Value;
+    use query::introspection_query_data;
+
+    #[test]
+    fn test_attributes_present() {
+        let IntrospectionOutput {
+            type_map: _,
+            class_map,
+            attribute_vec,
+            constraint_map,
+        } = introspection_query_data();
+        let post_class = class_map
+            .values()
+            .find(|class| class.name == "post")
+            .unwrap();
+        assert_eq!(
+            attribute_vec
+                .iter()
+                .filter(|att| att.class_id == post_class.id)
+                .count(),
+            21
+        )
+    }
+
+    #[test]
+    fn types_present() {
+        let type_map = introspection_query_data().type_map;
+        type_map.values().for_each(|t| println!("{}", t.name));
+        panic!();
+    }
+    #[test]
+    fn constraints_present() {
+        let IntrospectionOutput {
+            type_map: _,
+            class_map,
+            attribute_vec: _,
+            constraint_map,
+        } = introspection_query_data();
+        let comment_class = class_map
+            .values()
+            .find(|class| class.name == "comment")
+            .unwrap();
+        let count = constraint_map
+            .values()
+            .filter(|att| att.class_id == comment_class.id)
+            .fold(0, |count, con| {
+                println!("{}", con.name);
+                assert!(["post_id_fkey", "site_user_fkey", "comments_pkey",]
+                    .iter()
+                    .any(|expected| *expected == con.name));
+                count + 1
+            });
+        assert_eq!(count, 3);
+    }
 
     #[test]
     fn all_tables_present() {
-        let rows = introspection_query_rows();
-        let mut tables: Vec<ClassData> = vec![];
-        for row in rows {
-            let val: Value = row.get(0);
-            if let Some(PostgresEntity::Class(data)) = PostgresEntity::from(val) {
-                tables.push(data);
-            }
-        }
+        let class_map = introspection_query_data().class_map;
         let expected_names = [
             "badge",
             "child_table",
@@ -94,17 +229,14 @@ mod test {
             "vote",
         ];
         for expected_name in expected_names {
-            assert!(tables.iter().any(|table| table.name == expected_name));
-        }
-        for table in &tables {
-            println!("{}", table.namespace_id);
+            assert!(class_map.values().any(|table| table.name == expected_name));
         }
         assert_eq!(
             expected_names.len(),
-            tables.len(),
+            class_map.len(),
             "{:?}",
-            tables
-                .iter()
+            class_map
+                .values()
                 .map(|d| d.name.to_owned())
                 .collect::<Vec<String>>()
         );

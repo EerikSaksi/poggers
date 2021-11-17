@@ -4,6 +4,6 @@ mod server_side_json_builder;
 use postgraphile_introspection::PostgresEntity;
 use postgres::{Client, NoTls};
 use serde_json::Value;
-
-fn main() {
+pub fn main() {
+    
 }
