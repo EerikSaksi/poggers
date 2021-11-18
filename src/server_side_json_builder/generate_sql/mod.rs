@@ -3,6 +3,9 @@ mod component_builder;
 #[path = "./test.rs"]
 mod test;
 use super::TableQueryInfo;
+use std::iter::Zip;
+use std::slice::Iter;
+
 use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, Operation};
 use crate::server_side_json_builder::ColumnInfo;
 use async_graphql::{
@@ -14,16 +17,12 @@ use async_graphql::{
 };
 use convert_case::{Case, Casing};
 use inflector::Inflector;
-use petgraph::{
-    graph::DiGraph,
-    prelude::{EdgeIndex, NodeIndex},
-};
+use petgraph::{graph::DiGraph, prelude::NodeIndex};
 use std::collections::HashMap;
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    pub query_to_type: HashMap<String, Operation>,
+    pub field_to_operation: HashMap<String, Operation>,
     pub local_id: u8,
-    pub num_select_cols: usize,
 }
 #[derive(Debug)]
 pub struct JsonBuilderContext {
@@ -43,13 +42,12 @@ pub struct SqlQueryComponents {
 impl ServerSidePoggers {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
-        query_to_type: HashMap<String, Operation>,
+        field_to_operation: HashMap<String, Operation>,
     ) -> ServerSidePoggers {
         ServerSidePoggers {
             g,
-            query_to_type,
+            field_to_operation,
             local_id: 0,
-            num_select_cols: 0,
         }
     }
 
@@ -86,7 +84,7 @@ impl ServerSidePoggers {
 
             //clone operation (or if invalid throw error)
             let operation;
-            match self.query_to_type.get(root_key_name) {
+            match self.field_to_operation.get(root_key_name) {
                 Some(op) => operation = op.clone(),
                 None => return Err(format!("No operation named \"{}\"", root_key_name)),
             }
@@ -108,6 +106,7 @@ impl ServerSidePoggers {
                 &mut table_query_infos,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
+                0,
             ) {
                 return Err(e);
             }
@@ -188,13 +187,15 @@ impl ServerSidePoggers {
         table_query_infos: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
-    ) -> Result<(), String> {
+        column_offset: usize,
+    ) -> Result<usize, String> {
         let SqlQueryComponents {
             from,
             selections,
             filter: _,
             order_by,
         } = sql;
+        let mut new_col_offset = column_offset;
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             //this field is terminal
@@ -218,7 +219,6 @@ impl ServerSidePoggers {
 
             let mut encountered_join = false;
             let mut graphql_fields: Vec<ColumnInfo> = vec![];
-            let column_offset = self.num_select_cols;
             for selection in &field.node.selection_set.node.items {
                 if let Selection::Field(child_field) = &selection.node {
                     let child_name = child_field.node.name.node.as_str();
@@ -231,10 +231,9 @@ impl ServerSidePoggers {
                             selections.push_str(" AS __t");
                             selections.push_str(&id_copy.to_string());
                             selections.push_str("_c");
-                            selections
-                                .push_str(&(self.num_select_cols - column_offset).to_string());
+                            selections.push_str(&(new_col_offset - column_offset).to_string());
                             selections.push_str("__, ");
-                            self.num_select_cols += 1;
+                            new_col_offset += 1;
                         }
                         None => {
                             //if we have a child join then we need to order the parent by its primary
@@ -251,24 +250,19 @@ impl ServerSidePoggers {
                             self.local_id += 1;
                             let child_alias = ServerSidePoggers::table_alias(self.local_id);
 
-                            let edge;
-                            let is_one_to_many;
-                            match self.find_edge_and_endpoints(node_index, child_name) {
-                                Ok((e, is_otm)) => {
-                                    edge = e;
-                                    is_one_to_many = is_otm
+                            let join_cols: Zip<Iter<String>, Iter<String>>;
+                            let child_node_index: NodeIndex<u32>;
+                            match self.find_edge_and_endpoints(
+                                node_index,
+                                child_name,
+                                &mut graphql_fields,
+                            ) {
+                                Ok((j_c, node)) => {
+                                    join_cols = j_c;
+                                    child_node_index = node;
                                 }
                                 Err(e) => return Err(e),
                             }
-
-                            let child_node_index = {
-                                //the child will depend on whether the edge we found was incoming
-                                //or outgoing
-                                match is_one_to_many {
-                                    true => self.g.edge_endpoints(edge).unwrap().0,
-                                    false => self.g.edge_endpoints(edge).unwrap().1,
-                                }
-                            };
 
                             from.push_str(" LEFT JOIN ");
                             from.push_str(&self.g[child_node_index].table_name);
@@ -276,27 +270,12 @@ impl ServerSidePoggers {
                             from.push_str(&child_alias);
                             from.push_str(" ON ");
 
-                            //if one to many, then we want the tuples to be (pk, fk), otherwise,
-                            //(fk, pk)
-                            let join_cols = {
-                                match is_one_to_many {
-                                    true => self.g[node_index]
-                                        .primary_keys
-                                        .iter()
-                                        .zip(&self.g[edge].foreign_keys),
-                                    false => self.g[edge]
-                                        .foreign_keys
-                                        .iter()
-                                        .zip(&self.g[node_index].primary_keys),
-                                }
-                            };
-
                             //if its not terminal, this field must be some foreign field. Search the nodes
                             //edges for the edge that corresponds to this graphql field, and whether its a
                             //one to many or many to one relation
                             //
                             for (col1, col2) in join_cols {
-                                self.num_select_cols += 1;
+                                new_col_offset += 1;
                                 let parent_pk = [&current_alias, ".", col1].concat();
                                 from.push_str(&parent_pk);
                                 from.push_str(" = ");
@@ -307,13 +286,6 @@ impl ServerSidePoggers {
                             }
                             //remove trailing " and "
                             from.drain(from.len() - 5..from.len());
-
-                            if is_one_to_many {
-                                graphql_fields.push(ColumnInfo::Foreign(child_name.to_string()));
-                            } else {
-                                graphql_fields
-                                    .push(ColumnInfo::ForeignSingular(child_name.to_string()));
-                            }
                             children.push((selection, child_node_index));
                         }
                     }
@@ -330,40 +302,47 @@ impl ServerSidePoggers {
             });
 
             for child in children {
-                if let Err(e) = self.build_selection(sql, table_query_infos, child.0, child.1) {
-                    return Err(e);
+                match self.build_selection(sql, table_query_infos, child.0, child.1, new_col_offset)
+                {
+                    Ok(val) => new_col_offset = val,
+                    Err(e) => return Err(e),
                 }
             }
         }
-        Ok(())
+        Ok(new_col_offset)
     }
+
+    //this method will try to identify whether it's an incoming or outgoing edge. If it's incoming
+    //we need to return an iterator (incoming, outgoing) (the table corresponding to the incoming
+    //will be on the left). Otherwise we return a zip iterator over (outgoing, incoming). Throws an
+    //Err if not in incoming or outgoing edges (this means that the field requested does not exist)
+
+    //The second tuple value we return is the NodeIndex corresponding to this selection. This is so that we can both
+    //access the table name (self.g[node].table_name) and call build_selection with this node
     fn find_edge_and_endpoints(
         &self,
         node_index: NodeIndex<u32>,
         field_name: &str,
-    ) -> Result<(EdgeIndex<u32>, bool), String> {
-        //given a node, find an edge for which the edges weight's graphql_field_name = field_name.
-        //Case 1: This edge was found in incoming edges. This means that a child table is refering
-        //to this parent_table in the database. In that case this relation is one_to_many
-
-        //Case 2: This edge was found in outgoing edges. This means that the current graphql
-        //type is a child table referring to a parent, making this a many to one relationship.
-
-        //Case 3: No edge found, unrecoverable error. This is only possible if the query
-        //validation wasn't done properly or we're accidentally searching for a terminal field
-        //as a foreign one. Either problem in schema representation or programming error
-
+        graphql_fields: &mut Vec<ColumnInfo>,
+    ) -> Result<(Zip<Iter<String>, Iter<String>>, NodeIndex<u32>), String> {
         let mut incoming_edges = self
             .g
             .neighbors_directed(node_index, petgraph::EdgeDirection::Incoming)
             .detach();
 
-        //check if there is some child table referring to us. The left hand graphql_field_name is
-        //the child tables field name, and the right hand is the parent tables field name. Since
-        //we're looking for a child field we're accessing the left most value
         while let Some(edge) = incoming_edges.next_edge(&self.g) {
-            if self.g[edge].graphql_field_name.0 == field_name {
-                return Ok((edge, true));
+            if self.g[edge].graphql_field_name.incoming == field_name {
+                graphql_fields.push(ColumnInfo::Foreign(field_name.to_string()));
+                let node_index = self.g.edge_endpoints(edge).unwrap().0;
+
+                //if incoming child fields on left, not right
+                return Ok((
+                    self.g[edge]
+                        .outgoing_node_cols
+                        .iter()
+                        .zip(self.g[edge].incoming_node_cols.iter()),
+                    node_index,
+                ));
             }
         }
 
@@ -375,8 +354,17 @@ impl ServerSidePoggers {
         //check if we're referring to some parent. Opposite to the incoming edges, read the right
         //most graphql_field_name tuple value (parent field name)
         while let Some(edge) = outgoing_edges.next_edge(&self.g) {
-            if self.g[edge].graphql_field_name.1 == field_name {
-                return Ok((edge, false));
+            if self.g[edge].graphql_field_name.outgoing == field_name {
+                graphql_fields.push(ColumnInfo::ForeignSingular(field_name.to_string()));
+                let node_index = self.g.edge_endpoints(edge).unwrap().1;
+                //if incoming child fields on right, not left
+                return Ok((
+                    self.g[edge]
+                        .incoming_node_cols
+                        .iter()
+                        .zip(self.g[edge].outgoing_node_cols.iter()),
+                    node_index,
+                ));
             }
         }
         let gql_type = self.g[node_index].table_name.to_case(Case::UpperCamel);

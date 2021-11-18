@@ -2,40 +2,46 @@ use super::*;
 use petgraph::graph::Edge;
 fn assert_some_edge_eq(
     field_names: (&str, &str),
-    foreign_keys: Vec<&str>,
+    incoming_node_cols: Vec<&str>,
     edges: &[Edge<GraphQLEdgeInfo>],
 ) {
     let expected = GraphQLEdgeInfo {
-        graphql_field_name: (field_names.0.to_string(), field_names.1.to_string()),
-        foreign_keys: foreign_keys
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>(),
+        graphql_field_name: GraphQLFieldNames {
+            incoming: field_names.0.to_string(),
+            outgoing: field_names.1.to_string(),
+        },
+        incoming_node_cols: incoming_node_cols.iter().map(|s| s.to_string()).collect(),
+        outgoing_node_cols: vec![],
     };
 
     let mut cumm = String::new();
     for edge in edges {
         let GraphQLEdgeInfo {
             graphql_field_name,
-            foreign_keys,
+            incoming_node_cols,
+            outgoing_node_cols: _,
         } = &edge.weight;
         cumm.push_str(&format!("{:?}\n", &edge.weight));
-        if graphql_field_name == &expected.graphql_field_name
-            && foreign_keys.len() == expected.foreign_keys.len()
-            && foreign_keys
+        if graphql_field_name.incoming == expected.graphql_field_name.incoming
+            && graphql_field_name.outgoing == expected.graphql_field_name.outgoing
+            && incoming_node_cols.len() == expected.incoming_node_cols.len()
+            && incoming_node_cols
                 .iter()
-                .zip(&expected.foreign_keys)
+                .zip(&expected.incoming_node_cols)
                 .all(|(a, b)| a == b)
         {
             return;
         }
     }
-    panic!("No edge found:\n\n {:?}\n{}\n", expected, cumm);
+    panic!(
+        "No edge found: {:?} {:?}\n\n\n{}",
+        field_names, incoming_node_cols, cumm
+    );
 }
 
 #[test]
 fn test_one_to_many() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     assert_some_edge_eq(("posts", "siteUser"), vec!["owneruserid"], g.raw_edges());
     assert_some_edge_eq(("badges", "siteUser"), vec!["userid"], g.raw_edges());
@@ -44,7 +50,7 @@ fn test_one_to_many() {
 
 #[test]
 fn test_composite_primary_keys() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     assert_some_edge_eq(
         ("childTables", "parentTable"),
@@ -67,7 +73,7 @@ fn test_composite_primary_keys() {
 
 #[test]
 fn check_id_primary_keys() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
@@ -79,7 +85,7 @@ fn check_id_primary_keys() {
 
 #[test]
 fn foreign_primary_key() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     let node = g
         .node_indices()
@@ -91,17 +97,17 @@ fn foreign_primary_key() {
         .find(|node| g[*node].table_name == "post")
         .unwrap();
     let edge = g.find_edge(node, foreign_node).unwrap();
-    assert_eq!(g[edge].foreign_keys, vec!["post_id"]);
+    assert_eq!(g[edge].incoming_node_cols, vec!["post_id"]);
 }
 
 #[test]
-fn query_to_type() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
-    let query_to_type = pogg.query_to_type;
+fn field_to_operation() {
+    let pogg = create();
+    let field_to_operation = pogg.field_to_operation;
     assert!(
-        query_to_type.contains_key("siteUsers"),
+        field_to_operation.contains_key("siteUsers"),
         "{}",
-        query_to_type
+        field_to_operation
             .keys()
             .into_iter()
             .fold(String::new(), |a, b| format!("{}\n{}", a, b))
@@ -110,7 +116,7 @@ fn query_to_type() {
 
 #[test]
 fn post_has_owneruserid() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert!(
@@ -122,7 +128,7 @@ fn post_has_owneruserid() {
 
 #[test]
 fn post_has_correct_num_fields() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert_eq!(
@@ -135,7 +141,7 @@ fn post_has_correct_num_fields() {
 
 #[test]
 fn check_nullability() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create();
     let g = pogg.g;
     let user_node = g
         .node_weights()
@@ -146,17 +152,17 @@ fn check_nullability() {
         ("reputation", POG_INT),
         ("creationdate", POG_TIMESTAMP),
         ("displayname", POG_STR),
-        ("lastaccessdate", POG_NULLABLE_TIMESTAMP),
-        ("websiteurl", POG_NULLABLE_STR),
-        ("location", POG_NULLABLE_STR),
-        ("aboutme", POG_NULLABLE_STR),
+        ("lastaccessdate", POG_TIMESTAMP + POG_NULLABLE_INT),
+        ("websiteurl", POG_STR + POG_NULLABLE_INT),
+        ("location", POG_STR + POG_NULLABLE_INT),
+        ("aboutme", POG_STR + POG_NULLABLE_INT),
         ("views", POG_INT),
         ("upvotes", POG_INT),
         ("downvotes", POG_INT),
-        ("profileimageurl", POG_NULLABLE_STR),
-        ("age", POG_NULLABLE_INT),
-        ("accountid", POG_NULLABLE_INT),
-        ("jsonfield", POG_NULLABLE_JSON),
+        ("profileimageurl", POG_STR + POG_NULLABLE_INT),
+        ("age", POG_INT + POG_NULLABLE_INT),
+        ("accountid", POG_INT + POG_NULLABLE_INT),
+        ("jsonfield", POG_JSON + POG_NULLABLE_INT),
     ];
     for (key, expected) in expected_column_types {
         assert_eq!(user_node.field_to_types.get(key).unwrap().1, expected);
@@ -165,11 +171,25 @@ fn check_nullability() {
 
 #[test]
 fn test_delete_mutation_creation() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
-    let query_to_type = pogg.query_to_type;
+    let pogg = create();
+    let field_to_operation = pogg.field_to_operation;
     assert!(
-        query_to_type.contains_key("deleteMutationTest"),
+        field_to_operation.contains_key("deleteMutationTest"),
         "{:?} actually contains keys",
-        query_to_type.keys()
+        field_to_operation.keys()
     )
 }
+
+//#[test]
+//fn test_by_fk() {
+//    let g = create().g;
+//    let post_node = g
+//        .node_indices()
+//        .find(|n| g[*n].table_name == "post")
+//        .unwrap();
+//    let site_user_node = g
+//        .node_indices()
+//        .find(|n| g[*n].table_name == "site_user")
+//        .unwrap();
+//    assert_some
+//}

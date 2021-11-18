@@ -16,17 +16,21 @@ pub fn introspection_query_data() -> IntrospectionOutput {
         class_map: HashMap::new(),
         constraint_map: HashMap::new(),
         type_map: HashMap::new(),
-        attribute_vec: vec![],
+        attribute_map: HashMap::new(),
     };
     for row in rows {
         let val: Value = row.get(0);
         if let Some(entity) = PostgresEntity::from(val) {
-            match entity{
-                PostgresEntity::Class(data) => {output.class_map.insert(data.id.to_string(), data);},
-                PostgresEntity::Attribute(data) => output.attribute_vec.push(data),
-                PostgresEntity::Constraint(data) => {output.constraint_map.insert(data.id.to_string(), data);},
-                PostgresEntity::Type(data) => {output.type_map.insert(data.id.to_string(), data);},
-            }
+            //insert into the map storing the corresponding data.
+            let map_insertion_res = match entity{
+                PostgresEntity::Class(data) => output.class_map.insert(data.id.to_string(), data).is_none(),
+                PostgresEntity::Attribute(data) => output.attribute_map.insert((data.class_id.to_string(), data.num), data).is_none(),
+                PostgresEntity::Constraint(data) => output.constraint_map.insert(data.id.to_string(), data).is_none(),
+                PostgresEntity::Type(data) => output.type_map.insert(data.id.to_string(), data).is_none(),
+            };
+            //assert none for the insertion (we did not override a key. This is to prevent nasty
+            //bugs (we assumed that something was a primary key when it wasn't))
+            assert!(map_insertion_res);
         }
     }
     output

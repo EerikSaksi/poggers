@@ -4,7 +4,7 @@ use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
 
 fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
-    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let mut pogg = create();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let ctx = pogg.build_root(gql_query).unwrap();
@@ -68,7 +68,7 @@ fn test_random_user() {
             views
             upvotes
             downvotes
-            posts{
+            postsByOwnerId{
               id
               posttypeid
             }
@@ -412,7 +412,7 @@ fn test_empty_many_query() {
             age
           }
         }";
-    let mut pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let mut pogg = create();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let ctx = pogg.build_root(gql_query).unwrap();

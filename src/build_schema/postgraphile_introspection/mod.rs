@@ -163,34 +163,32 @@ mod test {
         let IntrospectionOutput {
             type_map: _,
             class_map,
-            attribute_vec,
-            constraint_map,
+            attribute_map,
+            constraint_map: _,
         } = introspection_query_data();
         let post_class = class_map
             .values()
             .find(|class| class.name == "post")
             .unwrap();
         assert_eq!(
-            attribute_vec
-                .iter()
+            attribute_map
+                .values()
                 .filter(|att| att.class_id == post_class.id)
                 .count(),
             21
         )
     }
 
-    #[test]
-    fn types_present() {
-        let type_map = introspection_query_data().type_map;
-        type_map.values().for_each(|t| println!("{}", t.name));
-        panic!();
-    }
+    //#[test]
+    //fn types_present() {
+    //    let type_map = introspection_query_data().type_map;
+    //}
     #[test]
     fn constraints_present() {
         let IntrospectionOutput {
             type_map: _,
             class_map,
-            attribute_vec: _,
+            attribute_map: _,
             constraint_map,
         } = introspection_query_data();
         let comment_class = class_map
@@ -201,7 +199,6 @@ mod test {
             .values()
             .filter(|att| att.class_id == comment_class.id)
             .fold(0, |count, con| {
-                println!("{}", con.name);
                 assert!(["post_id_fkey", "site_user_fkey", "comments_pkey",]
                     .iter()
                     .any(|expected| *expected == con.name));
