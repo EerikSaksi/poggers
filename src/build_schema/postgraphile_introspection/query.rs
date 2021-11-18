@@ -6,7 +6,7 @@ use std::collections::HashMap;
 pub struct IntrospectionOutput {
     pub class_map: HashMap<String, ClassData>,
     pub constraint_map: HashMap<String, ConstraintData>,
-    pub attribute_vec: Vec<AttributeData>,
+    pub attribute_map: HashMap<(String, i32), AttributeData>,
     pub type_map: HashMap<String, TypeData>
 }
 pub fn introspection_query_data() -> IntrospectionOutput {

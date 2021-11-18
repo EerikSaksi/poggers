@@ -58,6 +58,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut query_to_type: HashMap<String, Operation> = HashMap::new();
 
+    //for every class, add all its attributes and all
     for class in class_map.values() {
         let mut field_to_types: HashMap<String, (String, usize)> = HashMap::new();
 
@@ -74,6 +75,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
                 "json" | "jsonb" => POG_NULLABLE_JSON,
                 other => panic!("Encountered unhandled type {}", other),
             };
+
             //if the field is null then offset by where the null fields start
             if !field.is_not_null {
                 closure_index += POG_NULLABLE_INT;
@@ -87,8 +89,36 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
                 (field.name.to_string(), closure_index),
             );
         }
-        g.add_node(GraphQLType{field_to_types, table_name: class.name, primary_keys: class.})
+        g.add_node(GraphQLType {
+            field_to_types,
+            table_name: class.name,
+        });
     }
+
+    for constraint in constraint_map.values() {
+        //find the node corresponding to the constraint
+        let node = g
+            .node_weights()
+            .find(|n| n.table_name == class_map.get(&constraint.class_id).unwrap().name);
+
+        //if is foreign constraint
+        if let Some(foreign_class_id) = constraint.foreign_class_id {
+            //find the parent being referred to
+            let parent_node = g
+                .node_weights()
+                .find(|n| n.table_name == class_map.get(&foreign_class_id).unwrap().name);
+
+            let child_foreign_cols = {
+                let child_atts = attribute_vec
+                    .iter()
+                    //first narrow down the attributes to those belonging to this class
+                    .filter(|att| att.class_id == constraint.class_id)
+                    //then narrow down the class atts to those in the attribute vector
+                    .filter(|att| constraint.key_attribute_nums.contains(&att.num));
+            };
+        }
+    }
+
     ServerSidePoggers {
         query_to_type,
         g,
@@ -96,54 +126,5 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         num_select_cols: 0,
     }
 }
-fn find_or_create_node(
-    g: &mut DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    table_name: &str,
-) -> NodeIndex<u32> {
-    let node_index_optional = g.node_indices().find(|i| g[*i].table_name == table_name);
-    match node_index_optional {
-        Some(foreign_index) => foreign_index,
-        None => g.add_node(GraphQLType {
-            field_to_types: HashMap::new(),
-            table_name: table_name.to_string(),
-            primary_keys: vec![],
-        }),
-    }
-}
 
-fn handle_foreign_key(
-    g: &mut DiGraph<GraphQLType, GraphQLEdgeInfo>,
-    node: NodeIndex<u32>,
-    edge: EdgeIndex<u32>,
-    new_parent_pk: &str,
-    new_child_fk: &str,
-) {
-    //check if the parent already has this primary key. If not we need to insert it into the parent
-    //first, before we know where it goes into the child
-    let parent_pk_index = g[node]
-        .primary_keys
-        .iter()
-        .position(|pk| pk == new_parent_pk);
 
-    //the index of the childs fk needs to match the index of the parent's pk
-    match parent_pk_index {
-        Some(i) => {
-            //ensure no out of bounds
-            while g[edge].foreign_keys.len() < g[node].primary_keys.len() {
-                g[edge].foreign_keys.push("".to_string());
-            }
-            g[edge].foreign_keys[i] = new_child_fk.to_string();
-        }
-        None => {
-            g[node].primary_keys.push(new_parent_pk.to_string());
-            let right_most = g[node].primary_keys.len() - 1;
-
-            //no out of bounds
-            while g[edge].foreign_keys.len() < g[node].primary_keys.len() {
-                g[edge].foreign_keys.push("".to_string());
-            }
-            //last element
-            g[edge].foreign_keys[right_most] = new_child_fk.to_string();
-        }
-    }
-}
