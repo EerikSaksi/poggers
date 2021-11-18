@@ -53,7 +53,7 @@ fn test_composite_primary_keys() {
     let pogg = create();
     let g = pogg.g;
     assert_some_edge_eq(
-        ("childTables", "parentTable"),
+        ("childTablesByParentId", "parentTableByParentId"),
         vec!["parent_id1", "parent_id2"],
         g.raw_edges(),
     );

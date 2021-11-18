@@ -68,7 +68,7 @@ fn test_random_user() {
             views
             upvotes
             downvotes
-            postsByOwnerId{
+            postsByOwneruserid{
               id
               posttypeid
             }
@@ -91,7 +91,7 @@ fn test_random_user() {
     assert_eq!(user.get("views").unwrap(), 3534);
     assert_eq!(user.get("upvotes").unwrap(), 4879);
     assert_eq!(user.get("downvotes").unwrap(), 207);
-    assert_eq!(user.get("posts").unwrap().as_array().unwrap().len(), 535);
+    assert_eq!(user.get("postsByOwneruserid").unwrap().as_array().unwrap().len(), 535);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn all_posts_fetched() {
             views
             upvotes
             downvotes
-            posts{
+            postsByOwneruserid{
               id
               posttypeid
             }
@@ -116,7 +116,7 @@ fn all_posts_fetched() {
     let num_posts = site_users.as_array().unwrap().iter().fold(0, |cumm, user| {
         num_users += 1;
         let obj = user.as_object().unwrap();
-        let posts = obj.get("posts").unwrap().as_array().unwrap();
+        let posts = obj.get("postsByOwneruserid").unwrap().as_array().unwrap();
         cumm + posts.len()
     });
 
@@ -140,7 +140,7 @@ fn all_posts_belong_to_parent() {
             views
             upvotes
             downvotes
-            posts{
+            postsByOwneruserid{
               id
               posttypeid
               owneruserid
@@ -152,7 +152,7 @@ fn all_posts_belong_to_parent() {
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
         let user_id = obj.get("id").unwrap().as_i64();
-        let posts = obj.get("posts").unwrap().as_array().unwrap();
+        let posts = obj.get("postsByOwneruserid").unwrap().as_array().unwrap();
         assert!(posts
             .iter()
             .all(|post| post.get("owneruserid").unwrap().as_i64() == user_id))
@@ -188,11 +188,11 @@ fn three_way_join() {
             views
             upvotes
             downvotes
-            posts{
+            postsByOwneruserid{
               id
               posttypeid
               owneruserid
-              comments{
+              commentsByPostid{
                 id
                 score
                 postid
@@ -208,14 +208,14 @@ fn three_way_join() {
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         num_users += 1;
-        user.get("posts")
+        user.get("postsByOwneruserid")
             .unwrap()
             .as_array()
             .unwrap()
             .iter()
             .for_each(|post| {
                 num_posts += 1;
-                post.get("comments")
+                post.get("commentsByPostid")
                     .unwrap()
                     .as_array()
                     .unwrap()
@@ -245,7 +245,7 @@ fn join_foreign_field_not_last() {
         query {
           siteUsers{
             id
-            posts{
+            postsByOwneruserid{
               id
               owneruserid
             }
@@ -257,7 +257,7 @@ fn join_foreign_field_not_last() {
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
         obj.get("views").unwrap().as_i64().unwrap();
-        let posts = obj.get("posts").unwrap().as_array().unwrap();
+        let posts = obj.get("postsByOwneruserid").unwrap().as_array().unwrap();
         let user_id = obj.get("id").unwrap().as_i64().unwrap();
         for post in posts {
             assert_eq!(post.get("owneruserid").unwrap().as_i64().unwrap(), user_id)
@@ -321,7 +321,7 @@ fn child_to_parent() {
                 id
                 score
                 owneruserid
-                siteUser{
+                siteUserByOwneruserid{
                     displayname
                     id
                 }
@@ -330,7 +330,7 @@ fn child_to_parent() {
     let p = convert_gql(gql_query, false);
     let posts = p.get("posts").unwrap().as_array().unwrap();
     for post in posts {
-        let user = post.get("siteUser").unwrap();
+        let user = post.get("siteUserByOwneruserid").unwrap();
         if user.is_null() {
             assert!(post.get("owneruserid").unwrap().is_null());
         } else {
@@ -351,7 +351,7 @@ fn composite_join() {
               parentTables {
                 id1
                 id2
-                childTables{
+                childTablesByParentId1AndParentId2{
                   parentId1
                   parentId2
                 }
@@ -361,7 +361,7 @@ fn composite_join() {
     for parent in p.get("parentTables").unwrap().as_array().unwrap() {
         let id1 = parent.get("id1").unwrap().as_i64();
         let id2 = parent.get("id2").unwrap().as_i64();
-        for child in parent.get("childTables").unwrap().as_array().unwrap() {
+        for child in parent.get("childTablesByParentId1AndParentId2").unwrap().as_array().unwrap() {
             assert_eq!(id1, child.get("parentId1").unwrap().as_i64());
             assert_eq!(id2, child.get("parentId2").unwrap().as_i64());
         }
@@ -374,7 +374,7 @@ fn with_argument() {
         query{
             siteUser(id: 13) {
                 displayname
-                posts{
+                postsByOwneruserid{
                     title
                 }
             }
@@ -389,7 +389,7 @@ fn invalid_id() {
         query{
             siteUser(id: -1000) {
                 displayname
-                posts{
+                postsByOwneruserid{
                     title
                 }
             }
@@ -485,7 +485,7 @@ fn mutation_tests() {
         mutation{
           deleteMutationTest(id: 2){
               id 
-              post{
+              postByPostId{
                   title
               }
           }
@@ -494,7 +494,7 @@ fn mutation_tests() {
     let p = convert_gql(gql_query, false);
     p.get("deleteMutationTest")
         .unwrap()
-        .get("post")
+        .get("postByPostId")
         .unwrap()
         .as_object()
         .unwrap()
@@ -627,7 +627,7 @@ fn mutation_tests() {
         mutation{
           deleteMutationTest(id: 5){
             id
-            mutationTestChilds {
+            mutationTestChildsByMutationTestId {
                 mutationTestId
                 name
             }
@@ -638,7 +638,7 @@ fn mutation_tests() {
         .get("deleteMutationTest")
     {
         let id = res.get("id").unwrap().as_i64().unwrap();
-        for child in res.get("mutationTestChilds").unwrap().as_array().unwrap() {
+        for child in res.get("mutationTestChildsByMutationTestId").unwrap().as_array().unwrap() {
             assert_eq!(id, child.get("mutationTestId").unwrap().as_i64().unwrap());
         }
     } else {

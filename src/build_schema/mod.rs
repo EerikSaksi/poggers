@@ -140,31 +140,22 @@ pub fn create() -> ServerSidePoggers {
                         .to_string()
                 })
                 .collect::<Vec<String>>();
-
-            let incoming_field_name = [
-                &g[node].table_name.to_camel_case().to_plural(),
-                "By",
-                &child_foreign_cols.get(0).unwrap().to_case(Case::UpperCamel),
-            ]
-            .concat();
-            let outgoing_field_name = [
-                &g[parent_node].table_name.to_camel_case(),
-                "By",
-                &child_foreign_cols.get(0).unwrap().to_case(Case::UpperCamel),
-            ]
-            .concat();
             g.add_edge(
                 node,
                 parent_node,
                 GraphQLEdgeInfo {
-                    incoming_node_cols: child_foreign_cols,
                     outgoing_node_cols: parent_primary_cols,
                     graphql_field_name: GraphQLFieldNames {
                         //the incoming edge is referred to singularily (many to one) whilst the
                         //outgoing by one to many (plural)
-                        incoming: incoming_field_name,
-                        outgoing: outgoing_field_name,
+                        incoming: gen_edge_field_name(&g[node].table_name, &child_foreign_cols, true),
+                        outgoing: gen_edge_field_name(
+                            &g[parent_node].table_name,
+                            &child_foreign_cols,
+                            false
+                        ),
                     },
+                    incoming_node_cols: child_foreign_cols,
                 },
             );
         }
@@ -198,4 +189,20 @@ pub fn create() -> ServerSidePoggers {
         g,
         local_id: 0,
     }
+}
+fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: bool) -> String {
+    [
+        &if pluralize {
+            table_name.to_camel_case().to_plural()
+        } else {
+            table_name.to_camel_case()
+        },
+        "By",
+        &foreign_cols
+            .iter()
+            .map(|fk| fk.to_case(Case::UpperCamel))
+            .collect::<Vec<String>>()
+            .join("And"),
+    ]
+    .concat()
 }
