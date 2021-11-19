@@ -1,6 +1,7 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
+mod unsafe_vec_access;
 
 pub use self::generate_sql::ServerSidePoggers;
 use crate::server_side_json_builder::generate_sql::JsonBuilderContext;
@@ -118,7 +119,7 @@ impl JsonBuilder {
         }
     }
 
-    pub fn convert(&self, rows: Vec<Row>) -> String {
+    pub fn convert(&self, rows: &Vec<Row>) -> String {
         //the first row requires special treatment, we need to add the initial braces, and we need
         //there is no previous pks to determine if this row should be
         let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":"].concat();
@@ -243,7 +244,7 @@ impl JsonBuilder {
                             while i + parent_pks_range.start < parent_pks_range.end {
                                 let pk_val: i32 = next_row.get(col_offset);
                                 if pk_val != *parent_pks.get(i).unwrap() {
-                                    break;
+                                    break 'outer;
                                 };
                                 i += 1;
                             }

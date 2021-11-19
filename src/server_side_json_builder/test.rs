@@ -1,7 +1,9 @@
 use super::*;
+extern crate test;
 use crate::build_schema::create;
 use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
+use test::Bencher;
 
 fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     let mut pogg = create();
@@ -11,7 +13,7 @@ fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     let sql = &ctx.sql_query;
     println!("\n{}\n", sql);
     let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
-    let res = JsonBuilder::new(ctx).convert(rows);
+    let res = JsonBuilder::new(ctx).convert(&rows);
     if write_to_file {
         use std::fs::File;
         use std::io::prelude::*;
@@ -91,7 +93,14 @@ fn test_random_user() {
     assert_eq!(user.get("views").unwrap(), 3534);
     assert_eq!(user.get("upvotes").unwrap(), 4879);
     assert_eq!(user.get("downvotes").unwrap(), 207);
-    assert_eq!(user.get("postsByOwneruserid").unwrap().as_array().unwrap().len(), 535);
+    assert_eq!(
+        user.get("postsByOwneruserid")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        535
+    );
 }
 
 #[test]
@@ -361,7 +370,12 @@ fn composite_join() {
     for parent in p.get("parentTables").unwrap().as_array().unwrap() {
         let id1 = parent.get("id1").unwrap().as_i64();
         let id2 = parent.get("id2").unwrap().as_i64();
-        for child in parent.get("childTablesByParentId1AndParentId2").unwrap().as_array().unwrap() {
+        for child in parent
+            .get("childTablesByParentId1AndParentId2")
+            .unwrap()
+            .as_array()
+            .unwrap()
+        {
             assert_eq!(id1, child.get("parentId1").unwrap().as_i64());
             assert_eq!(id2, child.get("parentId2").unwrap().as_i64());
         }
@@ -418,7 +432,7 @@ fn test_empty_many_query() {
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     let rows = client.query(&*[sql, " limit 0"].concat(), &[]).unwrap();
-    let res = JsonBuilder::new(ctx).convert(rows);
+    let res = JsonBuilder::new(ctx).convert(&rows);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     let users_len = p
         .unwrap()
@@ -634,14 +648,53 @@ fn mutation_tests() {
           }
         }
     ";
-    if let Some(res) = convert_gql(gql_query, false)
-        .get("deleteMutationTest")
-    {
+    if let Some(res) = convert_gql(gql_query, false).get("deleteMutationTest") {
         let id = res.get("id").unwrap().as_i64().unwrap();
-        for child in res.get("mutationTestChildsByMutationTestId").unwrap().as_array().unwrap() {
+        for child in res
+            .get("mutationTestChildsByMutationTestId")
+            .unwrap()
+            .as_array()
+            .unwrap()
+        {
             assert_eq!(id, child.get("mutationTestId").unwrap().as_i64().unwrap());
         }
     } else {
         panic!("Couldn't parse deleteMutationTest");
     }
+}
+#[bench]
+fn bench_safe_builder(b: &mut Bencher) {
+    let mut pogg = create();
+    let mut client =
+        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+
+    let gql_query = "
+        query {
+          siteUsers{
+            id
+            reputation
+            views
+            upvotes
+            downvotes
+            postsByOwneruserid{
+              id
+              posttypeid
+              owneruserid
+              commentsByPostid{
+                id
+                score
+                postid
+                text
+              }
+            }
+          }
+        }";
+    let ctx = pogg.build_root(gql_query).unwrap();
+    let sql = &ctx.sql_query;
+    println!("\n{}\n", sql);
+    let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
+    let builder = JsonBuilder::new(ctx);
+    b.iter(|| {
+        let n = test::black_box(builder.convert(&rows));
+    });
 }
