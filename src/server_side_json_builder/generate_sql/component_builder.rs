@@ -4,7 +4,13 @@ use async_graphql::parser::types::{Selection, SelectionSet, Value};
 use async_graphql::{Name, Positioned};
 use std::collections::HashMap;
 
-pub fn query(sql: &mut SqlQueryComponents, table_name: &str, is_many: bool) -> String {
+pub fn query(
+    sql: &mut SqlQueryComponents,
+    table_name: &str,
+    is_many: bool,
+    selection_set: &Positioned<SelectionSet>,
+    field_to_types: &HashMap<String, (String, usize)>,
+) -> Result<String, String> {
     let mut sql_query = [
         "SELECT ",
         &sql.selections,
@@ -17,13 +23,33 @@ pub fn query(sql: &mut SqlQueryComponents, table_name: &str, is_many: bool) -> S
     if !is_many {
         sql_query.push_str(&sql.filter);
     }
+
     if !sql.order_by.is_empty() {
         sql.order_by
             .drain(sql.order_by.len() - 2..sql.order_by.len());
         sql_query.push_str(" ORDER BY ");
         sql_query.push_str(&sql.order_by);
     }
-    sql_query
+
+    if let Selection::Field(Positioned { pos: _, node }) =
+        &selection_set.node.items.get(0).unwrap().node
+    {
+        //check if where filter was applied
+        if let Some(where_node) = node.get_argument("where") {
+            //ensure its an object
+            if let Value::Object(where_obj) = &where_node.node {
+                sql_query.push_str(" WHERE ");
+
+                //set where equal to values
+                if let Err(e) = assign_cols_vals(&mut sql_query, where_obj, field_to_types, " AND ") {
+                    return Err(e);
+                }
+            } else {
+                return Err(String::from("Where was not an object"));
+            }
+        }
+    }
+    Ok(sql_query)
 }
 
 pub fn delete(sql: &mut SqlQueryComponents, table_name: &str) -> String {
@@ -52,23 +78,19 @@ pub fn update(
     match &selection_set.node.items.get(0).unwrap().node {
         Selection::Field(Positioned { pos: _, node }) => match node.get_argument("patch") {
             Some(patch) => match &patch.node {
-                Value::Object(patch) => match field_extractor(patch, field_to_types) {
-                    Ok(col_name_vals) => {
-                        for (col, val) in col_name_vals {
-                            sql_query.push_str(&[&col, "=", &val, ","].concat());
-                        }
+                Value::Object(patch) => {
+                    //set where equal to values
+                    if let Err(e) = assign_cols_vals(&mut sql_query, patch, field_to_types, ",") {
+                        return Err(e);
                     }
-                    Err(e) => return Err(e),
-                },
+                }
                 _ => return Err("Patch wasn't an object".to_string()),
             },
             None => return Err("Didn't get expected patch input".to_string()),
         },
         _ => panic!("Didn't get Selection::Field"),
     }
-    //remove trailing comma
 
-    sql_query.drain(sql_query.len() - 1..sql_query.len());
     sql_query.push_str(&sql.filter);
     sql_query.push_str(" RETURNING *) SELECT ");
     sql_query.push_str(&sql.selections);
@@ -119,25 +141,30 @@ pub fn insert(
     mutation_selections(sql_query, sql)
 }
 
-fn field_extractor(
+fn assign_cols_vals(
+    sql_query: &mut String,
     input_fields: &IndexMap<Name, Value>,
     field_to_types: &HashMap<String, (String, usize)>,
-) -> Result<HashMap<String, String>, String> {
-    let mut col_name_vals: HashMap<String, String> = HashMap::new();
+    delimiter: &str,
+) -> Result<(), String> {
     for arg in input_fields.keys() {
         match field_to_types.get(&arg.to_string()) {
-            Some((col_name, _)) => {
-                col_name_vals.insert(
-                    col_name.to_string(),
-                    value_to_string(input_fields.get(arg).unwrap()),
-                );
-            }
+            Some((col_name, _)) => sql_query.push_str(
+                &[
+                    &col_name.to_string(),
+                    "=",
+                    &value_to_string(input_fields.get(arg).unwrap()),
+                    delimiter,
+                ]
+                .concat(),
+            ),
             None => {
                 return Err(format!("Patch received unexpected argument {}", arg));
             }
         }
     }
-    Ok(col_name_vals)
+    sql_query.drain(sql_query.len() - delimiter.len()..sql_query.len());
+    Ok(())
 }
 
 fn mutation_selections(

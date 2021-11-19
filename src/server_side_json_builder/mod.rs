@@ -1,7 +1,6 @@
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
-mod unsafe_vec_access;
 
 pub use self::generate_sql::ServerSidePoggers;
 use crate::server_side_json_builder::generate_sql::JsonBuilderContext;
@@ -119,7 +118,7 @@ impl JsonBuilder {
         }
     }
 
-    pub fn convert(&self, rows: &Vec<Row>) -> String {
+    pub fn convert(&self, rows: &[Row]) -> String {
         //the first row requires special treatment, we need to add the initial braces, and we need
         //there is no previous pks to determine if this row should be
         let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":"].concat();

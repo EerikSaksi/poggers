@@ -137,11 +137,16 @@ impl ServerSidePoggers {
             let sql_query;
             match operation {
                 Operation::Query(root_query_is_many, _) => {
-                    sql_query = component_builder::query(
+                    match component_builder::query(
                         &mut sql,
                         &self.g[node_index].table_name,
                         root_query_is_many,
-                    );
+                        &selection_set,
+                        &self.g[node_index].field_to_types,
+                    ) {
+                        Ok(val) => sql_query = val,
+                        Err(e) => return Err(e),
+                    }
                 }
                 Operation::Delete(_) => {
                     sql_query = component_builder::delete(&mut sql, &self.g[node_index].table_name);

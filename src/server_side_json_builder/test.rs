@@ -698,3 +698,28 @@ fn bench_safe_builder(b: &mut Bencher) {
         let n = test::black_box(builder.convert(&rows));
     });
 }
+
+#[test]
+fn many_where_clause() {
+    let gql_query = "
+        query{
+          posts(where: {score: 1, commentcount:2, tags: \"<cats>\"}){
+            id
+          }
+        }
+        ";
+    let p = convert_gql(gql_query, false);
+    assert_eq!(p.get("posts").unwrap().as_array().unwrap().len(), 11);
+}
+
+#[test]
+fn where_string_escape() {
+    let gql_query = "
+        query{
+          posts(where: {tags: \"''\"}){
+            id
+          }
+        }
+        ";
+    convert_gql(gql_query, false);
+}
