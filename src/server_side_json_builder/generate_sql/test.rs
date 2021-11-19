@@ -10,7 +10,7 @@ fn column_offsets() {
             views
             upvotes
             downvotes
-            posts{
+            postsByOwneruserid{
               id
               posttypeid
             }
@@ -45,11 +45,12 @@ fn test_invalid_syntax() {
         query{
           comments {
               id
-        }";
+            }
+          ";
     let err = pogg.build_root(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
-        " --> 5:10\n  |\n5 |         }\n  |          ^---\n  |\n  = expected selection"
+        " --> 6:11\n  |\n6 |           \n  |           ^---\n  |\n  = expected selection"
     );
 }
 
@@ -78,10 +79,10 @@ fn test_error_propagation() {
             siteUsers{
                 id
                 displayname
-                posts {
+                postsByOwneruserid{
                     id
                     title
-                    comments{
+                    commentsByPostid{
                         nonExistentChild
                     }
                 }
@@ -121,4 +122,3 @@ fn delete_mutation() {
     let ctx = pogg.build_root(gql_query).unwrap();
     assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM mutation_test AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS __t0_pk0__, __table_0__.nullable_float AS __t0_c0__ FROM __table_0__");
 }
-

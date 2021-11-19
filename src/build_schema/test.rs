@@ -43,9 +43,9 @@ fn assert_some_edge_eq(
 fn test_one_to_many() {
     let pogg = create();
     let g = pogg.g;
-    assert_some_edge_eq(("posts", "siteUser"), vec!["owneruserid"], g.raw_edges());
-    assert_some_edge_eq(("badges", "siteUser"), vec!["userid"], g.raw_edges());
-    assert_some_edge_eq(("comments", "post"), vec!["postid"], g.raw_edges());
+    assert_some_edge_eq(("postsByOwneruserid", "siteUserByOwneruserid"), vec!["owneruserid"], g.raw_edges());
+    assert_some_edge_eq(("badgesByUserid", "siteUserByUserid"), vec!["userid"], g.raw_edges());
+    assert_some_edge_eq(("commentsByPostid", "postByPostid"), vec!["postid"], g.raw_edges());
 }
 
 #[test]
@@ -53,7 +53,10 @@ fn test_composite_primary_keys() {
     let pogg = create();
     let g = pogg.g;
     assert_some_edge_eq(
-        ("childTablesByParentId", "parentTableByParentId"),
+        (
+            "childTablesByParentId1AndParentId2",
+            "parentTableByParentId1AndParentId2",
+        ),
         vec!["parent_id1", "parent_id2"],
         g.raw_edges(),
     );
