@@ -502,5 +502,4 @@ mod test {
         let rows = client.query(&make_instrospection_query(99999999, false, false), &[]).unwrap();
         let json: serde_json::Value = rows.get(0).unwrap().get(0);
     }
-
 }

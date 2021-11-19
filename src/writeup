@@ -1474,7 +1474,39 @@ pub enum PostgresEntity {
     Class(ClassData),
     Attribute(AttributeData),
     Constraint(ConstraintData),
+    Type(TypeData),
 }
 
+The data returned by this query is very well organized and documented, which also made extracting the necessary fields very easy. First, I divided the JSON objects by their type. E.g if kind: 'attribute' then I added this to an attribute data map. After executing this query and iterating over the structures, I had the following structs
 
+struct IntrospectionOutput {
+    class_map: HashMap<String, ClassData>,
+    constraint_map: HashMap<String, ConstraintData>,
+    attribute_map: HashMap<(String, i32), AttributeData>,
+    type_map: HashMap<String, TypeData>
+}
+All are simply their corresponding ids (class_id => ClassData, constraint_id => ConstraintData, type_id => TypeData) with the exception of attribute (attributes are uniquely identified by class_id (table it belongs to), alongside an index (1st column, 2nd column, etc)). A map like structure makes a lot of sense, as there is a lot of cross referencing (AttributeData has a class_id, which lets me simply class_map[attribute.class_id] to get info about the table that corresponds to this constraint).  
 
+Once I have these maps, I build the Graph like structure as before. I could theoretically just use these maps, as they contain all the information I need an more, but I think that the Graph structure makes more sense. For one, I have already implemented the entire query builder based on it. Secondly, I already know that it is efficient and fast, which might not be the case if I rewrite it using the IntrospectionOutput. Thirdly, my Graph structure only stores data which is necessary to perform the operations, whilst the structs store a lot of unused fields. This results in more memory use. Finally, a graph like structure is a much more intuitive representation of a Graph schema than a collections of maps.
+
+g = {nodes: [], edges: []}
+#all classes (table)
+for class in class_map.values() 
+	fields = {}
+	#iterate over every attribute of current class
+	for attribute in attribute_map[class.id]:
+    #figure out how this column should be processed during query building based on the type. E.g if this is a varchar, 
+    #assing POG_STR (1). The index = 1th closure handles strings
+		let closure_index = match type_map[attribute.type_id] 
+				"int4" => POG_INT,
+				"varchar" => POG_STR,
+				...
+
+		#if we encounter attribute_name.camel_case() e.g columnName then fetch as column attribute_name, 
+    #and process it using the function in closure_index. E.g if a varchar
+		fields[attribute.name.camel_case()] = (attribute.name, closure_index)
+
+  #add node storing information for every GraphQL field, and the table you would fetch from
+	g.nodes += {fields: fields, table_name: class.name}
+
+Then basically for every constraint if foreign, we draw an edge from child to parent, storing the incoming (child) and outgoing (parent) fields. If the constraint is primary then we set the primary keys of this node to the primary keys. We need to know the primary keys of a table in order to distinguish when the parent changes. 

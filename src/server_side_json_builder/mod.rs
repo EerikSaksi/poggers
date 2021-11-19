@@ -230,7 +230,6 @@ impl JsonBuilder {
 
         'outer: loop {
             self.build_one_child(s, row, row_iter, col_offset, table_index);
-
             match row_iter.peek() {
                 Some(next_row) => {
                     //null check the first parent column (rest will not be null if not null)
