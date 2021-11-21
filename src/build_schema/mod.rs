@@ -11,19 +11,20 @@ use petgraph::prelude::NodeIndex;
 use postgraphile_introspection::{introspection_query_data, IntrospectionOutput};
 use std::collections::HashMap;
 
+#[derive(Clone)]
 pub struct GraphQLType {
     pub field_to_types: HashMap<String, (String, usize)>,
     pub table_name: String,
     pub primary_keys: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GraphQLFieldNames {
     pub incoming: String,
     pub outgoing: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GraphQLEdgeInfo {
     pub graphql_field_name: GraphQLFieldNames,
     pub incoming_node_cols: Vec<String>,
@@ -148,11 +149,15 @@ pub fn create() -> ServerSidePoggers {
                     graphql_field_name: GraphQLFieldNames {
                         //the incoming edge is referred to singularily (many to one) whilst the
                         //outgoing by one to many (plural)
-                        incoming: gen_edge_field_name(&g[node].table_name, &child_foreign_cols, true),
+                        incoming: gen_edge_field_name(
+                            &g[node].table_name,
+                            &child_foreign_cols,
+                            true,
+                        ),
                         outgoing: gen_edge_field_name(
                             &g[parent_node].table_name,
                             &child_foreign_cols,
-                            false
+                            false,
                         ),
                     },
                     incoming_node_cols: child_foreign_cols,
@@ -187,7 +192,6 @@ pub fn create() -> ServerSidePoggers {
     ServerSidePoggers {
         field_to_operation,
         g,
-        local_id: 0,
     }
 }
 fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: bool) -> String {

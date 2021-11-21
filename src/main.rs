@@ -29,14 +29,13 @@ mod models {
 mod handlers {
     use crate::{models::GraphlQuery, server_side_json_builder::ServerSidePoggers};
     use actix_web::{web, Error, HttpResponse};
-    use deadpool_postgres::{Client, Pool};
+    use deadpool_postgres::Pool;
     pub async fn poggers(
+        pool: web::Data<Pool>,
+        poggers: web::Data<ServerSidePoggers>,
         query: web::Json<GraphlQuery>,
-        poggers: web::Json<ServerSidePoggers>,
-        db_pool: web::Data<Pool>,
     ) -> Result<HttpResponse, Error> {
         let query_info: GraphlQuery = query.into_inner();
-        println!("{}", query_info.data);
         Ok(HttpResponse::Ok().json("{\"bigFloppa\": \"cute\"}"))
     }
 }
@@ -51,9 +50,11 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     let config = crate::config::Config::from_env().unwrap();
     let pool = config.pg.create_pool(NoTls).unwrap();
+    let pogg = build_schema::create();
     let server = HttpServer::new(move || {
         App::new()
             .data(pool.clone())
+            .data(pogg.clone())
             .service(web::resource("/graphql").route(web::post().to(poggers)))
     })
     .bind(config.server_addr.clone())?

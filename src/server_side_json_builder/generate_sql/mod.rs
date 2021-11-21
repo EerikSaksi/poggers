@@ -19,10 +19,11 @@ use convert_case::{Case, Casing};
 use inflector::Inflector;
 use petgraph::{graph::DiGraph, prelude::NodeIndex};
 use std::collections::HashMap;
+
+#[derive(Clone)]
 pub struct ServerSidePoggers {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub field_to_operation: HashMap<String, Operation>,
-    pub local_id: u8,
 }
 #[derive(Debug)]
 pub struct JsonBuilderContext {
@@ -47,7 +48,6 @@ impl ServerSidePoggers {
         ServerSidePoggers {
             g,
             field_to_operation,
-            local_id: 0,
         }
     }
 
@@ -106,6 +106,7 @@ impl ServerSidePoggers {
                 &mut table_query_infos,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
+                0,
                 0,
             ) {
                 return Err(e);
@@ -193,7 +194,8 @@ impl ServerSidePoggers {
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
         column_offset: usize,
-    ) -> Result<usize, String> {
+        mut local_id: u8,
+    ) -> Result<(usize, u8), String> {
         let SqlQueryComponents {
             from,
             selections,
@@ -204,8 +206,8 @@ impl ServerSidePoggers {
         if let Selection::Field(field) = &selection.node {
             //first we recursively get all queries from the children
             //this field is terminal
-            let id_copy = self.local_id;
-            let current_alias = ServerSidePoggers::table_alias(self.local_id);
+            let id_copy = local_id;
+            let current_alias = ServerSidePoggers::table_alias(local_id);
             let mut children: Vec<(&Positioned<Selection>, NodeIndex<u32>)> = vec![];
 
             //we need to add all primary keys of this particular table (so we know how to group
@@ -252,8 +254,8 @@ impl ServerSidePoggers {
                                     order_by.push_str(", ");
                                 }
                             }
-                            self.local_id += 1;
-                            let child_alias = ServerSidePoggers::table_alias(self.local_id);
+                            local_id += 1;
+                            let child_alias = ServerSidePoggers::table_alias(local_id);
 
                             let join_cols: Zip<Iter<String>, Iter<String>>;
                             let child_node_index: NodeIndex<u32>;
@@ -307,14 +309,23 @@ impl ServerSidePoggers {
             });
 
             for child in children {
-                match self.build_selection(sql, table_query_infos, child.0, child.1, new_col_offset)
-                {
-                    Ok(val) => new_col_offset = val,
+                match self.build_selection(
+                    sql,
+                    table_query_infos,
+                    child.0,
+                    child.1,
+                    new_col_offset,
+                    local_id,
+                ) {
+                    Ok((col_offset, new_local_id)) => {
+                        new_col_offset = col_offset;
+                        local_id = new_local_id
+                    }
                     Err(e) => return Err(e),
                 }
             }
         }
-        Ok(new_col_offset)
+        Ok((new_col_offset, local_id))
     }
 
     //this method will try to identify whether it's an incoming or outgoing edge. If it's incoming
