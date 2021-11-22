@@ -1758,6 +1758,7 @@ dependencies = [
  "deadpool-postgres",
  "derive_more",
  "dotenv",
+ "futures",
  "graphql-introspection-query",
  "petgraph",
  "postgres",

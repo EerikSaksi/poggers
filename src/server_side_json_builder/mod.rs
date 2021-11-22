@@ -139,7 +139,7 @@ impl JsonBuilder {
             }
         }
         s.push('{');
-        self.build_one_root_parent(&mut s, first_row, &mut row_iter);
+        self.build_one_root_parent(&mut s, first_row, rows, 1, &mut row_iter);
         let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = row_iter.next() {
             //one left of the start of the next tables cols is primary key
@@ -148,7 +148,7 @@ impl JsonBuilder {
                 //parent changed
                 s.drain(s.len() - 1..s.len());
                 s.push_str(&["},{"].concat());
-                self.build_one_root_parent(&mut s, row, &mut row_iter)
+                self.build_one_root_parent(&mut s, row, rows, 1, &mut row_iter)
             }
             last_pk = pk;
         }
@@ -167,6 +167,8 @@ impl JsonBuilder {
         &self,
         s: &mut String,
         row: &'a postgres::Row,
+        rows: &[Row],
+        index: usize,
         row_iter: &mut std::iter::Peekable<I>,
     ) where
         I: std::iter::Iterator<Item = &'a Row>,
@@ -263,44 +265,43 @@ impl JsonBuilder {
         &self,
         s: &mut String,
         parent_pks_range: &Range<usize>,
-        mut row: &'a Row,
-        row_iter: &mut std::iter::Peekable<I>,
+        rows: &[Row],
+        mut index: usize,
         table_index: usize,
-    ) where
+    ) -> usize
+    where
         I: std::iter::Iterator<Item = &'a Row>,
     {
         let mut parent_pks: Vec<i32> = vec![];
-        for col_offset in parent_pks_range.start..parent_pks_range.end {
-            parent_pks.push(row.get(col_offset));
-        }
         let col_offset = self
             .table_query_infos
             .get(table_index)
             .unwrap()
             .primary_key_range
             .end;
+        {
+            let r = rows.get(index).unwrap();
+            for col_offset in parent_pks_range.start..parent_pks_range.end {
+                parent_pks.push(r.get(col_offset));
+            }
+        }
 
         'outer: loop {
             self.build_one_child(s, row, row_iter, col_offset, table_index);
-            match row_iter.peek() {
+            match rows.get(index) {
                 Some(next_row) => {
                     let mut i = parent_pks_range.start;
                     while i < parent_pks_range.end {
                         let pk_val: i32 = next_row.get(i);
-                        if pk_val == 4 && *parent_pks.get(i).unwrap() == 3 {
-                            println!("{}", 0);
-                        }
                         if pk_val != *parent_pks.get(i).unwrap() {
-                            break 'outer;
+                            return index;
                         };
                         i += 1;
                     }
                 }
-                None => break 'outer,
+                None => return index,
             }
-
-            //can unwrap as this does not run if peek fails
-            row = row_iter.next().unwrap();
+            index += 1
         }
     }
     fn stringify(field: &str) -> String {

@@ -1523,3 +1523,5 @@ https://github.com/actix/examples/blob/master/database_interactions/pg
 
 This creates a database pool, a resolver (/users) and inserts users or lets users query users with the database pool.
 
+I really don't know much about async, but it seems to be the best practice way of handling database connections, especially when multithreading is involved. Functions which call async functions that want to await the results must be async themselves. Changing the database calls to async was very easy, but the issues came from the Row type changing. The synchronous Postgres client returned postgres::Row, whilst the async Postgres client returns tokio_postgres::row. This is an issue, as this means that our JSON aggregator needs to change its functions signature (Vec<postgres::Row> to Vec<tokio_postgres::Row>). Tokio Postgres and Postgres have different implementations and exposed methods. My previous implementation worked by creating a peekable iterator (an iterator which lets you read the next value without progressing).
+

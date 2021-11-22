@@ -500,6 +500,6 @@ mod test {
     fn run_query() {
         let mut client = Client::connect("postgres://postgres:postgres@localhost:5432/pets", NoTls).unwrap();
         let rows = client.query(&make_instrospection_query(99999999, false, false), &[]).unwrap();
-        let json: serde_json::Value = rows.get(0).unwrap().get(0);
+        let _: serde_json::Value = rows.get(0).unwrap().get(0);
     }
 }

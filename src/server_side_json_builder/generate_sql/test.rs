@@ -2,7 +2,7 @@ use crate::{build_schema::create, server_side_json_builder::generate_sql::JsonBu
 
 #[test]
 fn column_offsets() {
-    let mut pogg = create();
+    let pogg = create();
     let query = "
         query{
           siteUsers{
@@ -28,7 +28,7 @@ fn column_offsets() {
 
 #[test]
 fn test_invalid_root_query() {
-    let mut pogg = create();
+    let pogg = create();
     let query = "
         query{
           commentos {
@@ -40,7 +40,7 @@ fn test_invalid_root_query() {
 }
 #[test]
 fn test_invalid_syntax() {
-    let mut pogg = create();
+    let pogg = create();
     let query = "
         query{
           comments {
@@ -56,7 +56,7 @@ fn test_invalid_syntax() {
 
 #[test]
 fn test_invalid_subchild() {
-    let mut pogg = create();
+    let pogg = create();
     let query = "
         query{
           posts {
@@ -73,7 +73,7 @@ fn test_invalid_subchild() {
 
 #[test]
 fn test_error_propagation() {
-    let mut pogg = create();
+    let pogg = create();
     let query = "
         query{
             siteUsers{
@@ -98,7 +98,7 @@ fn test_error_propagation() {
 
 #[test]
 fn test_no_root() {
-    let mut pogg = create();
+    let pogg = create();
     let query = "
         query{
         }";
@@ -111,7 +111,7 @@ fn test_no_root() {
 
 #[test]
 fn delete_mutation() {
-    let mut pogg = create();
+    let pogg = create();
     let gql_query = "
         mutation{
           deleteMutationTest(id: 1){

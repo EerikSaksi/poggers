@@ -51,7 +51,7 @@ impl ServerSidePoggers {
         }
     }
 
-    pub fn build_root(&mut self, query: &str) -> Result<JsonBuilderContext, String> {
+    pub fn build_root(&self, query: &str) -> Result<JsonBuilderContext, String> {
         let ast;
         match parse_query::<&str>(query) {
             Ok(tree) => ast = tree,
@@ -67,7 +67,7 @@ impl ServerSidePoggers {
         }
     }
     fn visit_query(
-        &mut self,
+        &self,
         selection_set: Positioned<SelectionSet>,
     ) -> Result<JsonBuilderContext, String> {
         let mut sql = SqlQueryComponents {
@@ -101,7 +101,7 @@ impl ServerSidePoggers {
                 Operation::Update(node_index) => (false, node_index),
                 Operation::Insert(node_index) => (false, node_index),
             };
-            if let Err(e) = self.build_selection(
+            if let Err(e) = &self.build_selection(
                 &mut sql,
                 &mut table_query_infos,
                 selection_set.node.items.get(0).unwrap(),
@@ -109,7 +109,7 @@ impl ServerSidePoggers {
                 0,
                 0,
             ) {
-                return Err(e);
+                return Err(e.to_string());
             }
 
             if !is_many {
@@ -188,7 +188,7 @@ impl ServerSidePoggers {
     }
 
     fn build_selection(
-        &mut self,
+        &self,
         sql: &mut SqlQueryComponents,
         table_query_infos: &mut Vec<TableQueryInfo>,
         selection: &Positioned<Selection>,
