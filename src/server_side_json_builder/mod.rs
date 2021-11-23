@@ -28,6 +28,11 @@ pub struct JsonBuilder {
     root_key_name: String,
     root_query_is_many: bool,
 }
+struct MutableState {
+    table: usize,
+    row: usize,
+    s: String,
+}
 
 #[allow(dead_code)]
 impl JsonBuilder {
@@ -127,9 +132,8 @@ impl JsonBuilder {
             s.push('[');
         }
 
-        let mut row_iter = rows.iter().peekable();
         let first_row;
-        match row_iter.next() {
+        match rows.get(0) {
             Some(row) => first_row = row,
             None => {
                 //either empty list or null
@@ -139,294 +143,256 @@ impl JsonBuilder {
             }
         }
         s.push('{');
-        self.build_one_root_parent(&mut s, first_row, rows, 1, &mut row_iter);
+
+        let mut state = MutableState {
+            row: 0,
+            table: 0,
+            s,
+        };
+        self.build_one_root_parent(rows, &mut state);
         let mut last_pk: i32 = first_row.get(0);
-        while let Some(row) = row_iter.next() {
+        while let Some(row) = rows.get(state.row) {
             //one left of the start of the next tables cols is primary key
             let pk: i32 = row.get(0);
             if pk != last_pk {
                 //parent changed
-                s.drain(s.len() - 1..s.len());
-                s.push_str(&["},{"].concat());
-                self.build_one_root_parent(&mut s, row, rows, 1, &mut row_iter)
+                state.s.drain(state.s.len() - 1..state.s.len());
+                state.s.push_str(&["},{"].concat());
+                self.build_one_root_parent(rows, &mut state);
             }
             last_pk = pk;
         }
 
         //drop trailing comma (not allowed in some JSON parsers)
-        s.drain(s.len() - 1..s.len());
+        state.s.drain(state.s.len() - 1..state.s.len());
 
-        s.push('}');
+        state.s.push('}');
         if self.root_query_is_many {
-            s.push(']');
+            state.s.push(']');
         }
-        s.push('}');
-        s
+        state.s.push('}');
+        state.s
     }
-    fn build_one_root_parent<'a, I>(
-        &self,
-        s: &mut String,
-        row: &'a postgres::Row,
-        rows: &[Row],
-        index: usize,
-        row_iter: &mut std::iter::Peekable<I>,
-    ) where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
+    fn build_one_root_parent(&self, rows: &[Row], state: &mut MutableState) {
         let mut col_offset = self.table_query_infos.get(0).unwrap().primary_key_range.end;
         for col_info in &self.table_query_infos.get(0).unwrap().graphql_fields {
             col_offset = match col_info {
                 ColumnInfo::ForeignSingular(key) => {
-                    self.build_foreign_singular(s, key, row, row_iter, col_offset, 0)
+                    self.build_foreign_singular(rows, state, key, col_offset)
                 }
                 ColumnInfo::Foreign(key) => {
-                    let child_pk: Option<i32> = row.get(
+                    let child_pk: Option<i32> = rows.get(state.row).unwrap().get(
                         self.table_query_infos
                             .get(1)
                             .unwrap()
                             .primary_key_range
                             .start,
                     );
-                    s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
+                    state
+                        .s
+                        .push_str(&[&JsonBuilder::stringify(key), ":["].concat());
                     if child_pk.is_some() {
                         let parent_pks_range =
                             &self.table_query_infos.get(0).unwrap().primary_key_range;
-                        self.build_children_no_parent_null_check(
-                            s,
-                            parent_pks_range,
-                            row,
-                            row_iter,
-                            1,
-                        );
-                        s.drain(s.len() - 1..s.len());
+                        self.build_children_no_parent_null_check(rows, state, parent_pks_range);
+                        state.s.drain(state.s.len() - 1..state.s.len());
                     }
-                    s.push_str("],");
+                    state.s.push_str("],");
                     col_offset
                 }
                 ColumnInfo::Terminal(key, closure_index) => {
-                    self.build_terminal(s, key, *closure_index, row, col_offset)
+                    self.build_terminal(rows, state, key, *closure_index, col_offset)
                 }
             };
         }
     }
-    fn build_children<'a, I>(
+    fn build_children(
         &self,
-        s: &mut String,
+        rows: &[Row],
+        state: &mut MutableState,
         parent_pks_range: &Range<usize>,
-        mut row: &'a Row,
-        row_iter: &mut std::iter::Peekable<I>,
-        table_index: usize,
-    ) where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
+    ) {
         let mut parent_pks: Vec<i32> = vec![];
-        for col_offset in parent_pks_range.start..parent_pks_range.end {
-            parent_pks.push(row.get(col_offset));
+        {
+            let row = rows.get(state.row).unwrap();
+            for col_offset in parent_pks_range.start..parent_pks_range.end {
+                parent_pks.push(row.get(col_offset));
+            }
         }
         let col_offset = self
             .table_query_infos
-            .get(table_index)
+            .get(state.table)
             .unwrap()
             .primary_key_range
             .end;
 
-        'outer: loop {
-            self.build_one_child(s, row, row_iter, col_offset, table_index);
-            match row_iter.peek() {
+        loop {
+            self.build_one_child(rows, state, col_offset);
+            match rows.get(state.row) {
                 Some(next_row) => {
                     //null check the first parent column (rest will not be null if not null)
                     let first_pk: Option<i32> = next_row.get(parent_pks_range.start);
                     match first_pk {
                         Some(first_pk) => {
                             if first_pk != *parent_pks.get(0).unwrap() {
-                                break 'outer;
+                                return;
                             };
                             let mut i = 1;
                             while i + parent_pks_range.start < parent_pks_range.end {
                                 let pk_val: i32 = next_row.get(col_offset);
                                 if pk_val != *parent_pks.get(i).unwrap() {
-                                    break 'outer;
+                                    return;
                                 };
                                 i += 1;
                             }
                         }
-                        None => break 'outer,
+                        None => return,
                     }
                 }
-                None => break 'outer,
+                None => return,
             }
-
-            //can unwrap as this does not run if peek fails
-            row = row_iter.next().unwrap();
+            state.row += 1;
         }
     }
 
-    fn build_children_no_parent_null_check<'a, I>(
+    fn build_children_no_parent_null_check(
         &self,
-        s: &mut String,
-        parent_pks_range: &Range<usize>,
         rows: &[Row],
-        mut index: usize,
-        table_index: usize,
-    ) -> usize
-    where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
+        state: &mut MutableState,
+        parent_pks_range: &Range<usize>,
+    ) {
         let mut parent_pks: Vec<i32> = vec![];
         let col_offset = self
             .table_query_infos
-            .get(table_index)
+            .get(state.table)
             .unwrap()
             .primary_key_range
             .end;
         {
-            let r = rows.get(index).unwrap();
+            let r = rows.get(state.row).unwrap();
             for col_offset in parent_pks_range.start..parent_pks_range.end {
                 parent_pks.push(r.get(col_offset));
             }
         }
 
-        'outer: loop {
-            self.build_one_child(s, row, row_iter, col_offset, table_index);
-            match rows.get(index) {
-                Some(next_row) => {
-                    let mut i = parent_pks_range.start;
-                    while i < parent_pks_range.end {
-                        let pk_val: i32 = next_row.get(i);
-                        if pk_val != *parent_pks.get(i).unwrap() {
-                            return index;
-                        };
-                        i += 1;
-                    }
+        loop {
+            self.build_one_child(rows, state, col_offset);
+            let mut i = parent_pks_range.start;
+            if let Some(next_row) = rows.get(state.row + 1) {
+                while i < parent_pks_range.end {
+                    let pk_val: i32 = next_row.get(state.row + 1);
+                    if pk_val != *parent_pks.get(i).unwrap() {
+                        return;
+                    };
+                    i += 1;
                 }
-                None => return index,
+                state.row += 1
             }
-            index += 1
         }
     }
     fn stringify(field: &str) -> String {
         ["\"", field, "\""].concat()
     }
-    fn build_col_info<'a, I>(
+    fn build_col_info(
         &self,
-        s: &mut String,
+        rows: &[Row],
+        state: &mut MutableState,
         col_info: &ColumnInfo,
-        row: &'a postgres::Row,
-        table_index: usize,
-        row_iter: &mut std::iter::Peekable<I>,
         col_offset: usize,
-    ) -> usize
-    where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
+    ) -> usize {
         match col_info {
             ColumnInfo::ForeignSingular(key) => {
-                self.build_foreign_singular(s, key, row, row_iter, col_offset, table_index)
+                self.build_foreign_singular(rows, state, key, col_offset)
             }
-            ColumnInfo::Foreign(key) => {
-                self.build_foreign(s, key, row, row_iter, col_offset, table_index)
-            }
+            ColumnInfo::Foreign(key) => self.build_foreign(rows, state, key, col_offset),
             ColumnInfo::Terminal(key, closure_index) => {
-                self.build_terminal(s, key, *closure_index, row, col_offset)
+                self.build_terminal(rows, state, key, *closure_index, col_offset)
             }
         }
     }
 
-    fn build_one_child<'a, I>(
-        &self,
-        s: &mut String,
-        row: &'a Row,
-        row_iter: &mut std::iter::Peekable<I>,
-        mut col_offset: usize,
-        table_index: usize,
-    ) where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
-        s.push('{');
+    fn build_one_child(&self, rows: &[Row], state: &mut MutableState, mut col_offset: usize) {
+        state.s.push('{');
         for col_info in &self
             .table_query_infos
-            .get(table_index)
+            .get(state.table)
             .unwrap()
             .graphql_fields
         {
-            col_offset = self.build_col_info(s, col_info, row, table_index, row_iter, col_offset);
+            col_offset = self.build_col_info(rows, state, col_info, col_offset);
         }
-        s.drain(s.len() - 1..s.len());
-        s.push_str("},");
+        state.s.drain(state.s.len() - 1..state.s.len());
+        state.s.push_str("},");
     }
-    fn build_foreign_singular<'a, I>(
+    fn build_foreign_singular(
         &self,
-        s: &mut String,
+        rows: &[Row],
+        state: &mut MutableState,
         key: &str,
-        row: &'a Row,
-        row_iter: &mut std::iter::Peekable<I>,
         col_offset: usize,
-        table_index: usize,
-    ) -> usize
-    where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
+    ) -> usize {
         let pk_col_offset = self
             .table_query_infos
-            .get(table_index + 1)
+            .get(state.table + 1)
             .unwrap()
             .primary_key_range
             .start;
 
-        let child_pk: Option<i32> = row.get(pk_col_offset);
-        s.push_str(&[&JsonBuilder::stringify(key), ":"].concat());
+        let child_pk: Option<i32> = rows.get(state.table).unwrap().get(pk_col_offset);
+        state
+            .s
+            .push_str(&[&JsonBuilder::stringify(key), ":"].concat());
         if child_pk.is_some() {
-            self.build_one_child(s, row, row_iter, pk_col_offset + 1, table_index + 1);
+            self.build_one_child(rows, state, col_offset);
         } else {
-            s.push_str("null,")
+            state.s.push_str("null,")
         }
         col_offset
     }
 
-    fn build_foreign<'a, I>(
+    fn build_foreign(
         &self,
-        s: &mut String,
+        rows: &[Row],
+        state: &mut MutableState,
         key: &str,
-        row: &'a Row,
-        row_iter: &mut std::iter::Peekable<I>,
         col_offset: usize,
-        table_index: usize,
-    ) -> usize
-    where
-        I: std::iter::Iterator<Item = &'a Row>,
-    {
-        let child_pk: Option<i32> = row.get(
+    ) -> usize {
+        let child_pk: Option<i32> = rows.get(state.row).unwrap().get(
             self.table_query_infos
-                .get(table_index + 1)
+                .get(state.table + 1)
                 .unwrap()
                 .primary_key_range
                 .end,
         );
-        s.push_str(&[&JsonBuilder::stringify(key), ":["].concat());
+        state
+            .s
+            .push_str(&[&JsonBuilder::stringify(key), ":["].concat());
         if child_pk.is_some() {
             let parent_pks_range = &self
                 .table_query_infos
-                .get(table_index)
+                .get(state.table)
                 .unwrap()
                 .primary_key_range;
 
-            self.build_children(s, parent_pks_range, row, row_iter, table_index + 1);
-            s.drain(s.len() - 1..s.len());
+            self.build_children(rows, state, parent_pks_range);
+            state.s.drain(state.s.len() - 1..state.s.len());
         }
-        s.push_str("],");
+        state.s.push_str("],");
         col_offset
     }
 
     fn build_terminal(
         &self,
-        s: &mut String,
+        rows: &[Row],
+        state: &mut MutableState,
         key: &str,
         closure_index: usize,
-        row: &Row,
         col_offset: usize,
     ) -> usize {
-        let col_val = self.closures[closure_index](row, col_offset);
-        s.push_str(&[&JsonBuilder::stringify(key), ":", &col_val, ","].concat());
+        let col_val = self.closures[closure_index](rows.get(state.row).unwrap(), col_offset);
+        state
+            .s
+            .push_str(&[&JsonBuilder::stringify(key), ":", &col_val, ","].concat());
         col_offset + 1
     }
 }
