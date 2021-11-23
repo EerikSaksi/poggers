@@ -3,10 +3,10 @@ extern crate test;
 use crate::build_schema::create;
 use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
 use serde_json::{Error, Value};
+use std::collections::HashSet;
 use test::Bencher;
-
 fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
-    let mut pogg = create();
+    let pogg = create();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let ctx = pogg.build_root(gql_query).unwrap();
@@ -77,7 +77,7 @@ fn test_random_user() {
           }
         }";
 
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, true);
 
     let site_users = p.get("siteUsers").unwrap();
     //test specific user sampled at random
@@ -101,6 +101,35 @@ fn test_random_user() {
             .len(),
         535
     );
+
+    let site_users = p.get("siteUsers").unwrap();
+    //test specific user sampled at random
+    let user = site_users
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|user| user.get("id").unwrap() == 13)
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert_eq!(user.get("reputation").unwrap(), 28971);
+    assert_eq!(user.get("views").unwrap(), 3534);
+    assert_eq!(user.get("upvotes").unwrap(), 4879);
+    assert_eq!(user.get("downvotes").unwrap(), 207);
+    assert_eq!(
+        user.get("postsByOwneruserid")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .len(),
+        535
+    );
+    let mut post_set = HashSet::new();
+    for post in user.get("postsByOwneruserid").unwrap().as_array().unwrap() {
+        let id = post.get("id").unwrap().as_i64().unwrap();
+        assert!(!post_set.insert(id), "Post with id {} was already in", id);
+    }
+
 }
 
 #[test]
@@ -128,15 +157,15 @@ fn all_posts_fetched() {
         let posts = obj.get("postsByOwneruserid").unwrap().as_array().unwrap();
         cumm + posts.len()
     });
-
-    //select count(*) from post where post.owneruserid is not null;
-    assert_eq!(num_posts, 17575);
     assert_eq!(
         num_users,
         16429,
         "Missing {} users. 10512 users don't have posts (did you left join)",
         16429 - num_users
     );
+
+    //select count(*) from post where post.owneruserid is not null;
+    assert_eq!(num_posts, 17575);
 }
 
 #[test]
@@ -426,7 +455,7 @@ fn test_empty_many_query() {
             age
           }
         }";
-    let mut pogg = create();
+    let pogg = create();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
     let ctx = pogg.build_root(gql_query).unwrap();
@@ -664,7 +693,7 @@ fn mutation_tests() {
 }
 #[bench]
 fn bench_safe_builder(b: &mut Bencher) {
-    let mut pogg = create();
+    let pogg = create();
     let mut client =
         Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
 
@@ -695,7 +724,7 @@ fn bench_safe_builder(b: &mut Bencher) {
     let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
     let builder = JsonBuilder::new(ctx);
     b.iter(|| {
-        let n = test::black_box(builder.convert(&rows));
+        let _ = test::black_box(builder.convert(&rows));
     });
 }
 

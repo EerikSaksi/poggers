@@ -28,6 +28,7 @@ pub struct JsonBuilder {
     root_key_name: String,
     root_query_is_many: bool,
 }
+#[derive(Debug)]
 struct MutableState {
     table: usize,
     row: usize,
@@ -161,6 +162,7 @@ impl JsonBuilder {
                 self.build_one_root_parent(rows, &mut state);
             }
             last_pk = pk;
+            state.row += 1;
         }
 
         //drop trailing comma (not allowed in some JSON parsers)
@@ -195,7 +197,7 @@ impl JsonBuilder {
                         let parent_pks_range =
                             &self.table_query_infos.get(0).unwrap().primary_key_range;
                         self.build_children_no_parent_null_check(rows, state, parent_pks_range);
-                        state.s.drain(state.s.len() - 1..state.s.len());
+                        state.s.pop();
                     }
                     state.s.push_str("],");
                     col_offset
@@ -204,6 +206,36 @@ impl JsonBuilder {
                     self.build_terminal(rows, state, key, *closure_index, col_offset)
                 }
             };
+        }
+    }
+    fn build_children_no_parent_null_check(
+        &self,
+        rows: &[Row],
+        state: &mut MutableState,
+        parent_pks_range: &Range<usize>,
+    ) {
+        let mut parent_pks: Vec<i32> = vec![];
+        {
+            let r = rows.get(state.row).unwrap();
+            for col_offset in parent_pks_range.start..parent_pks_range.end {
+                parent_pks.push(r.get(col_offset));
+            }
+        }
+
+        loop {
+            let mut i = parent_pks_range.start;
+            if let Some(next_row) = rows.get(state.row) {
+                while i < parent_pks_range.end {
+                    let pk_val: i32 = next_row.get(i);
+                    println!("{}", pk_val);
+                    if pk_val != *parent_pks.get(i).unwrap() {
+                        return;
+                    };
+                    i += 1;
+                }
+            }
+            self.build_one_child(rows, state);
+            state.row+=1;
         }
     }
     fn build_children(
@@ -227,7 +259,7 @@ impl JsonBuilder {
             .end;
 
         loop {
-            self.build_one_child(rows, state, col_offset);
+            self.build_one_child(rows, state);
             match rows.get(state.row) {
                 Some(next_row) => {
                     //null check the first parent column (rest will not be null if not null)
@@ -255,43 +287,32 @@ impl JsonBuilder {
         }
     }
 
-    fn build_children_no_parent_null_check(
-        &self,
-        rows: &[Row],
-        state: &mut MutableState,
-        parent_pks_range: &Range<usize>,
-    ) {
-        let mut parent_pks: Vec<i32> = vec![];
-        let col_offset = self
+    fn stringify(field: &str) -> String {
+        ["\"", field, "\""].concat()
+    }
+
+    fn build_one_child(&self, rows: &[Row], state: &mut MutableState) {
+        state.table += 1;
+        let mut col_offset = self
             .table_query_infos
             .get(state.table)
             .unwrap()
             .primary_key_range
             .end;
+
+        state.s.push('{');
+        for col_info in &self
+            .table_query_infos
+            .get(state.table)
+            .unwrap()
+            .graphql_fields
         {
-            let r = rows.get(state.row).unwrap();
-            for col_offset in parent_pks_range.start..parent_pks_range.end {
-                parent_pks.push(r.get(col_offset));
-            }
+            col_offset = self.build_col_info(rows, state, col_info, col_offset);
         }
 
-        loop {
-            self.build_one_child(rows, state, col_offset);
-            let mut i = parent_pks_range.start;
-            if let Some(next_row) = rows.get(state.row + 1) {
-                while i < parent_pks_range.end {
-                    let pk_val: i32 = next_row.get(state.row + 1);
-                    if pk_val != *parent_pks.get(i).unwrap() {
-                        return;
-                    };
-                    i += 1;
-                }
-                state.row += 1
-            }
-        }
-    }
-    fn stringify(field: &str) -> String {
-        ["\"", field, "\""].concat()
+        state.s.drain(state.s.len() - 1..state.s.len());
+        state.s.push_str("},");
+        state.table -= 1;
     }
     fn build_col_info(
         &self,
@@ -310,20 +331,6 @@ impl JsonBuilder {
             }
         }
     }
-
-    fn build_one_child(&self, rows: &[Row], state: &mut MutableState, mut col_offset: usize) {
-        state.s.push('{');
-        for col_info in &self
-            .table_query_infos
-            .get(state.table)
-            .unwrap()
-            .graphql_fields
-        {
-            col_offset = self.build_col_info(rows, state, col_info, col_offset);
-        }
-        state.s.drain(state.s.len() - 1..state.s.len());
-        state.s.push_str("},");
-    }
     fn build_foreign_singular(
         &self,
         rows: &[Row],
@@ -331,9 +338,10 @@ impl JsonBuilder {
         key: &str,
         col_offset: usize,
     ) -> usize {
+        state.table += 1;
         let pk_col_offset = self
             .table_query_infos
-            .get(state.table + 1)
+            .get(state.table)
             .unwrap()
             .primary_key_range
             .start;
@@ -343,7 +351,7 @@ impl JsonBuilder {
             .s
             .push_str(&[&JsonBuilder::stringify(key), ":"].concat());
         if child_pk.is_some() {
-            self.build_one_child(rows, state, col_offset);
+            self.build_one_child(rows, state);
         } else {
             state.s.push_str("null,")
         }
@@ -357,9 +365,10 @@ impl JsonBuilder {
         key: &str,
         col_offset: usize,
     ) -> usize {
+        state.table += 1;
         let child_pk: Option<i32> = rows.get(state.row).unwrap().get(
             self.table_query_infos
-                .get(state.table + 1)
+                .get(state.table)
                 .unwrap()
                 .primary_key_range
                 .end,
@@ -389,6 +398,12 @@ impl JsonBuilder {
         closure_index: usize,
         col_offset: usize,
     ) -> usize {
+        if col_offset == 7 {
+            let a: Option<i32> = rows.get(state.row).unwrap().get(7);
+            if a.is_none() {
+                println!("{:?}", state);
+            }
+        }
         let col_val = self.closures[closure_index](rows.get(state.row).unwrap(), col_offset);
         state
             .s
