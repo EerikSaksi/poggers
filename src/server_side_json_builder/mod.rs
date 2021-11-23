@@ -227,15 +227,15 @@ impl JsonBuilder {
             if let Some(next_row) = rows.get(state.row) {
                 while i < parent_pks_range.end {
                     let pk_val: i32 = next_row.get(i);
-                    println!("{}", pk_val);
                     if pk_val != *parent_pks.get(i).unwrap() {
+                        state.row -= 1;
                         return;
                     };
                     i += 1;
                 }
             }
             self.build_one_child(rows, state);
-            state.row+=1;
+            state.row += 1;
         }
     }
     fn build_children(

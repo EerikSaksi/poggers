@@ -125,11 +125,15 @@ fn test_random_user() {
         535
     );
     let mut post_set = HashSet::new();
+    let posts = user.get("postsByOwneruserid").unwrap().as_array().unwrap();
     for post in user.get("postsByOwneruserid").unwrap().as_array().unwrap() {
-        let id = post.get("id").unwrap().as_i64().unwrap();
-        assert!(!post_set.insert(id), "Post with id {} was already in", id);
+        let post_id = post.get("id").unwrap().as_i64().unwrap();
+        assert!(
+            post_set.insert(post_id),
+            "Post with id {} was already in",
+            post_id
+        );
     }
-
 }
 
 #[test]
