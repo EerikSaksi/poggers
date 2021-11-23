@@ -398,12 +398,6 @@ impl JsonBuilder {
         closure_index: usize,
         col_offset: usize,
     ) -> usize {
-        if col_offset == 7 {
-            let a: Option<i32> = rows.get(state.row).unwrap().get(7);
-            if a.is_none() {
-                println!("{:?}", state);
-            }
-        }
         let col_val = self.closures[closure_index](rows.get(state.row).unwrap(), col_offset);
         state
             .s
