@@ -202,7 +202,7 @@ impl JsonBuilder {
                             rows,
                             state,
                             parent_pks_range,
-                            parent_null_checker::WithNull{},
+                            parent_null_checker::NoNull {},
                         );
                         state.s.pop();
                     }
@@ -297,7 +297,6 @@ impl JsonBuilder {
         key: &str,
         col_offset: usize,
     ) -> usize {
-        state.table += 1;
         let pk_col_offset = self
             .table_query_infos
             .get(state.table)
@@ -314,6 +313,7 @@ impl JsonBuilder {
         } else {
             state.s.push_str("null,")
         }
+
         col_offset
     }
 
@@ -361,10 +361,10 @@ impl JsonBuilder {
         closure_index: usize,
         col_offset: usize,
     ) -> usize {
-        if col_offset == 7 {
-            let a: Option<i32> = rows.get(state.row).unwrap().get(7);
+        if col_offset == 11 {
+            let a: Option<i32> = rows.get(state.row).unwrap().get(11);
             if a.is_none() {
-                println!("{}", 0);
+                println!("{:?}", state);
             }
         }
         let col_val = self.closures[closure_index](rows.get(state.row).unwrap(), col_offset);
