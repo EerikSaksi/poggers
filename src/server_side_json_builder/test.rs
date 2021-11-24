@@ -77,7 +77,7 @@ fn test_random_user() {
           }
         }";
 
-    let p = convert_gql(gql_query, true);
+    let p = convert_gql(gql_query, false);
 
     let site_users = p.get("siteUsers").unwrap();
     //test specific user sampled at random
