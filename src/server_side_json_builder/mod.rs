@@ -313,7 +313,6 @@ impl JsonBuilder {
         } else {
             state.s.push_str("null,")
         }
-
         col_offset
     }
 
@@ -326,10 +325,10 @@ impl JsonBuilder {
     ) -> usize {
         let child_pk: Option<i32> = rows.get(state.row).unwrap().get(
             self.table_query_infos
-                .get(state.table)
+                .get(state.table + 1)
                 .unwrap()
                 .primary_key_range
-                .end,
+                .start,
         );
         state
             .s
@@ -347,7 +346,7 @@ impl JsonBuilder {
                 parent_pks_range,
                 parent_null_checker::WithNull {},
             );
-            state.s.drain(state.s.len() - 1..state.s.len());
+            state.s.pop();
         }
         state.s.push_str("],");
         col_offset
@@ -361,8 +360,8 @@ impl JsonBuilder {
         closure_index: usize,
         col_offset: usize,
     ) -> usize {
-        if col_offset == 11 {
-            let a: Option<i32> = rows.get(state.row).unwrap().get(11);
+        if col_offset == 5 {
+            let a: Option<i32> = rows.get(state.row).unwrap().get(5);
             if a.is_none() {
                 println!("{:?}", state);
             }

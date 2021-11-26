@@ -125,7 +125,6 @@ fn test_random_user() {
         535
     );
     let mut post_set = HashSet::new();
-    let posts = user.get("postsByOwneruserid").unwrap().as_array().unwrap();
     for post in user.get("postsByOwneruserid").unwrap().as_array().unwrap() {
         let post_id = post.get("id").unwrap().as_i64().unwrap();
         assert!(
@@ -238,7 +237,6 @@ fn three_way_join() {
                 id
                 score
                 postid
-                text
               }
             }
           }
