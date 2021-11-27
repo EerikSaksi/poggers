@@ -1,19 +1,25 @@
 use super::*;
 extern crate test;
 use crate::build_schema::create;
-use postgres::{Client, NoTls}; // 0.19.2, features = ["with-chrono-0_4"]
+use deadpool_postgres::{Client, Pool};
+use dotenv::dotenv;
 use serde_json::{Error, Value};
 use std::collections::HashSet;
-use test::Bencher;
-fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
+use tokio_postgres::NoTls; // 0.19.2, features = ["with-chrono-0_4"]
+async fn get_client() -> Client {
+    dotenv().ok();
+    let config = crate::config::Config::from_env().unwrap();
+    let pool = config.pg.create_pool(NoTls).unwrap();
+    pool.get().await.unwrap()
+}
+async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     let pogg = create();
-    let mut client =
-        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+    let client = get_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     println!("\n{}\n", sql);
-    let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
-    let res = JsonBuilder::new(ctx).convert(&rows);
+    let rows = client.query(&*[sql, ""].concat(), &[]).await.unwrap();
+    let res = JsonBuilder::new(ctx).convert(rows);
     if write_to_file {
         use std::fs::File;
         use std::io::prelude::*;
@@ -22,11 +28,21 @@ fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     }
     serde_json::from_str(&*res).unwrap()
 }
-fn mutation_test_fixtures() -> Client {
-    let mut client =
-        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
-    client.query("delete from mutation_test", &[]).unwrap();
-    let post_ids = client.query("select id from post limit 100", &[]).unwrap();
+
+async fn mutation_test_fixtures() -> Pool {
+    dotenv().ok();
+    let config = crate::config::Config::from_env().unwrap();
+    let pool = config.pg.create_pool(NoTls).unwrap();
+    let client = pool.get().await.unwrap();
+
+    client
+        .query("delete from mutation_test", &[])
+        .await
+        .unwrap();
+    let post_ids = client
+        .query("select id from post limit 100", &[])
+        .await
+        .unwrap();
     let values = (0..100)
         .map(|i| {
             let post_id: i32 = post_ids.get(i).unwrap().get(0);
@@ -37,12 +53,13 @@ fn mutation_test_fixtures() -> Client {
 
     client
         .query(
-            &format!(
+            &*format!(
                 "insert into mutation_test(id, non_nullable_str, nullable_float, post_id) values {}",
                 values
             ),
             &[],
         )
+        .await
         .unwrap();
     let values = (0..100)
         .map(|i| format!("({}, '{}', {})", i, i, (i / 10)))
@@ -50,18 +67,19 @@ fn mutation_test_fixtures() -> Client {
         .join(", ");
     client
         .query(
-            &format!(
+            &*format!(
                 "insert into mutation_test_child(id, name, mutation_test_id) values {}",
                 values
             ),
             &[],
         )
+        .await
         .unwrap();
-    client
+    pool
 }
 
-#[test]
-fn test_random_user() {
+#[tokio::test]
+async fn test_random_user() {
     let gql_query = "
         query{
           siteUsers{
@@ -77,7 +95,7 @@ fn test_random_user() {
           }
         }";
 
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
 
     let site_users = p.get("siteUsers").unwrap();
     //test specific user sampled at random
@@ -135,8 +153,8 @@ fn test_random_user() {
     }
 }
 
-#[test]
-fn all_posts_fetched() {
+#[tokio::test]
+async fn all_posts_fetched() {
     let gql_query = "
         query{
           siteUsers{
@@ -151,7 +169,7 @@ fn all_posts_fetched() {
             }
           }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let mut num_users = 0;
     let site_users = p.get("siteUsers").unwrap();
     let num_posts = site_users.as_array().unwrap().iter().fold(0, |cumm, user| {
@@ -171,8 +189,8 @@ fn all_posts_fetched() {
     assert_eq!(num_posts, 17575);
 }
 
-#[test]
-fn all_posts_belong_to_parent() {
+#[tokio::test]
+async fn all_posts_belong_to_parent() {
     let gql_query = "
         query {
           siteUsers{
@@ -188,7 +206,7 @@ fn all_posts_belong_to_parent() {
             }
           }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
@@ -200,8 +218,8 @@ fn all_posts_belong_to_parent() {
     });
 }
 
-#[test]
-fn non_nullable_string_fields() {
+#[tokio::test]
+async fn non_nullable_string_fields() {
     let gql_query = "
         query {
           siteUsers{
@@ -209,7 +227,7 @@ fn non_nullable_string_fields() {
             displayname
           }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         //test non nullable fields defined for all users
@@ -219,8 +237,8 @@ fn non_nullable_string_fields() {
     });
 }
 
-#[test]
-fn three_way_join() {
+#[tokio::test]
+async fn three_way_join() {
     let gql_query = "
         query {
           siteUsers{
@@ -241,7 +259,7 @@ fn three_way_join() {
             }
           }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let mut num_users = 0;
     let mut num_posts = 0;
     let mut num_comments = 0;
@@ -279,8 +297,8 @@ fn three_way_join() {
     assert_eq!(num_comments, 21630);
 }
 
-#[test]
-fn join_foreign_field_not_last() {
+#[tokio::test]
+async fn join_foreign_field_not_last() {
     let gql_query = "
         query {
           siteUsers{
@@ -292,7 +310,7 @@ fn join_foreign_field_not_last() {
             views
           }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
@@ -305,8 +323,8 @@ fn join_foreign_field_not_last() {
     })
 }
 
-//#[test]
-//fn two_children_one_parent() {
+//#[tokio::test]
+//async fn two_children_one_parent() {
 //    let gql_query = "
 //        query{
 //          siteUsers{
@@ -319,7 +337,7 @@ fn join_foreign_field_not_last() {
 //            }
 //          }
 //        }";
-//    let res = convert_gql(gql_query);
+//    let res = convert_gql(gql_query).await;
 //    let p: Result<Value, Error> = serde_json::from_str(&*res);
 //    write_json_to_file(&res);
 //    match p {
@@ -338,8 +356,8 @@ fn join_foreign_field_not_last() {
 //    }
 //}
 
-#[test]
-fn weird_types_and_nullability() {
+#[tokio::test]
+async fn weird_types_and_nullability() {
     let gql_query = "
         query{
           siteUsers{
@@ -350,11 +368,11 @@ fn weird_types_and_nullability() {
             age
           }
         }";
-    convert_gql(gql_query, false);
+    convert_gql(gql_query, false).await;
 }
 
-#[test]
-fn child_to_parent() {
+#[tokio::test]
+async fn child_to_parent() {
     let gql_query = "
         query{
             posts{
@@ -367,7 +385,7 @@ fn child_to_parent() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let posts = p.get("posts").unwrap().as_array().unwrap();
     for post in posts {
         let user = post.get("siteUserByOwneruserid").unwrap();
@@ -384,8 +402,8 @@ fn child_to_parent() {
     }
 }
 
-#[test]
-fn composite_join() {
+#[tokio::test]
+async fn composite_join() {
     let gql_query = "
             query{
               parentTables {
@@ -397,7 +415,7 @@ fn composite_join() {
                 }
               }
             }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     for parent in p.get("parentTables").unwrap().as_array().unwrap() {
         let id1 = parent.get("id1").unwrap().as_i64();
         let id2 = parent.get("id2").unwrap().as_i64();
@@ -413,8 +431,8 @@ fn composite_join() {
     }
 }
 
-#[test]
-fn with_argument() {
+#[tokio::test]
+async fn with_argument() {
     let gql_query = "
         query{
             siteUser(id: 13) {
@@ -424,12 +442,12 @@ fn with_argument() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     p.get("siteUser").unwrap().as_object().unwrap();
 }
 
-#[test]
-fn invalid_id() {
+#[tokio::test]
+async fn invalid_id() {
     let gql_query = "
         query{
             siteUser(id: -1000) {
@@ -439,14 +457,14 @@ fn invalid_id() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     p.get("siteUser").unwrap().as_null().unwrap();
 }
 
 //we add limit 0 to this query to ensure an empty query set, and check if we still return an empty
 //array
-#[test]
-fn test_empty_many_query() {
+#[tokio::test]
+async fn test_empty_many_query() {
     let gql_query = "
         query{
           siteUsers{
@@ -458,12 +476,14 @@ fn test_empty_many_query() {
           }
         }";
     let pogg = create();
-    let mut client =
-        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
+    let client = get_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
-    let rows = client.query(&*[sql, " limit 0"].concat(), &[]).unwrap();
-    let res = JsonBuilder::new(ctx).convert(&rows);
+    let rows = client
+        .query(&*[sql, " limit 0"].concat(), &[])
+        .await
+        .unwrap();
+    let res = JsonBuilder::new(ctx).convert(rows);
     let p: Result<Value, Error> = serde_json::from_str(&*res);
     let users_len = p
         .unwrap()
@@ -475,8 +495,8 @@ fn test_empty_many_query() {
     assert_eq!(users_len, 0);
 }
 
-#[test]
-fn test_select_one_compound() {
+#[tokio::test]
+async fn test_select_one_compound() {
     let gql_query = "
         query{
           parentTable(id1: 0, id2: 10){
@@ -485,16 +505,16 @@ fn test_select_one_compound() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     let parent_table = p.get("parentTable").unwrap().as_object().unwrap();
     assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 0);
     assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
 }
 
 //kinda janky but these need to run sequentially
-#[test]
-fn mutation_tests() {
-    let mut client = mutation_test_fixtures();
+#[tokio::test]
+async fn mutation_tests() {
+    let pool = mutation_test_fixtures().await;
     let gql_query = "
         mutation{
           deleteMutationTest(id: 1){
@@ -502,12 +522,14 @@ fn mutation_tests() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false);
+    let client = pool.get().await.unwrap();
+    let p = convert_gql(gql_query, false).await;
     if let Some(row) = client
         .query(
             "select non_nullable_str from mutation_test where id = 1",
             &[],
         )
+        .await
         .unwrap()
         .get(0)
     {
@@ -536,7 +558,7 @@ fn mutation_tests() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     p.get("deleteMutationTest")
         .unwrap()
         .get("postByPostId")
@@ -557,7 +579,8 @@ fn mutation_tests() {
         2
     );
 
-    let mut client = mutation_test_fixtures();
+    let pool = mutation_test_fixtures().await;
+    let client = pool.get().await.unwrap();
     let gql_query = "
         mutation{
           updateMutationTest(id: 3, patch: {nullableFloat: 1.23}){
@@ -565,9 +588,10 @@ fn mutation_tests() {
           }
         }
     ";
-    convert_gql(gql_query, false);
+    convert_gql(gql_query, false).await;
     let rows = client
         .query("select nullable_float from mutation_test where id = 3", &[])
+        .await
         .unwrap();
     let nullable_float: f64 = rows.get(0).unwrap().get(0);
     assert_eq!(nullable_float, 1.23);
@@ -579,12 +603,13 @@ fn mutation_tests() {
           }
         }
     ";
-    convert_gql(gql_query, false);
+    convert_gql(gql_query, false).await;
     let rows = client
         .query(
             "select non_nullable_str from mutation_test where id = 4",
             &[],
         )
+        .await
         .unwrap();
     let new_value: &str = rows.get(0).unwrap().get(0);
     assert_eq!(new_value, "newValue");
@@ -596,12 +621,13 @@ fn mutation_tests() {
           }
         }
     ";
-    convert_gql(gql_query, false);
+    convert_gql(gql_query, false).await;
     let rows = client
         .query(
             "select non_nullable_str from mutation_test where id = 5",
             &[],
         )
+        .await
         .unwrap();
     let new_value: &str = rows.get(0).unwrap().get(0);
     assert_eq!(new_value, "'newValue'");
@@ -615,6 +641,7 @@ fn mutation_tests() {
         }
     ";
     match convert_gql(gql_query, false)
+        .await
         .get("updateMutationTest")
         .unwrap()
         .as_object()
@@ -644,6 +671,7 @@ fn mutation_tests() {
             "select non_nullable_str, nullable_float from mutation_test where id = 6",
             &[],
         )
+        .await
         .unwrap();
     let new_str: &str = rows.get(0).unwrap().get("non_nullable_str");
     assert_eq!(new_str, "'asdf'");
@@ -658,12 +686,13 @@ fn mutation_tests() {
           }
         }
     ";
-    convert_gql(gql_query, false);
+    convert_gql(gql_query, false).await;
     let rows = client
         .query(
             "select non_nullable_str, nullable_float from mutation_test where id = 102",
             &[],
         )
+        .await
         .unwrap();
     let name: &str = rows.get(0).unwrap().get("non_nullable_str");
     assert_eq!(name, "inserted");
@@ -679,7 +708,10 @@ fn mutation_tests() {
           }
         }
     ";
-    if let Some(res) = convert_gql(gql_query, false).get("deleteMutationTest") {
+    if let Some(res) = convert_gql(gql_query, false)
+        .await
+        .get("deleteMutationTest")
+    {
         let id = res.get("id").unwrap().as_i64().unwrap();
         for child in res
             .get("mutationTestChildsByMutationTestId")
@@ -693,45 +725,9 @@ fn mutation_tests() {
         panic!("Couldn't parse deleteMutationTest");
     }
 }
-#[bench]
-fn bench_safe_builder(b: &mut Bencher) {
-    let pogg = create();
-    let mut client =
-        Client::connect("postgres://eerik:Postgrizzly@localhost:5432/pets", NoTls).unwrap();
 
-    let gql_query = "
-        query {
-          siteUsers{
-            id
-            reputation
-            views
-            upvotes
-            downvotes
-            postsByOwneruserid{
-              id
-              posttypeid
-              owneruserid
-              commentsByPostid{
-                id
-                score
-                postid
-                text
-              }
-            }
-          }
-        }";
-    let ctx = pogg.build_root(gql_query).unwrap();
-    let sql = &ctx.sql_query;
-    println!("\n{}\n", sql);
-    let rows = client.query(&*[sql, ""].concat(), &[]).unwrap();
-    let builder = JsonBuilder::new(ctx);
-    b.iter(|| {
-        let _ = test::black_box(builder.convert(&rows));
-    });
-}
-
-#[test]
-fn many_where_clause() {
+#[tokio::test]
+async fn many_where_clause() {
     let gql_query = "
         query{
           posts(where: {score: 1, commentcount:2, tags: \"<cats>\"}){
@@ -739,12 +735,12 @@ fn many_where_clause() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false);
+    let p = convert_gql(gql_query, false).await;
     assert_eq!(p.get("posts").unwrap().as_array().unwrap().len(), 11);
 }
 
-#[test]
-fn where_string_escape() {
+#[tokio::test]
+async fn where_string_escape() {
     let gql_query = "
         query{
           posts(where: {tags: \"''\"}){
@@ -752,5 +748,5 @@ fn where_string_escape() {
           }
         }
         ";
-    convert_gql(gql_query, false);
+    convert_gql(gql_query, false).await;
 }

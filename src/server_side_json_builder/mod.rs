@@ -6,8 +6,8 @@ mod test;
 pub use self::generate_sql::ServerSidePoggers;
 use crate::server_side_json_builder::generate_sql::JsonBuilderContext;
 use chrono::{DateTime, Utc};
-use postgres::Row;
 use std::ops::Range;
+use tokio_postgres::Row;
 pub mod generate_sql;
 use parent_null_checker::ParentPkChecker;
 
@@ -126,7 +126,7 @@ impl JsonBuilder {
         }
     }
 
-    pub fn convert(&self, rows: &[Row]) -> String {
+    pub fn convert(&self, rows: Vec<Row>) -> String {
         //the first row requires special treatment, we need to add the initial braces, and we need
         //there is no previous pks to determine if this row should be
         let mut s = ["{", &JsonBuilder::stringify(&self.root_key_name), ":"].concat();
@@ -152,7 +152,7 @@ impl JsonBuilder {
             table: 0,
             s,
         };
-        self.build_one_root_parent(rows, &mut state);
+        self.build_one_root_parent(&rows, &mut state);
         let mut last_pk: i32 = first_row.get(0);
         while let Some(row) = rows.get(state.row) {
             //one left of the start of the next tables cols is primary key
@@ -161,7 +161,7 @@ impl JsonBuilder {
                 //parent changed
                 state.s.drain(state.s.len() - 1..state.s.len());
                 state.s.push_str(&["},{"].concat());
-                self.build_one_root_parent(rows, &mut state);
+                self.build_one_root_parent(&rows, &mut state);
             }
             last_pk = pk;
             state.row += 1;
