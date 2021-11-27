@@ -299,12 +299,12 @@ impl JsonBuilder {
     ) -> usize {
         let pk_col_offset = self
             .table_query_infos
-            .get(state.table)
+            .get(state.table + 1)
             .unwrap()
             .primary_key_range
             .start;
 
-        let child_pk: Option<i32> = rows.get(state.table).unwrap().get(pk_col_offset);
+        let child_pk: Option<i32> = rows.get(state.row).unwrap().get(pk_col_offset);
         state
             .s
             .push_str(&[&JsonBuilder::stringify(key), ":"].concat());
@@ -360,12 +360,6 @@ impl JsonBuilder {
         closure_index: usize,
         col_offset: usize,
     ) -> usize {
-        if col_offset == 5 {
-            let a: Option<i32> = rows.get(state.row).unwrap().get(5);
-            if a.is_none() {
-                println!("{:?}", state);
-            }
-        }
         let col_val = self.closures[closure_index](rows.get(state.row).unwrap(), col_offset);
         state
             .s

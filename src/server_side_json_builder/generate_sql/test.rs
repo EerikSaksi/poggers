@@ -14,7 +14,7 @@ fn column_offsets() {
               id
               posttypeid
             }
-          }j
+          }
         }";
     let JsonBuilderContext {
         sql_query: _,

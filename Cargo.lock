@@ -1668,6 +1668,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
+name = "poggers"
+version = "0.1.0"
+dependencies = [
+ "Inflector",
+ "actix-web",
+ "async-graphql",
+ "chrono",
+ "config",
+ "convert_case",
+ "deadpool-postgres",
+ "derive_more",
+ "dotenv",
+ "futures",
+ "graphql-introspection-query",
+ "petgraph",
+ "postgres",
+ "serde 1.0.130",
+ "serde_json",
+ "time 0.3.5",
+ "tokio 1.14.0",
+ "tokio-postgres 0.5.5",
+]
+
+[[package]]
 name = "postgres"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1743,30 +1767,6 @@ dependencies = [
  "postgres-protocol 0.6.2",
  "serde 1.0.130",
  "serde_json",
-]
-
-[[package]]
-name = "postgrustql"
-version = "0.1.0"
-dependencies = [
- "Inflector",
- "actix-web",
- "async-graphql",
- "chrono",
- "config",
- "convert_case",
- "deadpool-postgres",
- "derive_more",
- "dotenv",
- "futures",
- "graphql-introspection-query",
- "petgraph",
- "postgres",
- "serde 1.0.130",
- "serde_json",
- "time 0.3.5",
- "tokio 1.14.0",
- "tokio-postgres 0.5.5",
 ]
 
 [[package]]
