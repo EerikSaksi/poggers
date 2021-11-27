@@ -1,4 +1,3 @@
-#![feature(test)]
 mod build_schema;
 mod server_side_json_builder;
 
@@ -64,6 +63,7 @@ async fn main() -> std::io::Result<()> {
             .data(pogg.clone())
             .service(web::resource("/graphql").route(web::post().to(poggers)))
     })
+    .workers(8)
     .bind(config.server_addr.clone())?
     .run();
     println!("Server running at http://{}/", config.server_addr);
