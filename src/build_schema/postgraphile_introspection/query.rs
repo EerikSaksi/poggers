@@ -10,6 +10,7 @@ pub struct IntrospectionOutput {
     pub type_map: HashMap<String, TypeData>
 }
 pub fn introspection_query_data(database_url: &str) -> IntrospectionOutput {
+    println!("Database url {}", database_url);
     let mut client = Client::connect(database_url, NoTls).unwrap();
     let rows = client.query(&make_instrospection_query(999999999, false, false), &[]).unwrap();
     let mut output = IntrospectionOutput {
