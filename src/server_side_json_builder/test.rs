@@ -1,5 +1,4 @@
 use super::*;
-extern crate test;
 use crate::build_schema::create;
 use deadpool_postgres::{Client, Pool};
 use dotenv::dotenv;

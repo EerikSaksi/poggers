@@ -4,7 +4,7 @@ mod server_side_json_builder;
 mod config {
     pub use ::config::ConfigError;
     use serde::Deserialize;
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Debug)]
     pub struct Config {
         pub server_addr: String,
         pub pg: deadpool_postgres::Config,
