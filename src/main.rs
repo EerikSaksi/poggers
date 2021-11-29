@@ -56,7 +56,7 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     let config = crate::config::Config::from_env().unwrap();
     let pool = config.pg.create_pool(NoTls).unwrap();
-    let pogg = build_schema::create();
+    let pogg = build_schema::create("postgres://admin@172.17.0.1:7432/chinook");
     let server = HttpServer::new(move || {
         App::new()
             .data(pool.clone())

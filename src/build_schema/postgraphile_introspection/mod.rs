@@ -165,7 +165,7 @@ mod test {
             class_map,
             attribute_map,
             constraint_map: _,
-        } = introspection_query_data();
+        } = introspection_query_data("postgres://eerik:Postgrizzly@localhost:5432/pets");
         let post_class = class_map
             .values()
             .find(|class| class.name == "post")
@@ -190,7 +190,7 @@ mod test {
             class_map,
             attribute_map: _,
             constraint_map,
-        } = introspection_query_data();
+        } = introspection_query_data("postgres://eerik:Postgrizzly@localhost:5432/pets");
         let comment_class = class_map
             .values()
             .find(|class| class.name == "comment")
@@ -209,7 +209,7 @@ mod test {
 
     #[test]
     fn all_tables_present() {
-        let class_map = introspection_query_data().class_map;
+        let class_map = introspection_query_data("postgres://eerik:Postgrizzly@localhost:5432/pets").class_map;
         let expected_names = [
             "badge",
             "child_table",

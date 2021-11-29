@@ -41,16 +41,28 @@ fn assert_some_edge_eq(
 
 #[test]
 fn test_one_to_many() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
-    assert_some_edge_eq(("postsByOwneruserid", "siteUserByOwneruserid"), vec!["owneruserid"], g.raw_edges());
-    assert_some_edge_eq(("badgesByUserid", "siteUserByUserid"), vec!["userid"], g.raw_edges());
-    assert_some_edge_eq(("commentsByPostid", "postByPostid"), vec!["postid"], g.raw_edges());
+    assert_some_edge_eq(
+        ("postsByOwneruserid", "siteUserByOwneruserid"),
+        vec!["owneruserid"],
+        g.raw_edges(),
+    );
+    assert_some_edge_eq(
+        ("badgesByUserid", "siteUserByUserid"),
+        vec!["userid"],
+        g.raw_edges(),
+    );
+    assert_some_edge_eq(
+        ("commentsByPostid", "postByPostid"),
+        vec!["postid"],
+        g.raw_edges(),
+    );
 }
 
 #[test]
 fn test_composite_primary_keys() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
     assert_some_edge_eq(
         (
@@ -76,7 +88,7 @@ fn test_composite_primary_keys() {
 
 #[test]
 fn check_id_primary_keys() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
@@ -88,7 +100,7 @@ fn check_id_primary_keys() {
 
 #[test]
 fn foreign_primary_key() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
     let node = g
         .node_indices()
@@ -105,7 +117,7 @@ fn foreign_primary_key() {
 
 #[test]
 fn field_to_operation() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let field_to_operation = pogg.field_to_operation;
     assert!(
         field_to_operation.contains_key("siteUsers"),
@@ -119,7 +131,7 @@ fn field_to_operation() {
 
 #[test]
 fn post_has_owneruserid() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert!(
@@ -131,7 +143,7 @@ fn post_has_owneruserid() {
 
 #[test]
 fn post_has_correct_num_fields() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert_eq!(
@@ -144,7 +156,7 @@ fn post_has_correct_num_fields() {
 
 #[test]
 fn check_nullability() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let g = pogg.g;
     let user_node = g
         .node_weights()
@@ -174,7 +186,7 @@ fn check_nullability() {
 
 #[test]
 fn test_delete_mutation_creation() {
-    let pogg = create();
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let field_to_operation = pogg.field_to_operation;
     assert!(
         field_to_operation.contains_key("deleteMutationTest"),

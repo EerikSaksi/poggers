@@ -9,8 +9,8 @@ pub struct IntrospectionOutput {
     pub attribute_map: HashMap<(String, i32), AttributeData>,
     pub type_map: HashMap<String, TypeData>
 }
-pub fn introspection_query_data() -> IntrospectionOutput {
-    let mut client = Client::connect("postgres://postgres:postgres@localhost:5432/pets", NoTls).unwrap();
+pub fn introspection_query_data(database_url: &str) -> IntrospectionOutput {
+    let mut client = Client::connect(database_url, NoTls).unwrap();
     let rows = client.query(&make_instrospection_query(999999999, false, false), &[]).unwrap();
     let mut output = IntrospectionOutput {
         class_map: HashMap::new(),

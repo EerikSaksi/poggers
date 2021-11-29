@@ -48,13 +48,13 @@ static POG_JSON: usize = 6;
 static POG_NULLABLE_INT: usize = 7;
 
 #[allow(dead_code)]
-pub fn create() -> ServerSidePoggers {
+pub fn create(database_url: &str) -> ServerSidePoggers {
     let IntrospectionOutput {
         type_map,
         class_map,
         attribute_map,
         constraint_map,
-    } = introspection_query_data();
+    } = introspection_query_data(database_url);
 
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut field_to_operation: HashMap<String, Operation> = HashMap::new();
