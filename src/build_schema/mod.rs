@@ -70,14 +70,22 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
         {
             //convert the data type to the corresponding data type
             let mut closure_index = match &*type_map.get(&field.type_id).unwrap().name {
-                "int4" | "smallint" | "bigint" => POG_INT,
+                "int4" | "int2" | "smallint" | "bigint" => POG_INT,
                 "character varying" | "text" | "varchar" => POG_STR,
                 "timestamp with time zone" => POG_TIMESTAMPTZ,
                 "timestamp" => POG_TIMESTAMP,
-                "double precision" | "float8" => POG_FLOAT,
+                "double precision" | "float8" | "numeric" => POG_FLOAT,
                 "boolean" => POG_BOOLEAN,
                 "json" | "jsonb" => POG_JSON,
-                other => panic!("Encountered unhandled type {}", other),
+                other => {
+                    if !["_text", "tsvector"].contains(&other) {
+                        panic!(
+                            "Encountered unhandled type {} from table {}.{}",
+                            other, class.name, field.name
+                        )
+                    }
+                    0
+                }
             };
 
             //if the field is null then offset by where the null fields start
