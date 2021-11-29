@@ -7,4 +7,4 @@ RUN cargo build --release
 FROM rust as runtime
 WORKDIR app
 COPY --from=builder /app/target/release/poggers /usr/local/bin
-ENTRYPOINT ["./usr/local/bin/app"]
+ENTRYPOINT ["./usr/local/bin/poggers"]
