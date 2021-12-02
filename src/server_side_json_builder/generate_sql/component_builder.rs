@@ -24,12 +24,6 @@ pub fn query(
         sql_query.push_str(&sql.filter);
     }
 
-    if !sql.order_by.is_empty() {
-        sql.order_by
-            .drain(sql.order_by.len() - 2..sql.order_by.len());
-        sql_query.push_str(" ORDER BY ");
-        sql_query.push_str(&sql.order_by);
-    }
 
     if let Selection::Field(Positioned { pos: _, node }) =
         &selection_set.node.items.get(0).unwrap().node
@@ -48,6 +42,12 @@ pub fn query(
                 return Err(String::from("Where was not an object"));
             }
         }
+    }
+    if !sql.order_by.is_empty() {
+        sql.order_by
+            .drain(sql.order_by.len() - 2..sql.order_by.len());
+        sql_query.push_str(" ORDER BY ");
+        sql_query.push_str(&sql.order_by);
     }
     Ok(sql_query)
 }
