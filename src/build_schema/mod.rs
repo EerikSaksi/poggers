@@ -1,13 +1,16 @@
 mod field_to_operation;
+
 mod postgraphile_introspection;
+
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
 use crate::server_side_json_builder::ServerSidePoggers;
+
 use convert_case::{Case, Casing};
 use inflector::Inflector;
-use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
+use petgraph::{graph::DiGraph, visit::NodeRef};
 use postgraphile_introspection::{introspection_query_data, IntrospectionOutput};
 use std::collections::HashMap;
 
@@ -149,6 +152,7 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
                         .to_string()
                 })
                 .collect::<Vec<String>>();
+
             g.add_edge(
                 node,
                 parent_node,
@@ -197,6 +201,18 @@ pub fn create(database_url: &str) -> ServerSidePoggers {
             .unwrap();
         field_to_operation::build_mutation(node, &mut field_to_operation, class);
     }
+    let i = g
+        .node_indices()
+        .find(|n| g[*n].table_name == "albums")
+        .unwrap();
+    let j = g
+        .node_indices()
+        .find(|n| g[*n].table_name == "artists")
+        .unwrap();
+
+    let a = g.edges_connecting(i, j).next().unwrap();
+    println!("{:?}", a);
+
     ServerSidePoggers {
         field_to_operation,
         g,

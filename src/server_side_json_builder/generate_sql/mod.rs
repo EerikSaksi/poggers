@@ -58,17 +58,17 @@ impl ServerSidePoggers {
             Err(e) => return Err(e.to_string()),
         }
         match ast.operations {
-            DocumentOperations::Single(Positioned { node, pos: _ }) => {
-                self.visit_query(node.selection_set)
+            DocumentOperations::Single(Positioned { pos: _, node }) => {
+                self.visit_query(&node.selection_set)
             }
-            DocumentOperations::Multiple(_) => {
-                panic!("DocumentOperations::Multiple(operation)")
+            DocumentOperations::Multiple(operation_map) => {
+                self.visit_query(&operation_map.values().next().unwrap().node.selection_set)
             }
         }
     }
     fn visit_query(
         &self,
-        selection_set: Positioned<SelectionSet>,
+        selection_set: &Positioned<SelectionSet>,
     ) -> Result<JsonBuilderContext, String> {
         let mut sql = SqlQueryComponents {
             selections: String::new(),

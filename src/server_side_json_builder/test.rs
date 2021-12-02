@@ -12,7 +12,7 @@ async fn get_client() -> Client {
     pool.get().await.unwrap()
 }
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
-    let pogg = create("postgres://eerik:Postgrizzly@0:0:0:0:5432/pets");
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let client = get_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
@@ -474,7 +474,7 @@ async fn test_empty_many_query() {
             age
           }
         }";
-    let pogg = create("postgres://eerik:Postgrizzly@0:0:0:0:5432/pets");
+    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
     let client = get_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;

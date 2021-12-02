@@ -25,6 +25,7 @@ fn assert_some_edge_eq(
         if graphql_field_name.incoming == expected.graphql_field_name.incoming
             && graphql_field_name.outgoing == expected.graphql_field_name.outgoing
             && incoming_node_cols.len() == expected.incoming_node_cols.len()
+
             && incoming_node_cols
                 .iter()
                 .zip(&expected.incoming_node_cols)
