@@ -1,8 +1,17 @@
-use crate::{build_schema::create, server_side_json_builder::generate_sql::JsonBuilderContext};
+use crate::{
+    build_schema::create, server_side_json_builder::generate_sql::JsonBuilderContext,
+    server_side_json_builder::ServerSidePoggers,
+};
+use tokio_postgres::NoTls;
 
-#[test]
-fn column_offsets() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+async fn create_with_pool() -> ServerSidePoggers {
+    let config = crate::config::Config::from_env().unwrap();
+    let pool = config.pg.create_pool(NoTls).unwrap();
+    create(&pool).await
+}
+#[tokio::test]
+async fn column_offsets() {
+    let pogg = create_with_pool().await;
     let query = "
         query{
           siteUsers{
@@ -26,9 +35,9 @@ fn column_offsets() {
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
 }
 
-#[test]
-fn test_invalid_root_query() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_invalid_root_query() {
+    let pogg = create_with_pool().await;
     let query = "
         query{
           commentos {
@@ -38,9 +47,9 @@ fn test_invalid_root_query() {
     let err = pogg.build_root(query).expect_err("Wasn't Err");
     assert_eq!(err.as_str(), "No operation named \"commentos\"");
 }
-#[test]
-fn test_invalid_syntax() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_invalid_syntax() {
+    let pogg = create_with_pool().await;
     let query = "
         query{
           comments {
@@ -54,9 +63,9 @@ fn test_invalid_syntax() {
     );
 }
 
-#[test]
-fn test_invalid_subchild() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_invalid_subchild() {
+    let pogg = create_with_pool().await;
     let query = "
         query{
           posts {
@@ -71,9 +80,9 @@ fn test_invalid_subchild() {
     );
 }
 
-#[test]
-fn test_error_propagation() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_error_propagation() {
+    let pogg = create_with_pool().await;
     let query = "
         query{
             siteUsers{
@@ -96,9 +105,9 @@ fn test_error_propagation() {
     );
 }
 
-#[test]
-fn test_no_root() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_no_root() {
+    let pogg = create_with_pool().await;
     let query = "
         query{
         }";
@@ -109,9 +118,9 @@ fn test_no_root() {
     );
 }
 
-#[test]
-fn delete_mutation() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn delete_mutation() {
+    let pogg = create_with_pool().await;
     let gql_query = "
         mutation{
           deleteMutationTest(id: 1){
@@ -123,9 +132,9 @@ fn delete_mutation() {
     assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM mutation_test AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS __t0_pk0__, __table_0__.nullable_float AS __t0_c0__ FROM __table_0__");
 }
 
-#[test]
-fn handle_named_operation() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn handle_named_operation() {
+    let pogg = create_with_pool().await;
     let gql_query = "
         query named_operation {
             siteUsers{

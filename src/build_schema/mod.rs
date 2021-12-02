@@ -6,11 +6,12 @@ mod postgraphile_introspection;
 #[path = "./test.rs"]
 mod test;
 use crate::server_side_json_builder::ServerSidePoggers;
+use deadpool_postgres::Pool;
 
 use convert_case::{Case, Casing};
 use inflector::Inflector;
+use petgraph::graph::DiGraph;
 use petgraph::prelude::NodeIndex;
-use petgraph::{graph::DiGraph, visit::NodeRef};
 use postgraphile_introspection::{introspection_query_data, IntrospectionOutput};
 use std::collections::HashMap;
 
@@ -51,13 +52,13 @@ static POG_JSON: usize = 6;
 static POG_NULLABLE_INT: usize = 7;
 
 #[allow(dead_code)]
-pub fn create(database_url: &str) -> ServerSidePoggers {
+pub async fn create(pool: &Pool) -> ServerSidePoggers {
     let IntrospectionOutput {
         type_map,
         class_map,
         attribute_map,
         constraint_map,
-    } = introspection_query_data(database_url);
+    } = introspection_query_data(pool).await;
 
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut field_to_operation: HashMap<String, Operation> = HashMap::new();

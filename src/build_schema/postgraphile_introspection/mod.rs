@@ -157,15 +157,18 @@ impl PostgresEntity {
 mod test {
     use super::*;
     use query::introspection_query_data;
+    use tokio_postgres::NoTls;
 
-    #[test]
-    fn test_attributes_present() {
+    #[tokio::test]
+    async fn test_attributes_present() {
+        let config = crate::config::Config::from_env().unwrap();
+        let pool = config.pg.create_pool(NoTls).unwrap();
         let IntrospectionOutput {
             type_map: _,
             class_map,
             attribute_map,
             constraint_map: _,
-        } = introspection_query_data("postgres://eerik:Postgrizzly@localhost:5432/pets");
+        } = introspection_query_data(&pool).await;
         let post_class = class_map
             .values()
             .find(|class| class.name == "post")
@@ -183,14 +186,16 @@ mod test {
     //fn types_present() {
     //    let type_map = introspection_query_data().type_map;
     //}
-    #[test]
-    fn constraints_present() {
+    #[tokio::test]
+    async fn constraints_present() {
+        let config = crate::config::Config::from_env().unwrap();
+        let pool = config.pg.create_pool(NoTls).unwrap();
         let IntrospectionOutput {
             type_map: _,
             class_map,
             attribute_map: _,
             constraint_map,
-        } = introspection_query_data("postgres://eerik:Postgrizzly@localhost:5432/pets");
+        } = introspection_query_data(&pool).await;
         let comment_class = class_map
             .values()
             .find(|class| class.name == "comment")
@@ -207,9 +212,11 @@ mod test {
         assert_eq!(count, 3);
     }
 
-    #[test]
-    fn all_tables_present() {
-        let class_map = introspection_query_data("postgres://eerik:Postgrizzly@localhost:5432/pets").class_map;
+    #[tokio::test]
+    async fn all_tables_present() {
+        let config = crate::config::Config::from_env().unwrap();
+        let pool = config.pg.create_pool(NoTls).unwrap();
+        let class_map = introspection_query_data(&pool).await.class_map;
         let expected_names = [
             "badge",
             "child_table",

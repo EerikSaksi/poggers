@@ -1,5 +1,6 @@
 use super::*;
 use petgraph::graph::Edge;
+use tokio_postgres::NoTls;
 fn assert_some_edge_eq(
     field_names: (&str, &str),
     incoming_node_cols: Vec<&str>,
@@ -25,7 +26,6 @@ fn assert_some_edge_eq(
         if graphql_field_name.incoming == expected.graphql_field_name.incoming
             && graphql_field_name.outgoing == expected.graphql_field_name.outgoing
             && incoming_node_cols.len() == expected.incoming_node_cols.len()
-
             && incoming_node_cols
                 .iter()
                 .zip(&expected.incoming_node_cols)
@@ -39,10 +39,15 @@ fn assert_some_edge_eq(
         field_names, incoming_node_cols, cumm
     );
 }
+async fn create_with_pool() -> ServerSidePoggers {
+    let config = crate::config::Config::from_env().unwrap();
+    let pool = config.pg.create_pool(NoTls).unwrap();
+    create(&pool).await
+}
 
-#[test]
-fn test_one_to_many() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_one_to_many() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     assert_some_edge_eq(
         ("postsByOwneruserid", "siteUserByOwneruserid"),
@@ -61,9 +66,9 @@ fn test_one_to_many() {
     );
 }
 
-#[test]
-fn test_composite_primary_keys() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_composite_primary_keys() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     assert_some_edge_eq(
         (
@@ -87,9 +92,9 @@ fn test_composite_primary_keys() {
     }
 }
 
-#[test]
-fn check_id_primary_keys() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn check_id_primary_keys() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
@@ -99,9 +104,9 @@ fn check_id_primary_keys() {
     }
 }
 
-#[test]
-fn foreign_primary_key() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn foreign_primary_key() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     let node = g
         .node_indices()
@@ -116,9 +121,9 @@ fn foreign_primary_key() {
     assert_eq!(g[edge].incoming_node_cols, vec!["post_id"]);
 }
 
-#[test]
-fn field_to_operation() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn field_to_operation() {
+    let pogg = create_with_pool().await;
     let field_to_operation = pogg.field_to_operation;
     assert!(
         field_to_operation.contains_key("siteUsers"),
@@ -130,9 +135,9 @@ fn field_to_operation() {
     )
 }
 
-#[test]
-fn post_has_owneruserid() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn post_has_owneruserid() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert!(
@@ -142,9 +147,9 @@ fn post_has_owneruserid() {
     );
 }
 
-#[test]
-fn post_has_correct_num_fields() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn post_has_correct_num_fields() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert_eq!(
@@ -155,9 +160,9 @@ fn post_has_correct_num_fields() {
     );
 }
 
-#[test]
-fn check_nullability() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn check_nullability() {
+    let pogg = create_with_pool().await;
     let g = pogg.g;
     let user_node = g
         .node_weights()
@@ -185,9 +190,9 @@ fn check_nullability() {
     }
 }
 
-#[test]
-fn test_delete_mutation_creation() {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+#[tokio::test]
+async fn test_delete_mutation_creation() {
+    let pogg = create_with_pool().await;
     let field_to_operation = pogg.field_to_operation;
     assert!(
         field_to_operation.contains_key("deleteMutationTest"),
@@ -196,8 +201,8 @@ fn test_delete_mutation_creation() {
     )
 }
 
-//#[test]
-//fn test_by_fk() {
+//#[tokio::test]
+//async fn test_by_fk() {
 //    let g = create().g;
 //    let post_node = g
 //        .node_indices()
