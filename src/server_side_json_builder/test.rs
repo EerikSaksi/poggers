@@ -1,6 +1,6 @@
 use super::*;
 use crate::build_schema::create;
-use deadpool_postgres::{Client, Pool};
+use deadpool_postgres::{Client, Config, Pool};
 use dotenv::dotenv;
 use serde_json::{Error, Value};
 use std::collections::HashSet;
@@ -12,7 +12,7 @@ async fn get_client() -> Client {
     pool.get().await.unwrap()
 }
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create_with_pool().await;
     let client = get_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
@@ -474,7 +474,7 @@ async fn test_empty_many_query() {
             age
           }
         }";
-    let pogg = create("postgres://eerik:Postgrizzly@localhost:5432/pets");
+    let pogg = create_with_pool().await;
     let client = get_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
@@ -748,4 +748,17 @@ async fn where_string_escape() {
         }
         ";
     convert_gql(gql_query, false).await;
+}
+
+pub async fn create_with_pool() -> ServerSidePoggers {
+    let config: Config = Config {
+        user: Some(String::from("postgres")),
+        password: Some(String::from("postgres")),
+        host: Some(String::from("127.0.0.1")),
+        port: Some(5432),
+        dbname: Some(String::from("pets")),
+        ..Default::default()
+    };
+    let pool = config.create_pool(NoTls).unwrap();
+    create(&pool).await
 }

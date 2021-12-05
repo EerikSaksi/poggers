@@ -40,8 +40,13 @@ mod handlers {
         let query_str = &query.into_inner().data;
         let ctx = poggers.into_inner().build_root(query_str).unwrap();
         println!("{}", ctx.sql_query);
-        let client: Client = pool.get().await.unwrap();
-        let rows = client.query(&*ctx.sql_query, &[]).await.unwrap();
+
+
+        //acquire client and drop it as soon as we get the rows, prior to processing the data
+        let rows = {
+            let client: Client = pool.get().await.unwrap();
+            client.query(&*ctx.sql_query, &[]).await.unwrap()
+        };
         let res = JsonBuilder::new(ctx).convert(rows);
         Ok(HttpResponse::Ok().json(res))
     }
@@ -55,7 +60,6 @@ use tokio_postgres::NoTls;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-
     let config = crate::config::Config::from_env().unwrap();
     let pool = config.pg.create_pool(NoTls).unwrap();
     let pogg = build_schema::create(&pool).await;

@@ -1,12 +1,12 @@
 mod field_to_operation;
-
 mod postgraphile_introspection;
+use tokio_postgres::NoTls;
 
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
 use crate::server_side_json_builder::ServerSidePoggers;
-use deadpool_postgres::Pool;
+use deadpool_postgres::{Config, Pool};
 
 use convert_case::{Case, Casing};
 use inflector::Inflector;
@@ -202,17 +202,6 @@ pub async fn create(pool: &Pool) -> ServerSidePoggers {
             .unwrap();
         field_to_operation::build_mutation(node, &mut field_to_operation, class);
     }
-    let i = g
-        .node_indices()
-        .find(|n| g[*n].table_name == "albums")
-        .unwrap();
-    let j = g
-        .node_indices()
-        .find(|n| g[*n].table_name == "artists")
-        .unwrap();
-
-    let a = g.edges_connecting(i, j).next().unwrap();
-    println!("{:?}", a);
 
     ServerSidePoggers {
         field_to_operation,
@@ -234,4 +223,17 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
             .join("And"),
     ]
     .concat()
+}
+
+pub async fn create_with_pool() -> ServerSidePoggers {
+    let config: Config = Config {
+        user: Some(String::from("postgres")),
+        password: Some(String::from("postgres")),
+        host: Some(String::from("127.0.0.1")),
+        port: Some(5432),
+        dbname: Some(String::from("pets")),
+        ..Default::default()
+    };
+    let pool = config.create_pool(NoTls).unwrap();
+    create(&pool).await
 }

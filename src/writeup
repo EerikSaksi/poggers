@@ -1540,4 +1540,72 @@ I also improved code reuse. I had two methods, which behaved exactly the same wi
 
 It took surprisingly long to get everything working. Changing the iterators to indexes required rewriting every function signature and every single method call, etc. It was sometimes hard to remember e.g which function was responsible for progressing the iterator (or in this case incrementing the row index) which made this pretty difficult. The design is ultimately very similar, instead of passing row objects and an iterator, we instead pass around a reference to all rows and the state containing the current row.
 
-I setup the Hasura's benchmarking tool, which lets you run comparative benchmarks against other GraphQL servers. I had to containerize my software in order to run these benchmarks. I had also had to setup a docker volume containing the test database in order to use the test data. This took quite a while to get properly setup. 
+I setup the Hasura's benchmarking tool, which lets you run comparative benchmarks against other GraphQL servers. I had to containerize my software in order to run these benchmarks. I had also had to setup a docker volume containing the test database in order to use the test data. This took quite a while to get properly setup. I needed to understand how docker volumes worked, how to dockerize my project, etc. I needed to also ensure that all the queries that were provided could run. These may use different syntax or naming conventions than mine, but overall need to result in the same shaped data and the same SQL query. For instance, another language might say 
+
+query {
+	artists(where {id: {eq: 10}})
+}
+
+But my version does 
+query {
+	artists(where {id: 10})
+}
+
+These result in the same SQL being generated but they are slightly different.
+
+Another small difference is the naming of foreign tables. I append (byFk) to every single foreign table in order to deal with cases where there are multiple foreign keys to the same table (e.g the pets database had owner_user_id and last_commenter_id both referring to users). I had to ensure that I appended this to the end of each field.
+
+
+I needed to replace all instances of the synchronous client with the asynchronous client. I was getting an error in my introspection function when I ran it, so I had a look at the stack trace.
+
+   0: std::panicking::begin_panic
+             at /rustc/dd549dcab404ec4c7d07b5a83aca5bdd7171138f/library/std/src/panicking.rs:525:12
+   1: tokio::runtime::enter::enter
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/enter.rs:39:9
+   2: tokio::runtime::basic_scheduler::Inner<P>::block_on::{{closure}}
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/basic_scheduler.rs:231:26
+   3: tokio::runtime::basic_scheduler::enter::{{closure}}
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/basic_scheduler.rs:349:29
+   4: tokio::macros::scoped_tls::ScopedKey<T>::set
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/macros/scoped_tls.rs:61:9
+   5: tokio::runtime::basic_scheduler::enter
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/basic_scheduler.rs:349:5
+   6: tokio::runtime::basic_scheduler::Inner<P>::block_on
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/basic_scheduler.rs:230:9
+   7: tokio::runtime::basic_scheduler::InnerGuard<P>::block_on
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/basic_scheduler.rs:501:9
+   8: tokio::runtime::basic_scheduler::BasicScheduler<P>::block_on
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/basic_scheduler.rs:186:24
+   9: tokio::runtime::Runtime::block_on
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/tokio-1.14.0/src/runtime/mod.rs:461:46
+  10: postgres::config::Config::connect
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/postgres-0.19.2/src/config.rs:344:36
+  11: postgres::client::Client::connect
+             at /home/eerik/.cargo/registry/src/github.com-1ecc6299db9ec823/postgres-0.19.2/src/client.rs:41:9
+  12: poggers::build_schema::postgraphile_introspection::query::introspection_query_data
+
+It turns out that the synchronous client is actually just a wrapper over the asynchronous client. When I create a synchrounous client from within an asynchronous runtime it results in an error (you cannot create an asynchronous runtime within another asynchronous runtime). This sounds easier than it was. For one, creating the asynchronous client is a lot more verbose than the creation of a synchronous client 
+
+Async
+let config = crate::config::Config::from_env().unwrap();
+let pool = config.pg.create_pool(NoTls).unwrap();
+create(&pool).await
+
+Synchronous
+let mut client = Client::connect(database_url, NoTls).unwrap();
+
+Secondly, essentially every single function that I used had to become asynchronous. Every single function call involving the database had to invoke .await at the end of it (the result of an async function call is a promise, you have to explictly block to get the value). Also, every single test which involved database interactions, (which is almost all) had to become asynchronous, which also required a lot of work
+
+#[test]
+fn normal_test() {
+	assert_eq(3, add(1, 2))
+}
+
+#[tokio::test]
+async fn asynchronous_test() {
+	assert_eq(3, add(1, 2).await)
+}
+
+Although this seems small over 30 or so tests it became annoying
+
+ i
