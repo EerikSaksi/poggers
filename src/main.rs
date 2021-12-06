@@ -38,9 +38,8 @@ mod handlers {
         query: web::Json<GraphlQuery>,
     ) -> Result<HttpResponse, Error> {
         let query_str = &query.into_inner().data;
+        println!("{}", query_str);
         let ctx = poggers.into_inner().build_root(query_str).unwrap();
-        println!("{}", ctx.sql_query);
-
 
         //acquire client and drop it as soon as we get the rows, prior to processing the data
         let rows = {
