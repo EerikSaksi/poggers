@@ -115,7 +115,7 @@ impl ServerSidePoggers {
             if !is_many {
                 match &selection_set.node.items.get(0).unwrap().node {
                     Selection::Field(Positioned { pos: _, node }) => {
-                        //if the value of the first (or only) primary key  was provided, we can assume
+                        //if the value of the first (or only) primary key was provided, we can assume
                         //that we can build a where clause for all (or one) primay keys
                         for pk in &self.g[node_index].primary_keys {
                             match node.get_argument(&pk.to_camel_case()) {
@@ -142,7 +142,7 @@ impl ServerSidePoggers {
                         &mut sql,
                         &self.g[node_index].table_name,
                         root_query_is_many,
-                        &selection_set,
+                        selection_set,
                         &self.g[node_index].field_to_types,
                     ) {
                         Ok(val) => sql_query = val,
@@ -156,7 +156,7 @@ impl ServerSidePoggers {
                     match component_builder::update(
                         &mut sql,
                         &self.g[node_index].table_name,
-                        &selection_set,
+                        selection_set,
                         &self.g[node_index].field_to_types,
                     ) {
                         Ok(val) => sql_query = val,
@@ -167,7 +167,7 @@ impl ServerSidePoggers {
                     match component_builder::insert(
                         &mut sql,
                         &self.g[node_index].table_name,
-                        &selection_set,
+                        selection_set,
                         &self.g[node_index].field_to_types,
                     ) {
                         Ok(val) => sql_query = val,

@@ -1607,5 +1607,3 @@ async fn asynchronous_test() {
 }
 
 Although this seems small over 30 or so tests it became annoying
-
- i
