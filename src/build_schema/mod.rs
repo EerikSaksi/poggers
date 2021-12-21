@@ -202,7 +202,12 @@ pub async fn create(pool: &Pool) -> ServerSidePoggers {
             .unwrap();
         field_to_operation::build_mutation(node, &mut field_to_operation, class);
     }
-
+    println!(
+        "{:?}",
+        g.edge_indices()
+            .map(|e| g[e].graphql_field_name.clone())
+            .collect::<Vec<GraphQLFieldNames>>()
+    );
     ServerSidePoggers {
         field_to_operation,
         g,
@@ -213,7 +218,7 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
         &if pluralize {
             table_name.to_camel_case().to_plural()
         } else {
-            table_name.to_camel_case()
+            table_name.to_camel_case().to_singular()
         },
         "By",
         &foreign_cols

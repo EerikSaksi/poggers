@@ -60,6 +60,21 @@ mod handlers {
                     rows
                 };
                 let res = JsonBuilder::new(ctx).convert(rows);
+                use std::fs::OpenOptions;
+                use std::io::Write;
+                let mut file = OpenOptions::new()
+                    .write(true)
+                    .append(true)
+                    .open("/home/eerik/run_times.txt")
+                    .unwrap();
+
+                file.write_all(
+                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis()
+                        .to_string()
+                        .as_bytes(),
+                ).unwrap();
                 HttpResponse::Ok().json(res)
             }
             Err(e) => format_err(e),
