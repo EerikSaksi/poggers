@@ -1,7 +1,9 @@
 use crate::server_side_json_builder::generate_sql::SqlQueryComponents;
-use async_graphql::indexmap::IndexMap;
-use async_graphql::parser::types::{Selection, SelectionSet, Value};
-use async_graphql::{Name, Positioned};
+use async_graphql_parser::{
+    types::{Selection, SelectionSet},
+    Positioned,
+};
+use async_graphql_value::{indexmap::IndexMap, Name, Value};
 use std::collections::HashMap;
 
 pub fn query(
@@ -24,7 +26,6 @@ pub fn query(
         sql_query.push_str(&sql.filter);
     }
 
-
     if let Selection::Field(Positioned { pos: _, node }) =
         &selection_set.node.items.get(0).unwrap().node
     {
@@ -35,7 +36,8 @@ pub fn query(
                 sql_query.push_str(" WHERE ");
 
                 //set where equal to values
-                if let Err(e) = assign_cols_vals(&mut sql_query, where_obj, field_to_types, " AND ") {
+                if let Err(e) = assign_cols_vals(&mut sql_query, where_obj, field_to_types, " AND ")
+                {
                     return Err(e);
                 }
             } else {

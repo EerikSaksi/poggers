@@ -225,6 +225,7 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
     .concat()
 }
 
+#[allow(dead_code)]
 pub async fn create_with_pool() -> ServerSidePoggers {
     let config: Config = Config {
         user: Some(String::from("postgres")),

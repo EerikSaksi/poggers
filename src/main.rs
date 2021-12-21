@@ -30,24 +30,40 @@ mod handlers {
         models::GraphlQuery, server_side_json_builder::JsonBuilder,
         server_side_json_builder::ServerSidePoggers,
     };
-    use actix_web::{web, Error, HttpResponse};
+    use actix_web::{web, HttpResponse};
     use deadpool_postgres::{Client, Pool};
+    use tokio_postgres::Row;
+    fn format_err(e: String) -> HttpResponse {
+        HttpResponse::Ok().json(format!("{{\"errors\": [\"message\": \"{}\"]}}", e))
+    }
     pub async fn poggers(
         pool: web::Data<Pool>,
         poggers: web::Data<ServerSidePoggers>,
         query: web::Json<GraphlQuery>,
-    ) -> Result<HttpResponse, Error> {
+    ) -> HttpResponse {
         let query_str = &query.into_inner().data;
         println!("{}", query_str);
-        let ctx = poggers.into_inner().build_root(query_str).unwrap();
-
-        //acquire client and drop it as soon as we get the rows, prior to processing the data
-        let rows = {
-            let client: Client = pool.get().await.unwrap();
-            client.query(&*ctx.sql_query, &[]).await.unwrap()
-        };
-        let res = JsonBuilder::new(ctx).convert(rows);
-        Ok(HttpResponse::Ok().json(res))
+        match poggers.into_inner().build_root(query_str) {
+            Ok(ctx) => {
+                //acquire client and drop it as soon as we get the rows, prior to processing the data
+                let rows = {
+                    let client: Client;
+                    match pool.get().await {
+                        Ok(cli) => client = cli,
+                        Err(e) => return format_err(e.to_string()),
+                    }
+                    let rows: Vec<Row>;
+                    match client.query(&*ctx.sql_query, &[]).await {
+                        Ok(r) => rows = r,
+                        Err(e) => return format_err(e.to_string()),
+                    }
+                    rows
+                };
+                let res = JsonBuilder::new(ctx).convert(rows);
+                HttpResponse::Ok().json(res)
+            }
+            Err(e) => format_err(e),
+        }
     }
 }
 

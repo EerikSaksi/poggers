@@ -1,4 +1,4 @@
-FROM rust as builder
+FROM rust:1.56 as builder
 COPY . .
 RUN cargo build 
 EXPOSE 8080

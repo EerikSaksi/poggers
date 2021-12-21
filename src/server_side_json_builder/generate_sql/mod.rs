@@ -8,13 +8,7 @@ use std::slice::Iter;
 
 use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, Operation};
 use crate::server_side_json_builder::ColumnInfo;
-use async_graphql::{
-    parser::{
-        parse_query,
-        types::{DocumentOperations, Selection, SelectionSet},
-    },
-    Positioned,
-};
+use async_graphql_parser::{parse_query, types::{Selection, DocumentOperations, SelectionSet}, Positioned};
 use convert_case::{Case, Casing};
 use inflector::Inflector;
 use petgraph::{graph::DiGraph, prelude::NodeIndex};
