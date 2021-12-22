@@ -21,60 +21,44 @@ mod models {
     use serde::{Deserialize, Serialize};
 
     #[derive(Deserialize, Serialize, Debug)]
-    pub struct GraphlQuery {
-        pub data: String,
+    pub struct GraphQLQuery {
+        pub query: String,
     }
 }
 mod handlers {
     use crate::{
-        models::GraphlQuery, server_side_json_builder::JsonBuilder,
+        models::GraphQLQuery, server_side_json_builder::JsonBuilder,
         server_side_json_builder::ServerSidePoggers,
     };
-    use actix_web::{web, HttpResponse};
-    use deadpool_postgres::{Client, Pool};
-    use tokio_postgres::Row;
+    use actix_web::{
+        web::{self, Buf},
+        HttpResponse,
+    };
+    use deadpool_postgres::Pool;
     fn format_err(e: String) -> HttpResponse {
         HttpResponse::Ok().json(format!("{{\"errors\": [\"message\": \"{}\"]}}", e))
     }
     pub async fn poggers(
         pool: web::Data<Pool>,
         poggers: web::Data<ServerSidePoggers>,
-        query: web::Json<GraphlQuery>,
+        query: web::Bytes,
     ) -> HttpResponse {
-        let query_str = &query.into_inner().data;
-        println!("{}", query_str);
-        match poggers.into_inner().build_root(query_str) {
+        let gql_query: GraphQLQuery =
+            serde_json::from_str(std::str::from_utf8(&query).unwrap()).unwrap();
+        match poggers.into_inner().build_root(&gql_query.query) {
             Ok(ctx) => {
                 //acquire client and drop it as soon as we get the rows, prior to processing the data
                 let rows = {
-                    let client: Client;
-                    match pool.get().await {
-                        Ok(cli) => client = cli,
+                    let client = match pool.get().await {
+                        Ok(cli) => cli,
                         Err(e) => return format_err(e.to_string()),
-                    }
-                    let rows: Vec<Row>;
+                    };
                     match client.query(&*ctx.sql_query, &[]).await {
-                        Ok(r) => rows = r,
+                        Ok(rows) => rows,
                         Err(e) => return format_err(e.to_string()),
                     }
-                    rows
                 };
                 let res = JsonBuilder::new(ctx).convert(rows);
-                use std::fs::OpenOptions;
-                use std::io::Write;
-                let mut file = OpenOptions::new()
-                    .write(true)
-                    .append(true)
-                    .open("/home/eerik/run_times.txt")
-                    .unwrap();
-
-                file.write_all(
-                    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis()
-                        .to_string()
-                        .as_bytes(),
-                ).unwrap();
                 HttpResponse::Ok().json(res)
             }
             Err(e) => format_err(e),

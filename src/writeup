@@ -1607,3 +1607,6 @@ async fn asynchronous_test() {
 }
 
 Although this seems small over 30 or so tests it became annoying
+
+
+When I ran the tests, it seemed like my server wasn't actually processing the data. Performance never dipped below a millisecond, even for requests which took 10ms+ when they were run manually. After lots of investigation. After lots of investigation I found out that the benchmarking tool I was using (Hasura's graphql-bench) sends JSON like data ("query": "query {albums {...}}") but without content-type: application/json. This means that all Hasura's requests were simply bad requests and were all erroring, which lead to the impossible latenency (sending errors is faster than sending database data).
