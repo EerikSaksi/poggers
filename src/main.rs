@@ -31,7 +31,7 @@ mod handlers {
         server_side_json_builder::ServerSidePoggers,
     };
     use actix_web::{
-        web::{self, Buf},
+        web::{Bytes, Data},
         HttpResponse,
     };
     use deadpool_postgres::Pool;
@@ -39,9 +39,9 @@ mod handlers {
         HttpResponse::Ok().json(format!("{{\"errors\": [\"message\": \"{}\"]}}", e))
     }
     pub async fn poggers(
-        pool: web::Data<Pool>,
-        poggers: web::Data<ServerSidePoggers>,
-        query: web::Bytes,
+        pool: Data<Pool>,
+        poggers: Data<ServerSidePoggers>,
+        query: Bytes,
     ) -> HttpResponse {
         let gql_query: GraphQLQuery =
             serde_json::from_str(std::str::from_utf8(&query).unwrap()).unwrap();
@@ -83,7 +83,6 @@ async fn main() -> std::io::Result<()> {
             .data(pogg.clone())
             .service(web::resource("/graphql").route(web::post().to(poggers)))
     })
-    .workers(8)
     .bind(config.server_addr.clone())?
     .run();
     println!("Server running at http://{}/", config.server_addr);
