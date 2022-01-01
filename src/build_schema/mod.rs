@@ -72,6 +72,11 @@ pub async fn create(pool: &Pool) -> ServerSidePoggers {
             .values()
             .filter(|att| att.class_id == class.id)
         {
+            if let Some(unique) = field.is_unique {
+                if unique {
+                    println!("{:?}", 0);
+                }
+            }
             //convert the data type to the corresponding data type
             let mut closure_index = match &*type_map.get(&field.type_id).unwrap().name {
                 "int4" | "int2" | "smallint" | "bigint" => POG_INT,
@@ -230,7 +235,7 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
     .concat()
 }
 
-#[allow(dead_code)]
+#[actix_web::main]
 pub async fn create_with_pool() -> ServerSidePoggers {
     let config: Config = Config {
         user: Some(String::from("postgres")),

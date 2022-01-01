@@ -30,6 +30,10 @@ for query in queries:
             x.append(rps)
             y.append(duration_to_seconds(
                 data[query[0] + ' on ' + tech][str(rps)]))
+            print(query[0] + ' on ' + tech +  '' + str(rps))
+            print(duration_to_seconds( data[query[0] + ' on ' + tech][str(rps)]))
         plt.plot(x, y, label=tech)
-        
+    plt.legend()
+    plt.savefig(query[0])
+    plt.clf()
 
