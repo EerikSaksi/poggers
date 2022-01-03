@@ -1,14 +1,14 @@
 use super::*;
 use crate::build_schema::create;
+use deadpool_postgres::tokio_postgres::NoTls;
 use deadpool_postgres::{Client, Config, Pool};
 use dotenv::dotenv;
 use serde_json::{Error, Value};
-use std::collections::HashSet;
-use tokio_postgres::NoTls; // 0.19.2, features = ["with-chrono-0_4"]
+use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
 async fn get_client() -> Client {
     dotenv().ok();
     let config = crate::config::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(NoTls).unwrap();
+    let pool = config.pg.create_pool(None, NoTls).unwrap();
     pool.get().await.unwrap()
 }
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
@@ -31,7 +31,7 @@ async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
 async fn mutation_test_fixtures() -> Pool {
     dotenv().ok();
     let config = crate::config::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(NoTls).unwrap();
+    let pool = config.pg.create_pool(None, NoTls).unwrap();
     let client = pool.get().await.unwrap();
 
     client
@@ -759,6 +759,6 @@ pub async fn create_with_pool() -> ServerSidePoggers {
         dbname: Some(String::from("pets")),
         ..Default::default()
     };
-    let pool = config.create_pool(NoTls).unwrap();
+    let pool = config.create_pool(None, NoTls).unwrap();
     create(&pool).await
 }

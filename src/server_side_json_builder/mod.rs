@@ -7,7 +7,7 @@ pub use self::generate_sql::ServerSidePoggers;
 use crate::server_side_json_builder::generate_sql::JsonBuilderContext;
 use chrono::{DateTime, Utc};
 use std::ops::Range;
-use tokio_postgres::Row;
+use deadpool_postgres::tokio_postgres::Row;
 pub mod generate_sql;
 use parent_null_checker::ParentPkChecker;
 

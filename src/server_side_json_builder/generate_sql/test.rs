@@ -2,11 +2,11 @@ use crate::{
     build_schema::create, server_side_json_builder::generate_sql::JsonBuilderContext,
     server_side_json_builder::ServerSidePoggers,
 };
-use tokio_postgres::NoTls;
+use deadpool_postgres::tokio_postgres::NoTls;
 
 async fn create_with_pool() -> ServerSidePoggers {
     let config = crate::config::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(NoTls).unwrap();
+    let pool = config.pg.create_pool(None, NoTls).unwrap();
     create(&pool).await
 }
 #[tokio::test]

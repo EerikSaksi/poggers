@@ -69,13 +69,16 @@ mod handlers {
 use actix_web::{web, App, HttpServer};
 use dotenv::dotenv;
 use handlers::poggers;
-use tokio_postgres::NoTls;
-
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use postgres_openssl::MakeTlsConnector;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
     let config = crate::config::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(NoTls).unwrap();
+    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    builder.set_verify(SslVerifyMode::NONE);
+    let connector = MakeTlsConnector::new(builder.build());
+    let pool = config.pg.create_pool(None, connector).unwrap();
     let pogg = build_schema::create(&pool).await;
     let server = HttpServer::new(move || {
         App::new()

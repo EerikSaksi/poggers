@@ -1,6 +1,6 @@
 mod field_to_operation;
 mod postgraphile_introspection;
-use tokio_postgres::NoTls;
+use deadpool_postgres::tokio_postgres::NoTls;
 
 #[cfg(test)]
 #[path = "./test.rs"]

@@ -1,5 +1,5 @@
 use std::ops::Range;
-use tokio_postgres::Row;
+use deadpool_postgres::tokio_postgres::Row;
 
 pub trait ParentPkChecker {
     fn same_parent(&self, row: &Row, parent_pks_range: &Range<usize>, parent_pks: &[i32]) -> bool;
