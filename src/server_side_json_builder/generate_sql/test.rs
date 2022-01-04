@@ -5,11 +5,11 @@ use crate::{
 use deadpool_postgres::tokio_postgres::NoTls;
 
 async fn create_with_pool() -> ServerSidePoggers {
-    let config = crate::config::Config::from_env().unwrap();
+    let config = crate::Config::from_env().unwrap();
     let pool = config.pg.create_pool(None, NoTls).unwrap();
     create(&pool).await
 }
-#[tokio::test]
+#[actix_rt::test]
 async fn column_offsets() {
     let pogg = create_with_pool().await;
     let query = "
@@ -35,7 +35,7 @@ async fn column_offsets() {
     assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_invalid_root_query() {
     let pogg = create_with_pool().await;
     let query = "
@@ -47,7 +47,7 @@ async fn test_invalid_root_query() {
     let err = pogg.build_root(query).expect_err("Wasn't Err");
     assert_eq!(err.as_str(), "No operation named \"commentos\"");
 }
-#[tokio::test]
+#[actix_rt::test]
 async fn test_invalid_syntax() {
     let pogg = create_with_pool().await;
     let query = "
@@ -63,7 +63,7 @@ async fn test_invalid_syntax() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_invalid_subchild() {
     let pogg = create_with_pool().await;
     let query = "
@@ -80,7 +80,7 @@ async fn test_invalid_subchild() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_error_propagation() {
     let pogg = create_with_pool().await;
     let query = "
@@ -105,7 +105,7 @@ async fn test_error_propagation() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_no_root() {
     let pogg = create_with_pool().await;
     let query = "
@@ -118,7 +118,7 @@ async fn test_no_root() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn delete_mutation() {
     let pogg = create_with_pool().await;
     let gql_query = "
@@ -132,7 +132,7 @@ async fn delete_mutation() {
     assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM mutation_test AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS __t0_pk0__, __table_0__.nullable_float AS __t0_c0__ FROM __table_0__");
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn handle_named_operation() {
     let pogg = create_with_pool().await;
     let gql_query = "

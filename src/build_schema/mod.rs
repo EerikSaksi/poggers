@@ -245,6 +245,6 @@ pub async fn create_with_pool() -> ServerSidePoggers {
         dbname: Some(String::from("pets")),
         ..Default::default()
     };
-    let pool = config.create_pool(NoTls).unwrap();
+    let pool = config.create_pool(None, NoTls).unwrap();
     create(&pool).await
 }

@@ -156,13 +156,13 @@ impl PostgresEntity {
 #[cfg(test)]
 mod test {
     use super::*;
+    use deadpool_postgres::tokio_postgres::NoTls;
     use query::introspection_query_data;
-    use tokio_postgres::NoTls;
 
-    #[tokio::test]
+    #[actix_rt::test]
     async fn test_attributes_present() {
-        let config = crate::config::Config::from_env().unwrap();
-        let pool = config.pg.create_pool(NoTls).unwrap();
+        let config = crate::Config::from_env().unwrap();
+        let pool = config.pg.create_pool(None, NoTls).unwrap();
         let IntrospectionOutput {
             type_map: _,
             class_map,
@@ -186,10 +186,10 @@ mod test {
     //fn types_present() {
     //    let type_map = introspection_query_data().type_map;
     //}
-    #[tokio::test]
+    #[actix_rt::test]
     async fn constraints_present() {
-        let config = crate::config::Config::from_env().unwrap();
-        let pool = config.pg.create_pool(NoTls).unwrap();
+        let config = crate::Config::from_env().unwrap();
+        let pool = config.pg.create_pool(None, NoTls).unwrap();
         let IntrospectionOutput {
             type_map: _,
             class_map,
@@ -212,10 +212,10 @@ mod test {
         assert_eq!(count, 3);
     }
 
-    #[tokio::test]
+    #[actix_rt::test]
     async fn all_tables_present() {
-        let config = crate::config::Config::from_env().unwrap();
-        let pool = config.pg.create_pool(NoTls).unwrap();
+        let config = crate::Config::from_env().unwrap();
+        let pool = config.pg.create_pool(None, NoTls).unwrap();
         let class_map = introspection_query_data(&pool).await.class_map;
         let expected_names = [
             "badge",

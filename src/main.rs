@@ -1,22 +1,20 @@
 mod build_schema;
 mod server_side_json_builder;
 
-mod config {
-    pub use ::config::ConfigError;
-    use serde::Deserialize;
-    #[derive(Deserialize, Debug)]
-    pub struct Config {
-        pub server_addr: String,
-        pub pg: deadpool_postgres::Config,
-    }
-    impl Config {
-        pub fn from_env() -> Result<Self, ConfigError> {
-            let mut cfg = ::config::Config::new();
-            cfg.merge(::config::Environment::new())?;
-            cfg.try_into()
-        }
+#[derive(Debug, serde::Deserialize)]
+struct Config {
+    pg: deadpool_postgres::Config,
+    server_addr: String,
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self, config::ConfigError> {
+        let mut cfg = config::Config::new();
+        cfg.merge(config::Environment::new().separator("."))?;
+        cfg.try_into()
     }
 }
+
 mod models {
     use serde::{Deserialize, Serialize};
 
@@ -67,6 +65,7 @@ mod handlers {
 }
 
 use actix_web::{web, App, HttpServer};
+use deadpool_postgres::Runtime;
 use dotenv::dotenv;
 use handlers::poggers;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
@@ -74,11 +73,14 @@ use postgres_openssl::MakeTlsConnector;
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
-    let config = crate::config::Config::from_env().unwrap();
+    let config = crate::Config::from_env().unwrap();
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
     let connector = MakeTlsConnector::new(builder.build());
-    let pool = config.pg.create_pool(None, connector).unwrap();
+    let pool = config
+        .pg
+        .create_pool(Some(Runtime::Tokio1), connector)
+        .unwrap();
     let pogg = build_schema::create(&pool).await;
     let server = HttpServer::new(move || {
         App::new()

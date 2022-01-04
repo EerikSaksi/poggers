@@ -1,6 +1,6 @@
 use super::*;
 use petgraph::graph::Edge;
-use tokio_postgres::NoTls;
+use deadpool_postgres::tokio_postgres::NoTls;
 fn assert_some_edge_eq(
     field_names: (&str, &str),
     incoming_node_cols: Vec<&str>,
@@ -40,12 +40,12 @@ fn assert_some_edge_eq(
     );
 }
 async fn create_with_pool() -> ServerSidePoggers {
-    let config = crate::config::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(NoTls).unwrap();
+    let config = crate::Config::from_env().unwrap();
+    let pool = config.pg.create_pool(None, NoTls).unwrap();
     create(&pool).await
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_one_to_many() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -66,7 +66,7 @@ async fn test_one_to_many() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_composite_primary_keys() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -92,7 +92,7 @@ async fn test_composite_primary_keys() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn check_id_primary_keys() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -104,7 +104,7 @@ async fn check_id_primary_keys() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn foreign_primary_key() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -121,7 +121,7 @@ async fn foreign_primary_key() {
     assert_eq!(g[edge].incoming_node_cols, vec!["post_id"]);
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn field_to_operation() {
     let pogg = create_with_pool().await;
     let field_to_operation = pogg.field_to_operation;
@@ -135,7 +135,7 @@ async fn field_to_operation() {
     )
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn post_has_owneruserid() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -147,7 +147,7 @@ async fn post_has_owneruserid() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn post_has_correct_num_fields() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -160,7 +160,7 @@ async fn post_has_correct_num_fields() {
     );
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn check_nullability() {
     let pogg = create_with_pool().await;
     let g = pogg.g;
@@ -190,7 +190,7 @@ async fn check_nullability() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_delete_mutation_creation() {
     let pogg = create_with_pool().await;
     let field_to_operation = pogg.field_to_operation;
@@ -201,7 +201,7 @@ async fn test_delete_mutation_creation() {
     )
 }
 
-//#[tokio::test]
+//#[actix_rt::test]
 //async fn test_by_fk() {
 //    let g = create().g;
 //    let post_node = g

@@ -7,7 +7,7 @@ use serde_json::{Error, Value};
 use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
 async fn get_client() -> Client {
     dotenv().ok();
-    let config = crate::config::Config::from_env().unwrap();
+    let config = crate::Config::from_env().unwrap();
     let pool = config.pg.create_pool(None, NoTls).unwrap();
     pool.get().await.unwrap()
 }
@@ -30,7 +30,7 @@ async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
 
 async fn mutation_test_fixtures() -> Pool {
     dotenv().ok();
-    let config = crate::config::Config::from_env().unwrap();
+    let config = crate::Config::from_env().unwrap();
     let pool = config.pg.create_pool(None, NoTls).unwrap();
     let client = pool.get().await.unwrap();
 
@@ -77,7 +77,7 @@ async fn mutation_test_fixtures() -> Pool {
     pool
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_random_user() {
     let gql_query = "
         query{
@@ -152,7 +152,7 @@ async fn test_random_user() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn all_posts_fetched() {
     let gql_query = "
         query{
@@ -188,7 +188,7 @@ async fn all_posts_fetched() {
     assert_eq!(num_posts, 17575);
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn all_posts_belong_to_parent() {
     let gql_query = "
         query {
@@ -217,7 +217,7 @@ async fn all_posts_belong_to_parent() {
     });
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn non_nullable_string_fields() {
     let gql_query = "
         query {
@@ -236,7 +236,7 @@ async fn non_nullable_string_fields() {
     });
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn three_way_join() {
     let gql_query = "
         query {
@@ -296,7 +296,7 @@ async fn three_way_join() {
     assert_eq!(num_comments, 21630);
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn join_foreign_field_not_last() {
     let gql_query = "
         query {
@@ -322,7 +322,7 @@ async fn join_foreign_field_not_last() {
     })
 }
 
-//#[tokio::test]
+//#[actix_rt::test]
 //async fn two_children_one_parent() {
 //    let gql_query = "
 //        query{
@@ -355,7 +355,7 @@ async fn join_foreign_field_not_last() {
 //    }
 //}
 
-#[tokio::test]
+#[actix_rt::test]
 async fn weird_types_and_nullability() {
     let gql_query = "
         query{
@@ -370,7 +370,7 @@ async fn weird_types_and_nullability() {
     convert_gql(gql_query, false).await;
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn child_to_parent() {
     let gql_query = "
         query{
@@ -401,7 +401,7 @@ async fn child_to_parent() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn composite_join() {
     let gql_query = "
             query{
@@ -430,7 +430,7 @@ async fn composite_join() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn with_argument() {
     let gql_query = "
         query{
@@ -445,7 +445,7 @@ async fn with_argument() {
     p.get("siteUser").unwrap().as_object().unwrap();
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn invalid_id() {
     let gql_query = "
         query{
@@ -462,7 +462,7 @@ async fn invalid_id() {
 
 //we add limit 0 to this query to ensure an empty query set, and check if we still return an empty
 //array
-#[tokio::test]
+#[actix_rt::test]
 async fn test_empty_many_query() {
     let gql_query = "
         query{
@@ -494,7 +494,7 @@ async fn test_empty_many_query() {
     assert_eq!(users_len, 0);
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn test_select_one_compound() {
     let gql_query = "
         query{
@@ -511,7 +511,7 @@ async fn test_select_one_compound() {
 }
 
 //kinda janky but these need to run sequentially
-#[tokio::test]
+#[actix_rt::test]
 async fn mutation_tests() {
     let pool = mutation_test_fixtures().await;
     let gql_query = "
@@ -725,7 +725,7 @@ async fn mutation_tests() {
     }
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn many_where_clause() {
     let gql_query = "
         query{
@@ -738,7 +738,7 @@ async fn many_where_clause() {
     assert_eq!(p.get("posts").unwrap().as_array().unwrap().len(), 11);
 }
 
-#[tokio::test]
+#[actix_rt::test]
 async fn where_string_escape() {
     let gql_query = "
         query{
