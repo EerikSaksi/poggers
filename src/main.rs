@@ -64,32 +64,22 @@ mod handlers {
     }
 }
 
-use actix_web::{web, App, HttpServer};
-use deadpool_postgres::Runtime;
-use dotenv::dotenv;
-use handlers::poggers;
-use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use deadpool_postgres::tokio_postgres;
+use openssl::ssl::{SslConnector, SslMethod};
 use postgres_openssl::MakeTlsConnector;
-#[actix_web::main]
+use std::str::FromStr;
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
-    dotenv().ok();
-    let config = crate::Config::from_env().unwrap();
-    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    builder.set_verify(SslVerifyMode::NONE);
-    let connector = MakeTlsConnector::new(builder.build());
-    let pool = config
-        .pg
-        .create_pool(Some(Runtime::Tokio1), connector)
-        .unwrap();
-    let pogg = build_schema::create(&pool).await;
-    let server = HttpServer::new(move || {
-        App::new()
-            .data(pool.clone())
-            .data(pogg.clone())
-            .service(web::resource("/graphql").route(web::post().to(poggers)))
-    })
-    .bind(config.server_addr.clone())?
-    .run();
-    println!("Server running at http://{}/", config.server_addr);
-    server.await
+    let mut config = tokio_postgres::Config::from_str("postgres://tcnsakookamdap:09cc3c55a51ded8af63d9d97de356823add4b8991ad92b2349d5e58e723e4685@ec2-54-158-232-223.compute-1.amazonaws.com:5432/d287k6sulohu6l?sslmode=require").unwrap();
+    config.ssl_mode(tokio_postgres::config::SslMode::Disable);
+    let ssl_connector = SslConnector::builder(SslMethod::tls()).unwrap().build();
+    ssl_connector
+        .configure()
+        .unwrap()
+        .set_verify_hostname(false);
+    let tls_connector = postgres_openssl::MakeTlsConnector::new(ssl_connector);
+    let manager = deadpool_postgres::Manager::new(config, tls_connector);
+    let pool = deadpool_postgres::Pool::builder(manager).build().unwrap();
+    let client = pool.get().await.unwrap();
+    Ok(())
 }

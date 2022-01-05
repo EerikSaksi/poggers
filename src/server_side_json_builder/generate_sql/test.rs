@@ -6,7 +6,7 @@ use deadpool_postgres::tokio_postgres::NoTls;
 
 async fn create_with_pool() -> ServerSidePoggers {
     let config = crate::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(None, NoTls).unwrap();
+    let pool = config.pg.create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls).unwrap();
     create(&pool).await
 }
 #[actix_rt::test]

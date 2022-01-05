@@ -1,6 +1,6 @@
 use super::*;
-use petgraph::graph::Edge;
 use deadpool_postgres::tokio_postgres::NoTls;
+use petgraph::graph::Edge;
 fn assert_some_edge_eq(
     field_names: (&str, &str),
     incoming_node_cols: Vec<&str>,
@@ -41,7 +41,10 @@ fn assert_some_edge_eq(
 }
 async fn create_with_pool() -> ServerSidePoggers {
     let config = crate::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(None, NoTls).unwrap();
+    let pool = config
+        .pg
+        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+        .unwrap();
     create(&pool).await
 }
 

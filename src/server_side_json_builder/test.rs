@@ -8,7 +8,10 @@ use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
 async fn get_client() -> Client {
     dotenv().ok();
     let config = crate::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(None, NoTls).unwrap();
+    let pool = config
+        .pg
+        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+        .unwrap();
     pool.get().await.unwrap()
 }
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
@@ -31,7 +34,10 @@ async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
 async fn mutation_test_fixtures() -> Pool {
     dotenv().ok();
     let config = crate::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(None, NoTls).unwrap();
+    let pool = config
+        .pg
+        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+        .unwrap();
     let client = pool.get().await.unwrap();
 
     client
@@ -759,6 +765,8 @@ pub async fn create_with_pool() -> ServerSidePoggers {
         dbname: Some(String::from("pets")),
         ..Default::default()
     };
-    let pool = config.create_pool(None, NoTls).unwrap();
+    let pool = config
+        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+        .unwrap();
     create(&pool).await
 }

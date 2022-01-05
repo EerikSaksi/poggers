@@ -162,7 +162,10 @@ mod test {
     #[actix_rt::test]
     async fn test_attributes_present() {
         let config = crate::Config::from_env().unwrap();
-        let pool = config.pg.create_pool(None, NoTls).unwrap();
+        let pool = config
+            .pg
+            .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+            .unwrap();
         let IntrospectionOutput {
             type_map: _,
             class_map,
@@ -189,7 +192,10 @@ mod test {
     #[actix_rt::test]
     async fn constraints_present() {
         let config = crate::Config::from_env().unwrap();
-        let pool = config.pg.create_pool(None, NoTls).unwrap();
+        let pool = config
+            .pg
+            .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+            .unwrap();
         let IntrospectionOutput {
             type_map: _,
             class_map,
@@ -215,7 +221,10 @@ mod test {
     #[actix_rt::test]
     async fn all_tables_present() {
         let config = crate::Config::from_env().unwrap();
-        let pool = config.pg.create_pool(None, NoTls).unwrap();
+        let pool = config
+            .pg
+            .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
+            .unwrap();
         let class_map = introspection_query_data(&pool).await.class_map;
         let expected_names = [
             "badge",
