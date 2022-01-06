@@ -70,13 +70,12 @@ use postgres_openssl::MakeTlsConnector;
 use std::str::FromStr;
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    //let mut config = tokio_postgres::Config::from_str().unwrap();
+    let mut config = tokio_postgres::Config::from_str("postgres://tcnsakookamdap:09cc3c55a51ded8af63d9d97de356823add4b8991ad92b2349d5e58e723e4685@ec2-54-158-232-223.compute-1.amazonaws.com:5432/d287k6sulohu6l?sslmode=require").unwrap();
     config.ssl_mode(tokio_postgres::config::SslMode::Disable);
-    let mut ssl_builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    ssl_builder.set_verify(SslVerifyMode::NONE);
-    let tls_connector = postgres_openssl::MakeTlsConnector::new(ssl_builder.build());
-    let manager = deadpool_postgres::Manager::new(config, tls_connector);
-    let pool = deadpool_postgres::Pool::builder(manager).build().unwrap();
-    let client = pool.get().await.unwrap();
+    let ssl_builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    //ssl_builder.set_verify(SslVerifyMode::PEER);
+    let ssl = ssl_builder.build();
+    ssl.configure().unwrap().set_verify_hostname(false);
+    let a = config.connect(MakeTlsConnector::new(ssl)).await.unwrap();
     Ok(())
 }
