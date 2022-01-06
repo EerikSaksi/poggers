@@ -71,12 +71,12 @@ use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
 use std::str::FromStr;
 
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
     let env_config = crate::Config::from_env().unwrap();
-    let config = tokio_postgres::Config::from_str(&env_config.database_url).unwrap();
-
+    let config =
+        deadpool_postgres::tokio_postgres::Config::from_str(&env_config.database_url).unwrap();
     // Create Ssl postgres connector without verification as required to connect to Heroku.
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
