@@ -3,7 +3,7 @@ mod server_side_json_builder;
 
 #[derive(Debug, serde::Deserialize)]
 struct Config {
-    pg: deadpool_postgres::Config,
+    database_url: String,
     server_addr: String,
 }
 
@@ -64,21 +64,33 @@ mod handlers {
     }
 }
 
+use actix_web::{web, App, HttpServer};
+use dotenv::dotenv;
+use handlers::poggers;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
 use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let mut config = tokio_postgres::Config::from_str("postgres://tcnsakookamdap:09cc3c55a51ded8af63d9d97de356823add4b8991ad92b2349d5e58e723e4685@ec2-54-158-232-223.compute-1.amazonaws.com:5432/d287k6sulohu6l?sslmode=require").unwrap();
+    dotenv().ok();
+    let env_config = crate::Config::from_env().unwrap();
+    let config = tokio_postgres::Config::from_str(&env_config.database_url).unwrap();
+
     // Create Ssl postgres connector without verification as required to connect to Heroku.
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
     let manager = deadpool_postgres::Manager::new(config, MakeTlsConnector::new(builder.build()));
     let pool = deadpool_postgres::Pool::builder(manager).build().unwrap();
-    let client = pool.get().await.unwrap();
-    let res = client.query("select count(*) from tracks", &[]).await.unwrap();
-    let res: i64 = res.get(0).unwrap().get(0);
-    println!("{:?}", res);
-    Ok(())
+    let pogg = build_schema::create(&pool).await;
+    let server = HttpServer::new(move || {
+        App::new()
+            .data(pool.clone())
+            .data(pogg.clone())
+            .service(web::resource("/graphql").route(web::post().to(poggers)))
+    })
+    .bind(env_config.server_addr.clone())?
+    .run();
+    println!("Server running at http://{}/", env_config.server_addr);
+    server.await
 }
