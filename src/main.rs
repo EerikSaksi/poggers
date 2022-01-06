@@ -74,9 +74,11 @@ async fn main() -> std::io::Result<()> {
     // Create Ssl postgres connector without verification as required to connect to Heroku.
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
-    let a = config
-        .connect(MakeTlsConnector::new(builder.build()))
-        .await
-        .unwrap();
+    let manager = deadpool_postgres::Manager::new(config, MakeTlsConnector::new(builder.build()));
+    let pool = deadpool_postgres::Pool::builder(manager).build().unwrap();
+    let client = pool.get().await.unwrap();
+    let res = client.query("select count(*) from tracks", &[]).await.unwrap();
+    let res: i64 = res.get(0).unwrap().get(0);
+    println!("{:?}", res);
     Ok(())
 }
