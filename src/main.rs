@@ -64,18 +64,19 @@ mod handlers {
     }
 }
 
-use deadpool_postgres::tokio_postgres;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres_openssl::MakeTlsConnector;
 use std::str::FromStr;
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let mut config = tokio_postgres::Config::from_str("postgres://tcnsakookamdap:09cc3c55a51ded8af63d9d97de356823add4b8991ad92b2349d5e58e723e4685@ec2-54-158-232-223.compute-1.amazonaws.com:5432/d287k6sulohu6l?sslmode=require").unwrap();
-    config.ssl_mode(tokio_postgres::config::SslMode::Disable);
-    let ssl_builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    //ssl_builder.set_verify(SslVerifyMode::PEER);
-    let ssl = ssl_builder.build();
-    ssl.configure().unwrap().set_verify_hostname(false);
-    let a = config.connect(MakeTlsConnector::new(ssl)).await.unwrap();
+    // Create Ssl postgres connector without verification as required to connect to Heroku.
+    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    builder.set_verify(SslVerifyMode::NONE);
+    let a = config
+        .connect(MakeTlsConnector::new(builder.build()))
+        .await
+        .unwrap();
     Ok(())
 }
