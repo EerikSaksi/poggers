@@ -77,11 +77,12 @@ async fn main() -> std::io::Result<()> {
     let env_config = crate::Config::from_env().unwrap();
     let config =
         deadpool_postgres::tokio_postgres::Config::from_str(&env_config.database_url).unwrap();
+    
     // Create Ssl postgres connector without verification as required to connect to Heroku.
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
     let manager = deadpool_postgres::Manager::new(config, MakeTlsConnector::new(builder.build()));
-    let pool = deadpool_postgres::Pool::builder(manager).build().unwrap();
+    let pool = deadpool_postgres::Pool::builder(manager).max_size(20).build().unwrap();
     let pogg = build_schema::create(&pool).await;
     let server = HttpServer::new(move || {
         App::new()
