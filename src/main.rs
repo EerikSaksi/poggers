@@ -5,7 +5,7 @@ mod server_side_json_builder;
 struct Config {
     database_url: String,
     server_addr: String,
-    pool_size: u32,
+    pool_size: usize,
 }
 
 impl Config {
