@@ -5,6 +5,7 @@ mod server_side_json_builder;
 struct Config {
     database_url: String,
     server_addr: String,
+    pool_size: u32,
 }
 
 impl Config {
@@ -75,6 +76,7 @@ use std::str::FromStr;
 async fn main() -> std::io::Result<()> {
     dotenv().ok();
     let env_config = crate::Config::from_env().unwrap();
+    println!("{}", &env_config.database_url);
     let config =
         deadpool_postgres::tokio_postgres::Config::from_str(&env_config.database_url).unwrap();
     
@@ -82,7 +84,7 @@ async fn main() -> std::io::Result<()> {
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
     let manager = deadpool_postgres::Manager::new(config, MakeTlsConnector::new(builder.build()));
-    let pool = deadpool_postgres::Pool::builder(manager).max_size(20).build().unwrap();
+    let pool = deadpool_postgres::Pool::builder(manager).max_size(env_config.pool_size).build().unwrap();
     let pogg = build_schema::create(&pool).await;
     let server = HttpServer::new(move || {
         App::new()
