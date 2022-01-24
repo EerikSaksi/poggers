@@ -1609,4 +1609,67 @@ async fn asynchronous_test() {
 Although this seems small over 30 or so tests it became annoying
 
 
-When I ran the tests, it seemed like my server wasn't actually processing the data. Performance never dipped below a millisecond, even for requests which took 10ms+ when they were run manually. After lots of investigation. After lots of investigation I found out that the benchmarking tool I was using (Hasura's graphql-bench) sends JSON like data ("query": "query {albums {...}}") but without content-type: application/json. This means that all Hasura's requests were simply bad requests and were all erroring, which lead to the impossible latenency (sending errors is faster than sending database data).
+When I ran the tests, it seemed like my server wasn't actually processing the data. Performance never dipped below a millisecond, even for requests which took 10ms+ when they were run manually. After lots of investigation. After lots of investigation I found out that the benchmarking tool I was using (Hasura's graphql-bench) sends JSON like data ("query": "query {albums {...}}") but without content-type: application/json. This means that all Hasura's requests were simply bad requests and were all erroring, which lead to the impossible latenency (sending errors is faster than sending database data). I had assumed that by default Actix would log invalid requests, but this was actually something you had to turn on. If you send an invalid payload, Actix also doesn't log any errors.
+
+I had to dockerize my software. This was pretty easy: 
+  * The dockerfile simply builds the project and points to the optimized binary. 
+  * Environment variables are simply passed using -e e.g SERVER_ADDR=0.0.0.0:8080
+
+Postgraphile and Hasura were already setup properly. This benchmarking repository was created by Hasura. It uses the Chinook database, which contains info about artists and stuff. It is supposed to represent a realistic database to give insight into real-world performance
+
+I had to create a setup script which handles various arguments (such as init, nuke and start) as well as provide the analogous queries as the competitors (which would lead to the same data being fetched, but with e.g different key names). Here are three queries which effectively fetch the same thing.
+
+
+Hasura
+	query {
+		artists(where: { id: 3 }) {
+			id
+			name
+		}
+	}
+
+poggers
+	query artistByArtistId {
+		artists(where: { id: 3 }) {
+			id
+			name
+		}
+	}
+
+postgraphile
+	query artistByArtistId {
+		allArtists(condition: { id: 3 }) {
+			nodes {
+				id
+				name
+			}
+		}
+	}
+
+I setup the benchmarks to simply be max requests over a period of time. I thought this would be the best way to measure the capacity.
+
+The benchmark script simply runs like this 
+
+	kill all docker containers 
+	start database 
+	start poggers
+	run benchmarks using poggerss config (containing queries and endpoint)
+
+	kill all docker containers 
+	start database 
+	start hasura
+	run benchmarks using hasuras config (containing queries and endpoint)
+
+	kill all docker containers 
+	start database 
+	start postgraphile
+	run benchmarks using postgraphiles config (containing queries and endpoint)
+
+	python3 data_analysis results/
+
+Realisticly, you don't host the database and server on the same computer. This is to make your infrastructure more scalable by preventing resource contention and 
+
+By default there are no restrictions to the database and server's containers. I wanted to simulate a distributed environment (two computers, one hosting the database, another hosting the server). I did this by renting a database on Heroku. I was able to get it to work with my software as well as Postgraphile, but I could not get it to work with Hasura despite weeks of trying. 
+
+I decided to instead emulate this. I did this by passing command line arguments to the docker run command for all servers and database. The --cpus arguments lets you specify the number of CPU cores that this image can use, and -m specifies the amount of memory that it's allowed to use. I effectively split my computer into two by passing --cpus as 8 (my laptop has 16 cores) and -m as 8gb (I have 16 gb of RAM). This made my software even faster than the competitors, as they heavily rely on the database for processing the data. This opened an interesting avenue of investigation, what kind of performance ratios did the database/server require for each program. For instance, my software may perform worse when the server is starved for resources. Servers are easier to scale than databases so this wouldn't be huge loss anyways
+
