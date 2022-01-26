@@ -5,7 +5,7 @@ use serde_json::{Error, Value};
 use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
 
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
-    let (pogg, client) = get_pogg_and_client();
+    let (pogg, client) = get_pogg_and_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     println!("\n{}\n", sql);
@@ -21,7 +21,7 @@ async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
 }
 
 async fn mutation_test_fixtures() -> Client {
-    let (pogg, client) = get_pogg_and_client();
+    let (_, client) = get_pogg_and_client().await;
     client
         .query("delete from mutation_test", &[])
         .await
@@ -246,7 +246,21 @@ async fn three_way_join() {
             }
           }
         }";
-    let p = convert_gql(gql_query, false).await;
+
+    let (client, _) = deadpool_postgres::tokio_postgres::connect(
+        "postgres://postgres:postgres@127.0.0.1:5432/chinook",
+        deadpool_postgres::tokio_postgres::NoTls,
+    )
+    .await
+    .unwrap();
+    let pogg = crate::build_schema::create(&client).await;
+    let ctx = pogg.build_root(gql_query).unwrap();
+    let sql = &ctx.sql_query;
+    println!("\n{}\n", sql);
+    let rows = client.query(&*[sql, ""].concat(), &[]).await.unwrap();
+    let res = JsonBuilder::new(ctx).convert(rows);
+    let p: Value = serde_json::from_str(&*res).unwrap();
+
     let mut num_users = 0;
     let mut num_posts = 0;
     let mut num_comments = 0;
@@ -462,7 +476,7 @@ async fn test_empty_many_query() {
             age
           }
         }";
-    let (pogg, client) = get_pogg_and_client();
+    let (pogg, client) = get_pogg_and_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     let rows = client

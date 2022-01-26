@@ -4,7 +4,7 @@ use crate::{
 
 #[actix_rt::test]
 async fn column_offsets() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let query = "
         query{
           siteUsers{
@@ -30,7 +30,7 @@ async fn column_offsets() {
 
 #[actix_rt::test]
 async fn test_invalid_root_query() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let query = "
         query{
           commentos {
@@ -42,7 +42,7 @@ async fn test_invalid_root_query() {
 }
 #[actix_rt::test]
 async fn test_invalid_syntax() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let query = "
         query{
           comments {
@@ -58,7 +58,7 @@ async fn test_invalid_syntax() {
 
 #[actix_rt::test]
 async fn test_invalid_subchild() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let query = "
         query{
           posts {
@@ -75,7 +75,7 @@ async fn test_invalid_subchild() {
 
 #[actix_rt::test]
 async fn test_error_propagation() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let query = "
         query{
             siteUsers{
@@ -100,7 +100,7 @@ async fn test_error_propagation() {
 
 #[actix_rt::test]
 async fn test_no_root() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let query = "
         query{
         }";
@@ -113,7 +113,7 @@ async fn test_no_root() {
 
 #[actix_rt::test]
 async fn delete_mutation() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let gql_query = "
         mutation{
           deleteMutationTest(id: 1){
@@ -127,7 +127,7 @@ async fn delete_mutation() {
 
 #[actix_rt::test]
 async fn handle_named_operation() {
-    let (pogg, _) = get_pogg_and_client();
+    let (pogg, _) = get_pogg_and_client().await;
     let gql_query = "
         query named_operation {
             siteUsers{

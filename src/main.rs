@@ -91,8 +91,8 @@ async fn main() -> std::io::Result<()> {
     let pogg = build_schema::create(&pool.get().await.unwrap()).await;
     let server = HttpServer::new(move || {
         App::new()
-            .data(pool.clone())
-            .data(pogg.clone())
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(pogg.clone()))
             .service(web::resource("/graphql").route(web::post().to(poggers)))
     })
     .bind(env_config.server_addr.clone())?

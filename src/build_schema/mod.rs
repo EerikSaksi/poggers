@@ -234,14 +234,14 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
     .concat()
 }
 
-#[actix_web::main]
-pub async fn get_pogg_and_client() -> (ServerSidePoggers, deadpool_postgres::tokio_postgres::Client)
-{
+#[allow(dead_code)]
+pub async fn get_pogg_and_client() -> (ServerSidePoggers, Client) {
     let (client, _) = deadpool_postgres::tokio_postgres::connect(
         "postgres://postgres:postgres@127.0.0.1:5432/chinook",
         deadpool_postgres::tokio_postgres::NoTls,
     )
     .await
     .unwrap();
-    (create(&client).await, client)
+    let pogg = create(&client).await;
+    (pogg, client)
 }

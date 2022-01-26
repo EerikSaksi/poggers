@@ -156,22 +156,18 @@ impl PostgresEntity {
 #[cfg(test)]
 mod test {
     use super::*;
-    use deadpool_postgres::tokio_postgres::NoTls;
+    use crate::build_schema::get_pogg_and_client;
     use query::introspection_query_data;
 
     #[actix_rt::test]
     async fn test_attributes_present() {
-        let config = crate::Config::from_env().unwrap();
-        let pool = config
-            .pg
-            .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-            .unwrap();
+        let (_, client) = get_pogg_and_client().await;
         let IntrospectionOutput {
             type_map: _,
             class_map,
             attribute_map,
             constraint_map: _,
-        } = introspection_query_data(&pool).await;
+        } = introspection_query_data(&client).await;
         let post_class = class_map
             .values()
             .find(|class| class.name == "post")
@@ -191,17 +187,13 @@ mod test {
     //}
     #[actix_rt::test]
     async fn constraints_present() {
-        let config = crate::Config::from_env().unwrap();
-        let pool = config
-            .pg
-            .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-            .unwrap();
+        let (_, client) = get_pogg_and_client().await;
         let IntrospectionOutput {
             type_map: _,
             class_map,
             attribute_map: _,
             constraint_map,
-        } = introspection_query_data(&pool).await;
+        } = introspection_query_data(&client).await;
         let comment_class = class_map
             .values()
             .find(|class| class.name == "comment")
@@ -220,12 +212,8 @@ mod test {
 
     #[actix_rt::test]
     async fn all_tables_present() {
-        let config = crate::Config::from_env().unwrap();
-        let pool = config
-            .pg
-            .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-            .unwrap();
-        let class_map = introspection_query_data(&pool).await.class_map;
+        let (_, client) = get_pogg_and_client().await;
+        let class_map = introspection_query_data(&client).await.class_map;
         let expected_names = [
             "badge",
             "child_table",
