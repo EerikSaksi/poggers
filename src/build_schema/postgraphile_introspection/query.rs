@@ -1,17 +1,15 @@
 use crate::build_schema::postgraphile_introspection::{ClassData, PostgresEntity, AttributeData, ConstraintData, TypeData};
 use serde_json::Value;
 use std::collections::HashMap;
-use deadpool_postgres::{Client, Pool};
+use deadpool_postgres::tokio_postgres::Client;
 pub struct IntrospectionOutput {
     pub class_map: HashMap<String, ClassData>,
     pub constraint_map: HashMap<String, ConstraintData>,
     pub attribute_map: HashMap<(String, i32), AttributeData>,
     pub type_map: HashMap<String, TypeData>
 }
-pub async fn introspection_query_data(pool: &Pool) -> IntrospectionOutput {
-    let client: Client = pool.get().await.unwrap();
+pub async fn introspection_query_data(client: &Client) -> IntrospectionOutput {
     let rows = client.query(&*make_instrospection_query(999999999, false, false), &[]).await.unwrap();
-
     let mut output = IntrospectionOutput {
         class_map: HashMap::new(),
         constraint_map: HashMap::new(),

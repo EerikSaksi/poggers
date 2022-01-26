@@ -1,17 +1,10 @@
 use crate::{
-    build_schema::create, server_side_json_builder::generate_sql::JsonBuilderContext,
-    server_side_json_builder::ServerSidePoggers,
+    build_schema::get_pogg_and_client, server_side_json_builder::generate_sql::JsonBuilderContext,
 };
-use deadpool_postgres::tokio_postgres::NoTls;
 
-async fn create_with_pool() -> ServerSidePoggers {
-    let config = crate::Config::from_env().unwrap();
-    let pool = config.pg.create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls).unwrap();
-    create(&pool).await
-}
 #[actix_rt::test]
 async fn column_offsets() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let query = "
         query{
           siteUsers{
@@ -37,7 +30,7 @@ async fn column_offsets() {
 
 #[actix_rt::test]
 async fn test_invalid_root_query() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let query = "
         query{
           commentos {
@@ -49,7 +42,7 @@ async fn test_invalid_root_query() {
 }
 #[actix_rt::test]
 async fn test_invalid_syntax() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let query = "
         query{
           comments {
@@ -65,7 +58,7 @@ async fn test_invalid_syntax() {
 
 #[actix_rt::test]
 async fn test_invalid_subchild() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let query = "
         query{
           posts {
@@ -82,7 +75,7 @@ async fn test_invalid_subchild() {
 
 #[actix_rt::test]
 async fn test_error_propagation() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let query = "
         query{
             siteUsers{
@@ -107,7 +100,7 @@ async fn test_error_propagation() {
 
 #[actix_rt::test]
 async fn test_no_root() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let query = "
         query{
         }";
@@ -120,7 +113,7 @@ async fn test_no_root() {
 
 #[actix_rt::test]
 async fn delete_mutation() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let gql_query = "
         mutation{
           deleteMutationTest(id: 1){
@@ -134,7 +127,7 @@ async fn delete_mutation() {
 
 #[actix_rt::test]
 async fn handle_named_operation() {
-    let pogg = create_with_pool().await;
+    let (pogg, _) = get_pogg_and_client();
     let gql_query = "
         query named_operation {
             siteUsers{

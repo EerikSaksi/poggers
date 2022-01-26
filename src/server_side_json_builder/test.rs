@@ -1,22 +1,11 @@
 use super::*;
-use crate::build_schema::create;
-use deadpool_postgres::tokio_postgres::NoTls;
-use deadpool_postgres::{Client, Config, Pool};
-use dotenv::dotenv;
+use crate::build_schema::get_pogg_and_client;
+use deadpool_postgres::tokio_postgres::Client;
 use serde_json::{Error, Value};
 use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
-async fn get_client() -> Client {
-    dotenv().ok();
-    let config = crate::Config::from_env().unwrap();
-    let pool = config
-        .pg
-        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-        .unwrap();
-    pool.get().await.unwrap()
-}
+
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
-    let pogg = create_with_pool().await;
-    let client = get_client().await;
+    let (pogg, client) = get_pogg_and_client();
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     println!("\n{}\n", sql);
@@ -31,15 +20,8 @@ async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     serde_json::from_str(&*res).unwrap()
 }
 
-async fn mutation_test_fixtures() -> Pool {
-    dotenv().ok();
-    let config = crate::Config::from_env().unwrap();
-    let pool = config
-        .pg
-        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-        .unwrap();
-    let client = pool.get().await.unwrap();
-
+async fn mutation_test_fixtures() -> Client {
+    let (pogg, client) = get_pogg_and_client();
     client
         .query("delete from mutation_test", &[])
         .await
@@ -80,7 +62,7 @@ async fn mutation_test_fixtures() -> Pool {
         )
         .await
         .unwrap();
-    pool
+    client
 }
 
 #[actix_rt::test]
@@ -480,8 +462,7 @@ async fn test_empty_many_query() {
             age
           }
         }";
-    let pogg = create_with_pool().await;
-    let client = get_client().await;
+    let (pogg, client) = get_pogg_and_client();
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     let rows = client
@@ -519,7 +500,7 @@ async fn test_select_one_compound() {
 //kinda janky but these need to run sequentially
 #[actix_rt::test]
 async fn mutation_tests() {
-    let pool = mutation_test_fixtures().await;
+    let client = mutation_test_fixtures().await;
     let gql_query = "
         mutation{
           deleteMutationTest(id: 1){
@@ -527,7 +508,6 @@ async fn mutation_tests() {
           }
         }
         ";
-    let client = pool.get().await.unwrap();
     let p = convert_gql(gql_query, false).await;
     if let Some(row) = client
         .query(
@@ -584,8 +564,7 @@ async fn mutation_tests() {
         2
     );
 
-    let pool = mutation_test_fixtures().await;
-    let client = pool.get().await.unwrap();
+    let client = mutation_test_fixtures().await;
     let gql_query = "
         mutation{
           updateMutationTest(id: 3, patch: {nullableFloat: 1.23}){
@@ -754,19 +733,4 @@ async fn where_string_escape() {
         }
         ";
     convert_gql(gql_query, false).await;
-}
-
-pub async fn create_with_pool() -> ServerSidePoggers {
-    let config: Config = Config {
-        user: Some(String::from("postgres")),
-        password: Some(String::from("postgres")),
-        host: Some(String::from("127.0.0.1")),
-        port: Some(5432),
-        dbname: Some(String::from("pets")),
-        ..Default::default()
-    };
-    let pool = config
-        .create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls)
-        .unwrap();
-    create(&pool).await
 }

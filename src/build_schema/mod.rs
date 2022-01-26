@@ -1,12 +1,11 @@
 mod field_to_operation;
 mod postgraphile_introspection;
-use deadpool_postgres::tokio_postgres::NoTls;
 
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
 use crate::server_side_json_builder::ServerSidePoggers;
-use deadpool_postgres::{Config, Pool};
+use deadpool_postgres::tokio_postgres::Client;
 
 use convert_case::{Case, Casing};
 use inflector::Inflector;
@@ -52,13 +51,13 @@ static POG_JSON: usize = 6;
 static POG_NULLABLE_INT: usize = 7;
 
 #[allow(dead_code)]
-pub async fn create(pool: &Pool) -> ServerSidePoggers {
+pub async fn create(client: &Client) -> ServerSidePoggers {
     let IntrospectionOutput {
         type_map,
         class_map,
         attribute_map,
         constraint_map,
-    } = introspection_query_data(pool).await;
+    } = introspection_query_data(client).await;
 
     let mut g: DiGraph<GraphQLType, GraphQLEdgeInfo> = DiGraph::new();
     let mut field_to_operation: HashMap<String, Operation> = HashMap::new();
@@ -236,15 +235,13 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
 }
 
 #[actix_web::main]
-pub async fn create_with_pool() -> ServerSidePoggers {
-    let config: Config = Config {
-        user: Some(String::from("postgres")),
-        password: Some(String::from("postgres")),
-        host: Some(String::from("127.0.0.1")),
-        port: Some(5432),
-        dbname: Some(String::from("pets")),
-        ..Default::default()
-    };
-    let pool = config.create_pool(Some(deadpool_postgres::Runtime::Tokio1), NoTls).unwrap();
-    create(&pool).await
+pub async fn get_pogg_and_client() -> (ServerSidePoggers, deadpool_postgres::tokio_postgres::Client)
+{
+    let (client, _) = deadpool_postgres::tokio_postgres::connect(
+        "postgres://postgres:postgres@127.0.0.1:5432/chinook",
+        deadpool_postgres::tokio_postgres::NoTls,
+    )
+    .await
+    .unwrap();
+    (create(&client).await, client)
 }
