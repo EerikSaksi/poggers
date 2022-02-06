@@ -6,7 +6,7 @@ Employing
 Rust's 
 Speed 
 
-To reproduce benchmarks use my fork of Hasura's graphql-backend-benchmarks repo, which includes Poggers.
+To reproduce benchmarks use my fork of Hasura's graphql-backend-benchmarks repo, which includes POGGERS.
 https://github.com/EerikSaksi/graphql-backend-benchmarks
 ![TracksMediaAll](https://user-images.githubusercontent.com/46625399/152690767-f6dcd909-a49c-448f-9513-6d4cb2762b75.png)
 ![ArtistByArtistId](https://user-images.githubusercontent.com/46625399/152690771-00834df2-247b-4ce9-928c-edd133396844.png)
