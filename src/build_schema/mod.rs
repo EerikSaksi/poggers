@@ -71,11 +71,6 @@ pub async fn create(client: &Client) -> ServerSidePoggers {
             .values()
             .filter(|att| att.class_id == class.id)
         {
-            if let Some(unique) = field.is_unique {
-                if unique {
-                    println!("{:?}", 0);
-                }
-            }
             //convert the data type to the corresponding data type
             let mut closure_index = match &*type_map.get(&field.type_id).unwrap().name {
                 "int4" | "int2" | "smallint" | "bigint" => POG_INT,
@@ -236,7 +231,7 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
 
 #[allow(dead_code)]
 pub async fn get_pogg_and_client() -> (ServerSidePoggers, Client) {
-    let (client, _) = deadpool_postgres::tokio_postgres::connect(
+    let (client, connection) = deadpool_postgres::tokio_postgres::connect(
         "postgres://postgres:postgres@127.0.0.1:5432/chinook",
         deadpool_postgres::tokio_postgres::NoTls,
     )

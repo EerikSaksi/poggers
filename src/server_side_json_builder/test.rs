@@ -228,7 +228,7 @@ async fn non_nullable_string_fields() {
 async fn three_way_join() {
     let gql_query = "
         query {
-          siteUsers{
+          users{ 
             id
             reputation
             views
@@ -247,12 +247,18 @@ async fn three_way_join() {
           }
         }";
 
-    let (client, _) = deadpool_postgres::tokio_postgres::connect(
-        "postgres://postgres:postgres@127.0.0.1:5432/chinook",
+    let (client, connection) = deadpool_postgres::tokio_postgres::connect(
+        "postgres://postgres:postgres@127.0.0.1:5432/pets",
         deadpool_postgres::tokio_postgres::NoTls,
-    )
+   )
     .await
     .unwrap();
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
     let pogg = crate::build_schema::create(&client).await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;

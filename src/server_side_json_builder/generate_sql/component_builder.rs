@@ -6,7 +6,8 @@ use async_graphql_parser::{
 use async_graphql_value::{indexmap::IndexMap, Name, Value};
 use std::collections::HashMap;
 
-pub fn query(
+
+pub fn select(
     sql: &mut SqlQueryComponents,
     table_name: &str,
     is_many: bool,

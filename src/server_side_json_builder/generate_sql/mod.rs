@@ -132,7 +132,7 @@ impl ServerSidePoggers {
             let sql_query;
             match operation {
                 Operation::Query(root_query_is_many, _) => {
-                    match component_builder::query(
+                    match component_builder::select(
                         &mut sql,
                         &self.g[node_index].table_name,
                         root_query_is_many,
