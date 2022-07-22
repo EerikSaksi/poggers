@@ -40,6 +40,7 @@ fn assert_some_edge_eq(
     );
 }
 
+
 #[actix_rt::test]
 async fn test_one_to_many() {
     let (pogg, _) = get_pogg_and_client().await;
@@ -186,11 +187,11 @@ async fn check_nullability() {
 }
 
 #[actix_rt::test]
-async fn test_delete_mutation_creation() {
+async fn test_delete_comment_mutation() {
     let (pogg, _) = get_pogg_and_client().await;
     let field_to_operation = pogg.field_to_operation;
     assert!(
-        field_to_operation.contains_key("deleteMutationTest"),
+        field_to_operation.contains_key("deleteComment"),
         "{:?} actually contains keys",
         field_to_operation.keys()
     )

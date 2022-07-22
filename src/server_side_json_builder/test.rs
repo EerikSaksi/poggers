@@ -4,6 +4,7 @@ use deadpool_postgres::tokio_postgres::Client;
 use serde_json::{Error, Value};
 use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
 
+
 async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
     let (pogg, client) = get_pogg_and_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
@@ -22,14 +23,28 @@ async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
 
 async fn mutation_test_fixtures() -> Client {
     let (_, client) = get_pogg_and_client().await;
+
+    //create the mutation test table which is used to ensure that mutations work properly
     client
-        .query("delete from mutation_test", &[])
+        .query("
+            create or replace table mutation_test(
+              id integer primary key generated always as identity,
+              non_nullable_str varchar not null, 
+              nullable_float float,
+              post_id integer references post(id))
+            )
+        ", &[])
         .await
         .unwrap();
+
+    //get post_ids, allowing us to insert values in the post_id column whilst 
+    //adhering to the foreign id constraint
     let post_ids = client
         .query("select id from post limit 100", &[])
         .await
         .unwrap();
+
+
     let values = (0..100)
         .map(|i| {
             let post_id: i32 = post_ids.get(i).unwrap().get(0);
@@ -52,6 +67,19 @@ async fn mutation_test_fixtures() -> Client {
         .map(|i| format!("({}, '{}', {})", i, i, (i / 10)))
         .collect::<Vec<String>>()
         .join(", ");
+
+
+    client
+        .query("
+            create or replace table mutation_test_child(
+              id integer primary key generated always as identity,
+              name varchar,
+              mutation_test_id integer references mutation_test(id)
+            )
+        ", &[])
+        .await
+        .unwrap();
+    
     client
         .query(
             &*format!(
@@ -67,6 +95,7 @@ async fn mutation_test_fixtures() -> Client {
 
 #[actix_rt::test]
 async fn test_random_user() {
+    let (pogg, client) = get_pogg_and_client().await;
     let gql_query = "
         query{
           siteUsers{
@@ -94,6 +123,7 @@ async fn test_random_user() {
         .unwrap()
         .as_object()
         .unwrap();
+
     assert_eq!(user.get("reputation").unwrap(), 28971);
     assert_eq!(user.get("views").unwrap(), 3534);
     assert_eq!(user.get("upvotes").unwrap(), 4879);
@@ -228,7 +258,7 @@ async fn non_nullable_string_fields() {
 async fn three_way_join() {
     let gql_query = "
         query {
-          users{ 
+          siteUsers{ 
             id
             reputation
             views
@@ -247,19 +277,7 @@ async fn three_way_join() {
           }
         }";
 
-    let (client, connection) = deadpool_postgres::tokio_postgres::connect(
-        "postgres://postgres:postgres@127.0.0.1:5432/pets",
-        deadpool_postgres::tokio_postgres::NoTls,
-   )
-    .await
-    .unwrap();
-
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
-    let pogg = crate::build_schema::create(&client).await;
+    let (pogg, client) = get_pogg_and_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     println!("\n{}\n", sql);
@@ -294,14 +312,36 @@ async fn three_way_join() {
                     })
             });
     });
-    //select count(*) from site_user
-    assert_eq!(num_users, 16429, "Mismatched user count");
 
-    //select count(*) from post where owneruserid is not null;
-    assert_eq!(num_posts, 17575, "Mismatched post count");
+    let expected_count: i64= client
+        .query("select count(*) from site_user", &[])
+        .await
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get(0);
+    assert_eq!(num_users, expected_count, "Mismatched user count");
 
-    //select count(*) from post join comment on post.id = comment.postid where owneruserid is not null;
-    assert_eq!(num_comments, 21630);
+    let expected_count: i64= client
+        .query(
+            "select count(*) from post where owneruserid is not null;",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get(0);
+    assert_eq!(num_posts, expected_count, "Mismatched post count");
+
+    let expected_count: i64= client
+        .query("select count(*) from post join comment on post.id = comment.postid where owneruserid is not null;", &[])
+        .await
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get(0);
+    assert_eq!(num_comments, expected_count);
 }
 
 #[actix_rt::test]
@@ -525,7 +565,7 @@ async fn mutation_tests() {
         mutation{
           deleteMutationTest(id: 1){
             nonNullableStr
-          }
+          }A
         }
         ";
     let p = convert_gql(gql_query, false).await;

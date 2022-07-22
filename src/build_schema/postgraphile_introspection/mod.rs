@@ -158,6 +158,7 @@ mod test {
     use super::*;
     use crate::build_schema::get_pogg_and_client;
     use query::introspection_query_data;
+    use std::collections::HashSet;
 
     #[actix_rt::test]
     async fn test_attributes_present() {
@@ -194,20 +195,26 @@ mod test {
             attribute_map: _,
             constraint_map,
         } = introspection_query_data(&client).await;
-        let comment_class = class_map
+
+        //get the comment classes id
+        let comment_id = &class_map
             .values()
             .find(|class| class.name == "comment")
-            .unwrap();
-        let count = constraint_map
+            .unwrap()
+            .id;
+
+        //using the id get all the constraints of the commetn class
+        let comment_constraints = constraint_map
             .values()
-            .filter(|att| att.class_id == comment_class.id)
-            .fold(0, |count, con| {
-                assert!(["post_id_fkey", "site_user_fkey", "comments_pkey",]
-                    .iter()
-                    .any(|expected| *expected == con.name));
-                count + 1
-            });
-        assert_eq!(count, 3);
+            .filter(|constraint| &constraint.class_id == comment_id)
+            .map(|constraint| constraint.name.to_string())
+            .collect::<HashSet<String>>();
+        assert_eq!(
+            HashSet::from(
+                ["fk_comment_site_user", "comments_pkey", "fk_comment_post"].map(|s| s.to_string())
+            ),
+            comment_constraints
+        );
     }
 
     #[actix_rt::test]
@@ -219,17 +226,20 @@ mod test {
             "child_table",
             "comment",
             "foreign_primary_key",
-            "mutation_test",
-            "mutation_test_child",
             "parent_table",
             "post",
+            "postlink",
             "posthistory",
             "site_user",
             "tag",
             "vote",
         ];
         for expected_name in expected_names {
-            assert!(class_map.values().any(|table| table.name == expected_name));
+            assert!(
+                class_map.values().any(|table| table.name == expected_name),
+                "{} not found",
+                expected_name
+            );
         }
         assert_eq!(
             expected_names.len(),

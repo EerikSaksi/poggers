@@ -115,14 +115,14 @@ async fn test_no_root() {
 async fn delete_mutation() {
     let (pogg, _) = get_pogg_and_client().await;
     let gql_query = "
-        mutation{
-          deleteMutationTest(id: 1){
-            nullableFloat 
+        mutation DELETE_SITE_USER {
+          deleteSiteUser(id: 1){
+              displayname
           }
         }
         ";
     let ctx = pogg.build_root(gql_query).unwrap();
-    assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM mutation_test AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS __t0_pk0__, __table_0__.nullable_float AS __t0_c0__ FROM __table_0__");
+    assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM site_user AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS __t0_pk0__, __table_0__.displayname AS __t0_c0__ FROM __table_0__");
 }
 
 #[actix_rt::test]

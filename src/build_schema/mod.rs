@@ -201,12 +201,6 @@ pub async fn create(client: &Client) -> ServerSidePoggers {
             .unwrap();
         field_to_operation::build_mutation(node, &mut field_to_operation, class);
     }
-    println!(
-        "{:?}",
-        g.edge_indices()
-            .map(|e| g[e].graphql_field_name.clone())
-            .collect::<Vec<GraphQLFieldNames>>()
-    );
     ServerSidePoggers {
         field_to_operation,
         g,
