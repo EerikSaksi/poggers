@@ -2,23 +2,25 @@ use super::*;
 use crate::build_schema::get_pogg_and_client;
 use deadpool_postgres::tokio_postgres::Client;
 use serde_json::{Error, Value};
-use std::collections::HashSet; // 0.19.2, features = ["with-chrono-0_4"]
+use std::collections::HashSet;
 
-
-async fn convert_gql(gql_query: &str, write_to_file: bool) -> Value {
+//quite a few queries need to run a graphql query. We made this function for those cases to
+//provide the parsed json, in addition to the client and poggers
+async fn convert_gql(gql_query: &str, write_to_file: bool) -> (ServerSidePoggers, Client, Value) {
     let (pogg, client) = get_pogg_and_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;
     println!("\n{}\n", sql);
-    let rows = client.query(&*[sql, ""].concat(), &[]).await.unwrap();
+    let rows = client.query(sql, &[]).await.unwrap();
     let res = JsonBuilder::new(ctx).convert(rows);
+
     if write_to_file {
         use std::fs::File;
         use std::io::prelude::*;
         let mut file = File::create("foo.json").unwrap();
         file.write_all(res.as_bytes()).unwrap();
     }
-    serde_json::from_str(&*res).unwrap()
+    (pogg, client, serde_json::from_str(&*res).unwrap())
 }
 
 async fn mutation_test_fixtures() -> Client {
@@ -26,24 +28,26 @@ async fn mutation_test_fixtures() -> Client {
 
     //create the mutation test table which is used to ensure that mutations work properly
     client
-        .query("
+        .query(
+            "
             create or replace table mutation_test(
               id integer primary key generated always as identity,
               non_nullable_str varchar not null, 
               nullable_float float,
               post_id integer references post(id))
             )
-        ", &[])
+        ",
+            &[],
+        )
         .await
         .unwrap();
 
-    //get post_ids, allowing us to insert values in the post_id column whilst 
+    //get post_ids, allowing us to insert values in the post_id column whilst
     //adhering to the foreign id constraint
     let post_ids = client
         .query("select id from post limit 100", &[])
         .await
         .unwrap();
-
 
     let values = (0..100)
         .map(|i| {
@@ -68,18 +72,20 @@ async fn mutation_test_fixtures() -> Client {
         .collect::<Vec<String>>()
         .join(", ");
 
-
     client
-        .query("
+        .query(
+            "
             create or replace table mutation_test_child(
               id integer primary key generated always as identity,
               name varchar,
               mutation_test_id integer references mutation_test(id)
             )
-        ", &[])
+        ",
+            &[],
+        )
         .await
         .unwrap();
-    
+
     client
         .query(
             &*format!(
@@ -95,7 +101,6 @@ async fn mutation_test_fixtures() -> Client {
 
 #[actix_rt::test]
 async fn test_random_user() {
-    let (pogg, client) = get_pogg_and_client().await;
     let gql_query = "
         query{
           siteUsers{
@@ -111,7 +116,7 @@ async fn test_random_user() {
           }
         }";
 
-    let p = convert_gql(gql_query, false).await;
+    let (_, client, p) = convert_gql(gql_query, false).await;
 
     let site_users = p.get("siteUsers").unwrap();
     //test specific user sampled at random
@@ -124,41 +129,50 @@ async fn test_random_user() {
         .as_object()
         .unwrap();
 
-    assert_eq!(user.get("reputation").unwrap(), 28971);
-    assert_eq!(user.get("views").unwrap(), 3534);
-    assert_eq!(user.get("upvotes").unwrap(), 4879);
-    assert_eq!(user.get("downvotes").unwrap(), 207);
+    match client
+        .query(
+            "SELECT reputation, views, upvotes, downvotes FROM site_user where id = 13",
+            &[],
+        )
+        .await
+    {
+        Ok(user_query) => {
+            let user_row = user_query.get(0).unwrap();
+
+            assert_eq!(
+                user.get("reputation").unwrap(),
+                user_row.get::<usize, i32>(0)
+            );
+            assert_eq!(user.get("views").unwrap(), user_row.get::<usize, i32>(1));
+            assert_eq!(user.get("upvotes").unwrap(), user_row.get::<usize, i32>(2));
+            assert_eq!(
+                user.get("downvotes").unwrap(),
+                user_row.get::<usize, i32>(3)
+            );
+        }
+        Err(e) => panic!("{}", e),
+    }
+
+    let count: i64 = client
+        .query(
+            "SELECT count(*) FROM site_user join post on post.owneruserid = site_user.id where site_user.id = 13",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get(0);
     assert_eq!(
         user.get("postsByOwneruserid")
             .unwrap()
             .as_array()
             .unwrap()
             .len(),
-        535
+        count as usize
     );
 
-    let site_users = p.get("siteUsers").unwrap();
-    //test specific user sampled at random
-    let user = site_users
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|user| user.get("id").unwrap() == 13)
-        .unwrap()
-        .as_object()
-        .unwrap();
-    assert_eq!(user.get("reputation").unwrap(), 28971);
-    assert_eq!(user.get("views").unwrap(), 3534);
-    assert_eq!(user.get("upvotes").unwrap(), 4879);
-    assert_eq!(user.get("downvotes").unwrap(), 207);
-    assert_eq!(
-        user.get("postsByOwneruserid")
-            .unwrap()
-            .as_array()
-            .unwrap()
-            .len(),
-        535
-    );
+    //check no duplicates in posts
     let mut post_set = HashSet::new();
     for post in user.get("postsByOwneruserid").unwrap().as_array().unwrap() {
         let post_id = post.get("id").unwrap().as_i64().unwrap();
@@ -186,24 +200,38 @@ async fn all_posts_fetched() {
             }
           }
         }";
-    let p = convert_gql(gql_query, false).await;
-    let mut num_users = 0;
+    let (_, client, p) = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
+    let num_users = site_users.as_array().unwrap().len();
     let num_posts = site_users.as_array().unwrap().iter().fold(0, |cumm, user| {
-        num_users += 1;
-        let obj = user.as_object().unwrap();
-        let posts = obj.get("postsByOwneruserid").unwrap().as_array().unwrap();
+        let posts = user
+            .as_object()
+            .unwrap()
+            .get("postsByOwneruserid")
+            .unwrap()
+            .as_array()
+            .unwrap();
         cumm + posts.len()
     });
-    assert_eq!(
-        num_users,
-        16429,
-        "Missing {} users. 10512 users don't have posts (did you left join)",
-        16429 - num_users
-    );
+    let real_count: i64 = client
+        .query("SELECT count(*) from site_user", &[])
+        .await
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get(0);
+    assert_eq!(num_users, real_count as usize);
 
-    //select count(*) from post where post.owneruserid is not null;
-    assert_eq!(num_posts, 17575);
+    let real_count: i64 = client
+        //we add the is not null as posts without owneruserid would not be included in the GraphQL
+        //query
+        .query("SELECT count(*) from post where owneruserid is not null", &[])
+        .await
+        .unwrap()
+        .get(0)
+        .unwrap()
+        .get(0);
+    assert_eq!(num_posts, real_count as usize);
 }
 
 #[actix_rt::test]
@@ -223,7 +251,7 @@ async fn all_posts_belong_to_parent() {
             }
           }
         }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
@@ -244,7 +272,7 @@ async fn non_nullable_string_fields() {
             displayname
           }
         }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         //test non nullable fields defined for all users
@@ -313,7 +341,7 @@ async fn three_way_join() {
             });
     });
 
-    let expected_count: i64= client
+    let expected_count: i64 = client
         .query("select count(*) from site_user", &[])
         .await
         .unwrap()
@@ -322,7 +350,7 @@ async fn three_way_join() {
         .get(0);
     assert_eq!(num_users, expected_count, "Mismatched user count");
 
-    let expected_count: i64= client
+    let expected_count: i64 = client
         .query(
             "select count(*) from post where owneruserid is not null;",
             &[],
@@ -357,7 +385,7 @@ async fn join_foreign_field_not_last() {
             views
           }
         }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     let site_users = p.get("siteUsers").unwrap();
     site_users.as_array().unwrap().iter().for_each(|user| {
         let obj = user.as_object().unwrap();
@@ -432,7 +460,7 @@ async fn child_to_parent() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     let posts = p.get("posts").unwrap().as_array().unwrap();
     for post in posts {
         let user = post.get("siteUserByOwneruserid").unwrap();
@@ -462,7 +490,7 @@ async fn composite_join() {
                 }
               }
             }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     for parent in p.get("parentTables").unwrap().as_array().unwrap() {
         let id1 = parent.get("id1").unwrap().as_i64();
         let id2 = parent.get("id2").unwrap().as_i64();
@@ -489,7 +517,7 @@ async fn with_argument() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     p.get("siteUser").unwrap().as_object().unwrap();
 }
 
@@ -504,7 +532,7 @@ async fn invalid_id() {
                 }
             }
         }";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     p.get("siteUser").unwrap().as_null().unwrap();
 }
 
@@ -551,7 +579,7 @@ async fn test_select_one_compound() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     let parent_table = p.get("parentTable").unwrap().as_object().unwrap();
     assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 0);
     assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
@@ -568,7 +596,7 @@ async fn mutation_tests() {
           }A
         }
         ";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     if let Some(row) = client
         .query(
             "select non_nullable_str from mutation_test where id = 1",
@@ -603,7 +631,7 @@ async fn mutation_tests() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     p.get("deleteMutationTest")
         .unwrap()
         .get("postByPostId")
@@ -686,6 +714,7 @@ async fn mutation_tests() {
     ";
     match convert_gql(gql_query, false)
         .await
+        .2
         .get("updateMutationTest")
         .unwrap()
         .as_object()
@@ -754,6 +783,7 @@ async fn mutation_tests() {
     ";
     if let Some(res) = convert_gql(gql_query, false)
         .await
+        .2
         .get("deleteMutationTest")
     {
         let id = res.get("id").unwrap().as_i64().unwrap();
@@ -779,7 +809,7 @@ async fn many_where_clause() {
           }
         }
         ";
-    let p = convert_gql(gql_query, false).await;
+    let (_, _, p) = convert_gql(gql_query, false).await;
     assert_eq!(p.get("posts").unwrap().as_array().unwrap().len(), 11);
 }
 

@@ -226,11 +226,18 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
 #[allow(dead_code)]
 pub async fn get_pogg_and_client() -> (ServerSidePoggers, Client) {
     let (client, connection) = deadpool_postgres::tokio_postgres::connect(
-        "postgres://postgres:postgres@127.0.0.1:5432/chinook",
+        "postgres://postgres:postgres@127.0.0.1:5432/pets",
         deadpool_postgres::tokio_postgres::NoTls,
     )
     .await
     .unwrap();
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
     let pogg = create(&client).await;
     (pogg, client)
 }

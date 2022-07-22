@@ -16,7 +16,7 @@ async fn main() -> Result<(), Error> {
             eprintln!("connection error: {}", e);
         }
     });
-    let pogg = build_schema::create(&client).await;
+    build_schema::create(&client).await;
 
     Ok(())
 }
