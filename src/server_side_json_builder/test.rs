@@ -28,13 +28,17 @@ async fn mutation_test_fixtures() -> Client {
 
     //create the mutation test table which is used to ensure that mutations work properly
     client
+        .query("drop table if exists mutation_test cascade", &[])
+        .await
+        .unwrap();
+    client
         .query(
             "
-            create or replace table mutation_test(
-              id integer primary key generated always as identity,
+            create table mutation_test(
+              id integer primary key,
               non_nullable_str varchar not null, 
               nullable_float float,
-              post_id integer references post(id))
+              post_id integer references post(id)
             )
         ",
             &[],
@@ -49,7 +53,7 @@ async fn mutation_test_fixtures() -> Client {
         .await
         .unwrap();
 
-    let values = (0..100)
+    let values = (1..100)
         .map(|i| {
             let post_id: i32 = post_ids.get(i).unwrap().get(0);
             format!("({}, '{}', {}.5, {})", i, i, i, post_id)
@@ -67,18 +71,18 @@ async fn mutation_test_fixtures() -> Client {
         )
         .await
         .unwrap();
-    let values = (0..100)
-        .map(|i| format!("({}, '{}', {})", i, i, (i / 10)))
-        .collect::<Vec<String>>()
-        .join(", ");
 
+    client
+        .query("drop table if exists mutation_test_child", &[])
+        .await
+        .unwrap();
     client
         .query(
             "
-            create or replace table mutation_test_child(
+            create table mutation_test_child(
               id integer primary key generated always as identity,
               name varchar,
-              mutation_test_id integer references mutation_test(id)
+              mutation_test_id integer references mutation_test(id) on delete cascade
             )
         ",
             &[],
@@ -86,10 +90,15 @@ async fn mutation_test_fixtures() -> Client {
         .await
         .unwrap();
 
+    let values = (1..100)
+        .map(|i| format!("('{}', {})", i / 10, i))
+        .collect::<Vec<String>>()
+        .join(", ");
+
     client
         .query(
             &*format!(
-                "insert into mutation_test_child(id, name, mutation_test_id) values {}",
+                "insert into mutation_test_child(name, mutation_test_id) values {}",
                 values
             ),
             &[],
@@ -225,7 +234,10 @@ async fn all_posts_fetched() {
     let real_count: i64 = client
         //we add the is not null as posts without owneruserid would not be included in the GraphQL
         //query
-        .query("SELECT count(*) from post where owneruserid is not null", &[])
+        .query(
+            "SELECT count(*) from post where owneruserid is not null",
+            &[],
+        )
         .await
         .unwrap()
         .get(0)
@@ -481,21 +493,21 @@ async fn child_to_parent() {
 async fn composite_join() {
     let gql_query = "
             query{
-              parentTables {
+              compoundTables {
                 id1
                 id2
-                childTablesByParentId1AndParentId2{
+                compoundChildTablesByParentId1AndParentId2{
                   parentId1
                   parentId2
                 }
               }
             }";
     let (_, _, p) = convert_gql(gql_query, false).await;
-    for parent in p.get("parentTables").unwrap().as_array().unwrap() {
+    for parent in p.get("compoundTables").unwrap().as_array().unwrap() {
         let id1 = parent.get("id1").unwrap().as_i64();
         let id2 = parent.get("id2").unwrap().as_i64();
         for child in parent
-            .get("childTablesByParentId1AndParentId2")
+            .get("compoundChildTablesByParentId1AndParentId2")
             .unwrap()
             .as_array()
             .unwrap()
@@ -573,16 +585,19 @@ async fn test_empty_many_query() {
 async fn test_select_one_compound() {
     let gql_query = "
         query{
-          parentTable(id1: 0, id2: 10){
+          compoundTable(id1: 1, id2: 100){
             id1
             id2
           }
         }
         ";
     let (_, _, p) = convert_gql(gql_query, false).await;
-    let parent_table = p.get("parentTable").unwrap().as_object().unwrap();
-    assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 0);
-    assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 10);
+
+    println!("{:?}", p);
+    let parent_table = p.get("compoundTable").unwrap().as_object().unwrap();
+
+    assert_eq!(parent_table.get("id1").unwrap().as_i64().unwrap(), 1);
+    assert_eq!(parent_table.get("id2").unwrap().as_i64().unwrap(), 100);
 }
 
 //kinda janky but these need to run sequentially
@@ -593,7 +608,7 @@ async fn mutation_tests() {
         mutation{
           deleteMutationTest(id: 1){
             nonNullableStr
-          }A
+          }
         }
         ";
     let (_, _, p) = convert_gql(gql_query, false).await;

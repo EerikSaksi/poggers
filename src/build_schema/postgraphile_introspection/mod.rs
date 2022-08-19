@@ -222,15 +222,17 @@ mod test {
         let (_, client) = get_pogg_and_client().await;
         let class_map = introspection_query_data(&client).await.class_map;
         let expected_names = [
-            "badge",
-            "child_table",
-            "comment",
-            "foreign_primary_key",
-            "parent_table",
-            "post",
             "postlink",
-            "posthistory",
+            "comment",
+            "post",
             "site_user",
+            "mutation_test_child",
+            "compound_child_table",
+            "badge",
+            "compound_table",
+            "mutation_test",
+            "foreign_primary_key",
+            "posthistory",
             "tag",
             "vote",
         ];

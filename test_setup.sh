@@ -55,8 +55,9 @@ sudo -u postgres psql -d pets -c "ALTER TABLE vote ADD CONSTRAINT fk_vote_post F
 
 #we create some special tables to test edge cases which aren't tested by the regular database, such as a foreign key which is a primary key
 sudo -u postgres psql -d pets -c "CREATE TABLE foreign_primary_key(post_id integer primary key references post(id));"
-sudo -u postgres psql -d pets -c "CREATE TABLE child_table(id integer PRIMARY KEY generated ALWAYS AS IDENTITY, parent_id1 integer, parent_id2 integer, FOREIGN KEY(parent_id1, parent_id2) REFERENCES parent_table(id1, id2));"
-sudo -u postgres psql -d pets -c "CREATE TABLE parent_table(id1 integer, id2 integer, primary key(id1, id2));"
+sudo -u postgres psql -d pets -c "CREATE TABLE compound_table(id1 integer, id2 integer, primary key(id1, id2));"
+sudo -u postgres psql -d pets -c "INSERT INTO compound_table(id1, id2) values (1, 100);"
+sudo -u postgres psql -d pets -c "CREATE TABLE compound_child_table(id integer PRIMARY KEY generated ALWAYS AS IDENTITY, parent_id1 integer, parent_id2 integer, FOREIGN KEY(parent_id1, parent_id2) REFERENCES compound_table(id1, id2));"
 
 #delete the script used to build the database to avoid putting it in git
-rm -r stackexchange-dump-to-postgres
+rm -r ./stackexchange-dump-to-postgres

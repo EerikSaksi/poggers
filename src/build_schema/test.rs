@@ -68,15 +68,15 @@ async fn test_composite_primary_keys() {
     let g = pogg.g;
     assert_some_edge_eq(
         (
-            "childTablesByParentId1AndParentId2",
-            "parentTableByParentId1AndParentId2",
+            "compoundChildTablesByParentId1AndParentId2",
+            "compoundTableByParentId1AndParentId2",
         ),
         vec!["parent_id1", "parent_id2"],
         g.raw_edges(),
     );
     let child = g
         .node_weights()
-        .find(|n| n.table_name == "child_table")
+        .find(|n| n.table_name == "compound_child_table")
         .unwrap();
     for field in ["parentId1", "parentId2"] {
         assert!(
@@ -94,7 +94,7 @@ async fn check_id_primary_keys() {
     let g = pogg.g;
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
-        if !["parent_table", "child_table", "foreign_primary_key"].contains(&&*weight.table_name) {
+        if !["compound_table", "compound_child_table", "foreign_primary_key"].contains(&&*weight.table_name) {
             assert_eq!(weight.primary_keys, vec!["id"], "{}", weight.table_name);
         }
     }
