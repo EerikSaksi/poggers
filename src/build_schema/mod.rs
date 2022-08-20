@@ -4,7 +4,7 @@ mod postgraphile_introspection;
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
-use crate::server_side_json_builder::ServerSidePoggers;
+use crate::server_side_json_builder::GraphQLSchema;
 use deadpool_postgres::tokio_postgres::Client;
 
 use convert_case::{Case, Casing};
@@ -51,7 +51,7 @@ static POG_JSON: usize = 6;
 static POG_NULLABLE_INT: usize = 7;
 
 #[allow(dead_code)]
-pub async fn create(client: &Client) -> ServerSidePoggers {
+pub async fn create(client: &Client) -> GraphQLSchema {
     let IntrospectionOutput {
         type_map,
         class_map,
@@ -201,7 +201,7 @@ pub async fn create(client: &Client) -> ServerSidePoggers {
             .unwrap();
         field_to_operation::build_mutation(node, &mut field_to_operation, class);
     }
-    ServerSidePoggers {
+    GraphQLSchema {
         field_to_operation,
         g,
     }
@@ -224,7 +224,7 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
 }
 
 #[allow(dead_code)]
-pub async fn get_pogg_and_client() -> (ServerSidePoggers, Client) {
+pub async fn get_pogg_and_client() -> (GraphQLSchema, Client) {
     let (client, connection) = deadpool_postgres::tokio_postgres::connect(
         "postgres://postgres:postgres@127.0.0.1:5432/pets",
         deadpool_postgres::tokio_postgres::NoTls,

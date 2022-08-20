@@ -10,5 +10,26 @@ async fn main() {
         tokio_postgres::connect("postgres://postgres:postgres@127.0.0.1:5432/pets", NoTls)
             .await
             .unwrap();
-    gener
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
+    let schema = build_schema::create(&client).await;
+    let gql_query = "
+        query{
+            siteUsers{
+                id
+                reputation
+                views
+                upvotes
+                downvotes
+            }
+        }
+    ";
+    let ctx = schema.build_root(gql_query).unwrap();
+    let rows = client.query(&ctx.sql_query, &[]).await.unwrap();
+    let builder = state_machine_builder::JsonBuilder::new(rows.iter(), ctx.table_query_infos);
 }

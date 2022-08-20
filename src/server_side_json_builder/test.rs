@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 //quite a few queries need to run a graphql query. We made this function for those cases to
 //provide the parsed json, in addition to the client and poggers
-async fn convert_gql(gql_query: &str, write_to_file: bool) -> (ServerSidePoggers, Client, Value) {
+async fn convert_gql(gql_query: &str, write_to_file: bool) -> (GraphQLSchema, Client, Value) {
     let (pogg, client) = get_pogg_and_client().await;
     let ctx = pogg.build_root(gql_query).unwrap();
     let sql = &ctx.sql_query;

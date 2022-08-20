@@ -15,7 +15,7 @@ use petgraph::{graph::DiGraph, prelude::NodeIndex};
 use std::collections::HashMap;
 
 #[derive(Clone)]
-pub struct ServerSidePoggers {
+pub struct GraphQLSchema {
     pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
     pub field_to_operation: HashMap<String, Operation>,
 }
@@ -34,12 +34,12 @@ pub struct SqlQueryComponents {
 }
 
 #[allow(dead_code)]
-impl ServerSidePoggers {
+impl GraphQLSchema {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
         field_to_operation: HashMap<String, Operation>,
-    ) -> ServerSidePoggers {
-        ServerSidePoggers {
+    ) -> GraphQLSchema {
+        GraphQLSchema {
             g,
             field_to_operation,
         }
@@ -201,7 +201,7 @@ impl ServerSidePoggers {
             //first we recursively get all queries from the children
             //this field is terminal
             let id_copy = local_id;
-            let current_alias = ServerSidePoggers::table_alias(local_id);
+            let current_alias = GraphQLSchema::table_alias(local_id);
             let mut children: Vec<(&Positioned<Selection>, NodeIndex<u32>)> = vec![];
 
             //we need to add all primary keys of this particular table (so we know how to group
@@ -249,7 +249,7 @@ impl ServerSidePoggers {
                                 }
                             }
                             local_id += 1;
-                            let child_alias = ServerSidePoggers::table_alias(local_id);
+                            let child_alias = GraphQLSchema::table_alias(local_id);
 
                             let join_cols: Zip<Iter<String>, Iter<String>>;
                             let child_node_index: NodeIndex<u32>;

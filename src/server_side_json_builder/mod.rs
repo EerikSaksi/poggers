@@ -3,7 +3,7 @@ mod parent_null_checker;
 #[path = "./test.rs"]
 mod test;
 
-pub use self::generate_sql::ServerSidePoggers;
+pub use self::generate_sql::GraphQLSchema;
 use crate::server_side_json_builder::generate_sql::JsonBuilderContext;
 use chrono::{DateTime, Utc};
 use std::ops::Range;
