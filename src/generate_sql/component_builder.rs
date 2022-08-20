@@ -1,4 +1,5 @@
 use crate::server_side_json_builder::generate_sql::SqlQueryComponents;
+use crate::build_schema::PostgresType;
 use async_graphql_parser::{
     types::{Selection, SelectionSet},
     Positioned,
@@ -12,7 +13,7 @@ pub fn select(
     table_name: &str,
     is_many: bool,
     selection_set: &Positioned<SelectionSet>,
-    field_to_types: &HashMap<String, (String, usize)>,
+    field_to_types: &HashMap<String, (String, PostgresType)>,
 ) -> Result<String, String> {
     let mut sql_query = [
         "SELECT ",
@@ -70,7 +71,7 @@ pub fn update(
     sql: &mut SqlQueryComponents,
     table_name: &str,
     selection_set: &Positioned<SelectionSet>,
-    field_to_types: &HashMap<String, (String, usize)>,
+    field_to_types: &HashMap<String, (String, PostgresType)>,
 ) -> Result<String, String> {
     let mut sql_query = [
         "WITH __table_0__ AS ( UPDATE ",
@@ -106,7 +107,7 @@ pub fn insert(
     sql: &mut SqlQueryComponents,
     table_name: &str,
     selection_set: &Positioned<SelectionSet>,
-    field_to_types: &HashMap<String, (String, usize)>,
+    field_to_types: &HashMap<String, (String, PostgresType)>,
 ) -> Result<String, String> {
     let mut sql_query = [
         "WITH __table_0__ AS ( INSERT INTO ",
@@ -147,7 +148,7 @@ pub fn insert(
 fn assign_cols_vals(
     sql_query: &mut String,
     input_fields: &IndexMap<Name, Value>,
-    field_to_types: &HashMap<String, (String, usize)>,
+    field_to_types: &HashMap<String, (String, PostgresType)>,
     delimiter: &str,
 ) -> Result<(), String> {
     for arg in input_fields.keys() {

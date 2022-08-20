@@ -40,7 +40,6 @@ fn assert_some_edge_eq(
     );
 }
 
-
 #[actix_rt::test]
 async fn test_one_to_many() {
     let (pogg, _) = get_pogg_and_client().await;
@@ -94,7 +93,13 @@ async fn check_id_primary_keys() {
     let g = pogg.g;
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
-        if !["compound_table", "compound_child_table", "foreign_primary_key"].contains(&&*weight.table_name) {
+        if ![
+            "compound_table",
+            "compound_child_table",
+            "foreign_primary_key",
+        ]
+        .contains(&&*weight.table_name)
+        {
             assert_eq!(weight.primary_keys, vec!["id"], "{}", weight.table_name);
         }
     }
@@ -165,21 +170,21 @@ async fn check_nullability() {
         .find(|n| n.table_name == "site_user")
         .unwrap();
     let expected_column_types = vec![
-        ("id", POG_INT),
-        ("reputation", POG_INT),
-        ("creationdate", POG_TIMESTAMP),
-        ("displayname", POG_STR),
-        ("lastaccessdate", POG_TIMESTAMP + POG_NULLABLE_INT),
-        ("websiteurl", POG_STR + POG_NULLABLE_INT),
-        ("location", POG_STR + POG_NULLABLE_INT),
-        ("aboutme", POG_STR + POG_NULLABLE_INT),
-        ("views", POG_INT),
-        ("upvotes", POG_INT),
-        ("downvotes", POG_INT),
-        ("profileimageurl", POG_STR + POG_NULLABLE_INT),
-        ("age", POG_INT + POG_NULLABLE_INT),
-        ("accountid", POG_INT + POG_NULLABLE_INT),
-        ("jsonfield", POG_JSON + POG_NULLABLE_INT),
+        ("id", PostgresType::Int),
+        ("reputation", PostgresType::Int),
+        ("creationdate", PostgresType::Timestamp),
+        ("displayname", PostgresType::Str),
+        ("lastaccessdate", PostgresType::NullableTimestamp),
+        ("websiteurl", PostgresType::NullableStr),
+        ("location", PostgresType::NullableStr),
+        ("aboutme", PostgresType::NullableStr),
+        ("views", PostgresType::Int),
+        ("upvotes", PostgresType::Int),
+        ("downvotes", PostgresType::Int),
+        ("profileimageurl", PostgresType::NullableStr),
+        ("age", PostgresType::NullableInt),
+        ("accountid", PostgresType::NullableInt),
+        ("jsonfield", PostgresType::NullableJson),
     ];
     for (key, expected) in expected_column_types {
         assert_eq!(user_node.field_to_types.get(key).unwrap().1, expected);

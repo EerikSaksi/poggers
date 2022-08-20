@@ -1,6 +1,6 @@
 mod build_schema;
-mod server_side_json_builder;
 mod state_machine_builder;
+mod generate_sql;
 use tokio_postgres::{Error, NoTls};
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.

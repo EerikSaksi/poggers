@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct GraphQLType {
-    pub field_to_types: HashMap<String, (String, usize)>,
+    pub field_to_types: HashMap<String, (String, PostgresType)>,
     pub table_name: String,
     pub primary_keys: Vec<String>,
 }
@@ -41,14 +41,56 @@ pub enum Operation {
     Update(NodeIndex<u32>),
     Insert(NodeIndex<u32>),
 }
-static POG_INT: usize = 0;
-static POG_STR: usize = 1;
-static POG_FLOAT: usize = 2;
-static POG_TIMESTAMP: usize = 3;
-static POG_TIMESTAMPTZ: usize = 4;
-static POG_BOOLEAN: usize = 5;
-static POG_JSON: usize = 6;
-static POG_NULLABLE_INT: usize = 7;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum PostgresType {
+    Int,
+    Str,
+    Float,
+    Timestamp,
+    Timestamptz,
+    Boolean,
+    Json,
+    NullableInt,
+    NullableStr,
+    NullableFloat,
+    NullableTimestamp,
+    NullableTimestamptz,
+    NullableBoolean,
+    NullableJson,
+}
+impl From<(&str, bool)> for PostgresType {
+    fn from(postgres_type_name_is_not_null: (&str, bool)) -> Self {
+        let (postgres_type_name, is_not_null) = postgres_type_name_is_not_null;
+        if is_not_null {
+            match postgres_type_name {
+                "int4" | "int2" | "smallint" | "bigint" => PostgresType::Int,
+                "character varying" | "text" | "varchar" => PostgresType::Str,
+                "timestamp with time zone" => PostgresType::Timestamptz,
+                "timestamp" => PostgresType::Timestamp,
+                "double precision" | "float8" | "numeric" => PostgresType::Float,
+                "boolean" => PostgresType::Boolean,
+                "json" | "jsonb" => PostgresType::Json,
+                other => {
+                    panic!("Unhandled type");
+                }
+            }
+        } else {
+            match postgres_type_name {
+                "int4" | "int2" | "smallint" | "bigint" => PostgresType::NullableInt,
+                "character varying" | "text" | "varchar" => PostgresType::NullableStr,
+                "timestamp with time zone" => PostgresType::NullableTimestamptz,
+                "timestamp" => PostgresType::NullableTimestamp,
+                "double precision" | "float8" | "numeric" => PostgresType::NullableFloat,
+                "boolean" => PostgresType::NullableBoolean,
+                "json" | "jsonb" => PostgresType::NullableJson,
+                other => {
+                    panic!("Unhandled type");
+                }
+            }
+        }
+    }
+}
 
 #[allow(dead_code)]
 pub async fn create(client: &Client) -> GraphQLSchema {
@@ -64,44 +106,27 @@ pub async fn create(client: &Client) -> GraphQLSchema {
 
     //for every class, add all its attributes and all
     for class in class_map.values() {
-        let mut field_to_types: HashMap<String, (String, usize)> = HashMap::new();
+        let mut field_to_types: HashMap<String, (String, PostgresType)> = HashMap::new();
 
         //iterate over the fields of this parent
         for field in attribute_map
             .values()
             .filter(|att| att.class_id == class.id)
         {
-            //convert the data type to the corresponding data type
-            let mut closure_index = match &*type_map.get(&field.type_id).unwrap().name {
-                "int4" | "int2" | "smallint" | "bigint" => POG_INT,
-                "character varying" | "text" | "varchar" => POG_STR,
-                "timestamp with time zone" => POG_TIMESTAMPTZ,
-                "timestamp" => POG_TIMESTAMP,
-                "double precision" | "float8" | "numeric" => POG_FLOAT,
-                "boolean" => POG_BOOLEAN,
-                "json" | "jsonb" => POG_JSON,
-                other => {
-                    if !["_text", "tsvector"].contains(&other) {
-                        panic!(
-                            "Encountered unhandled type {} from table {}.{}",
-                            other, class.name, field.name
-                        )
-                    }
-                    0
-                }
-            };
+            let postgres_type_name_is_not_null = (
+                &*type_map.get(&field.type_id).unwrap().name,
+                field.is_not_null,
+            );
+            let postgres_type: PostgresType = postgres_type_name_is_not_null.into();
 
             //if the field is null then offset by where the null fields start
-            if !field.is_not_null {
-                closure_index += POG_NULLABLE_INT;
-            }
 
             //insert mapping of the graphql name (e.g commentUpvotes) to the closure and column
             //name (which can be used to fetch this column correctly, e.g in this case fetch
             //comment_upvotes as integer)
             field_to_types.insert(
                 field.name.to_camel_case(),
-                (field.name.to_string(), closure_index),
+                (field.name.to_string(), postgres_type),
             );
         }
         g.add_node(GraphQLType {

@@ -2,7 +2,6 @@ mod component_builder;
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
-use super::TableQueryInfo;
 use std::iter::Zip;
 use std::slice::Iter;
 
@@ -31,6 +30,10 @@ pub struct SqlQueryComponents {
     from: String,
     filter: String,
     order_by: String,
+}
+pub struct TableQueryInfo {
+    graphql_fields: Vec<ColumnInfo>,
+    primary_key_range: Range<usize>,
 }
 
 #[allow(dead_code)]
