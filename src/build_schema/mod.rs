@@ -4,9 +4,9 @@ mod postgraphile_introspection;
 #[cfg(test)]
 #[path = "./test.rs"]
 mod test;
-use crate::server_side_json_builder::GraphQLSchema;
 use deadpool_postgres::tokio_postgres::Client;
 
+use crate::generate_sql::GraphQLSchema;
 use convert_case::{Case, Casing};
 use inflector::Inflector;
 use petgraph::graph::DiGraph;
@@ -32,6 +32,11 @@ pub struct GraphQLEdgeInfo {
     pub graphql_field_name: GraphQLFieldNames,
     pub incoming_node_cols: Vec<String>,
     pub outgoing_node_cols: Vec<String>,
+}
+#[derive(Clone)]
+pub struct GraphQLSchema {
+    pub g: DiGraph<GraphQLType, GraphQLEdgeInfo>,
+    pub field_to_operation: HashMap<String, Operation>,
 }
 
 #[derive(Clone)]

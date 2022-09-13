@@ -24,6 +24,6 @@ impl<'a> JsonBuilder<'a, ParentState> {
         while let Some(row) = self.row_iter.next() {}
     }
 }
-
+    
 pub struct ParentState {}
 impl State for ParentState {}

@@ -1,7 +1,8 @@
 mod build_schema;
-mod state_machine_builder;
 mod generate_sql;
-use tokio_postgres::{Error, NoTls};
+mod state_machine_builder;
+use build_schema::GraphQLSchema;
+use tokio_postgres::NoTls;
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() {
@@ -17,7 +18,7 @@ async fn main() {
         }
     });
 
-    let schema = build_schema::create(&client).await;
+    let schema: GraphQLSchema = build_schema::create(&client).await;
     let gql_query = "
         query{
             siteUsers{
