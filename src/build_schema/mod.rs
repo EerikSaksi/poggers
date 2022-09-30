@@ -5,8 +5,6 @@ mod postgraphile_introspection;
 #[path = "./test.rs"]
 mod test;
 use deadpool_postgres::tokio_postgres::Client;
-
-use crate::generate_sql::GraphQLSchema;
 use convert_case::{Case, Casing};
 use inflector::Inflector;
 use petgraph::graph::DiGraph;

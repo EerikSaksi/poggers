@@ -21,7 +21,9 @@ impl<'a> JsonBuilder<'a, ParentState> {
         }
     }
     pub fn process(&mut self) {
-        while let Some(row) = self.row_iter.next() {}
+        while let Some(row) = self.row_iter.next() {
+
+        }
     }
 }
     

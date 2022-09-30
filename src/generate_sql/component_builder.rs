@@ -1,12 +1,11 @@
-use crate::server_side_json_builder::generate_sql::SqlQueryComponents;
 use crate::build_schema::PostgresType;
+use crate::generate_sql::SqlQueryComponents;
 use async_graphql_parser::{
     types::{Selection, SelectionSet},
     Positioned,
 };
 use async_graphql_value::{indexmap::IndexMap, Name, Value};
 use std::collections::HashMap;
-
 
 pub fn select(
     sql: &mut SqlQueryComponents,

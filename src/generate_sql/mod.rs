@@ -5,8 +5,7 @@ mod test;
 use std::iter::Zip;
 use std::slice::Iter;
 
-use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, Operation};
-use crate::server_side_json_builder::ColumnInfo;
+use crate::build_schema::{GraphQLEdgeInfo, GraphQLType, Operation, PostgresType};
 use async_graphql_parser::{
     parse_query,
     types::{DocumentOperations, Selection, SelectionSet},
@@ -39,6 +38,12 @@ pub struct SqlQueryComponents {
 pub struct TableQueryInfo {
     graphql_fields: Vec<ColumnInfo>,
     primary_key_range: std::ops::Range<usize>,
+}
+#[derive(Debug)]
+pub enum ColumnInfo {
+    Foreign(String),
+    ForeignSingular(String),
+    Terminal(String, PostgresType),
 }
 
 #[allow(dead_code)]
