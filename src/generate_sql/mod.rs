@@ -46,7 +46,6 @@ pub enum ColumnInfo {
     Terminal(String, PostgresType),
 }
 
-#[allow(dead_code)]
 impl GraphQLSchema {
     pub fn new(
         g: DiGraph<GraphQLType, GraphQLEdgeInfo>,

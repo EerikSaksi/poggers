@@ -1,7 +1,7 @@
 mod build_schema;
 mod generate_sql;
 mod state_machine_builder;
-use build_schema::GraphQLSchema;
+use crate::generate_sql::GraphQLSchema;
 use tokio_postgres::NoTls;
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.

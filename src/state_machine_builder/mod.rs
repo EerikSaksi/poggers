@@ -1,7 +1,7 @@
 use crate::generate_sql::*;
-use chrono::{DateTime, Utc};
 use core::slice::Iter;
 use tokio_postgres::Row;
+mod column_converter;
 
 pub trait State {}
 
@@ -22,7 +22,7 @@ impl<'a> JsonBuilder<'a, ParentState> {
     }
     pub fn process(&mut self) {
         while let Some(row) = self.row_iter.next() {
-
+            
         }
     }
 }
