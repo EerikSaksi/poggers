@@ -30,7 +30,10 @@ async fn main() {
             }
         }
     ";
-    let ctx = schema.build_root(gql_query).unwrap();
+    let ctx = schema.parse_graphql(gql_query).unwrap();
     let rows = client.query(&ctx.sql_query, &[]).await.unwrap();
-    let builder = state_machine_builder::JsonBuilder::new(rows.iter(), ctx.table_query_infos);
+    let mut builder = state_machine_builder::JsonBuilder::new(rows.iter(), ctx.table_metadata, &ctx.root_key_name);
+    builder.exec_until_state_change();
+    builder.exec_until_state_change();
+    println!("{}", builder.s);
 }

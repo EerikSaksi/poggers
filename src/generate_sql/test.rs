@@ -1,4 +1,4 @@
-use crate::{build_schema::get_pogg_and_client, generate_sql::JsonBuilderContext};
+use crate::{build_schema::get_schema_and_client, generate_sql::JsonBuilderContext};
 
 
 fn get_graphql_schema() {
@@ -6,7 +6,7 @@ fn get_graphql_schema() {
 }
 #[actix_rt::test]
 async fn column_offsets() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let query = "
         query{
           siteUsers{
@@ -22,36 +22,36 @@ async fn column_offsets() {
         }";
     let JsonBuilderContext {
         sql_query: _,
-        table_query_infos,
+        table_metadata,
         root_key_name: _,
         root_query_is_many: _,
-    } = pogg.build_root(query).unwrap();
-    assert_eq!(table_query_infos.get(0).unwrap().primary_key_range.start, 0);
-    assert_eq!(table_query_infos.get(1).unwrap().primary_key_range.start, 5);
+    } = pogg.parse_graphql(query).unwrap();
+    assert_eq!(table_metadata.get(0).unwrap().primary_key_range.start, 0);
+    assert_eq!(table_metadata.get(1).unwrap().primary_key_range.start, 5);
 }
 
 #[actix_rt::test]
 async fn test_invalid_root_query() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let query = "
         query{
           commentos {
               id
           }
         }";
-    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    let err = pogg.parse_graphql(query).expect_err("Wasn't Err");
     assert_eq!(err.as_str(), "No operation named \"commentos\"");
 }
 #[actix_rt::test]
 async fn test_invalid_syntax() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let query = "
         query{
           comments {
               id
             }
           ";
-    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    let err = pogg.parse_graphql(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
         " --> 6:11\n  |\n6 |           \n  |           ^---\n  |\n  = expected selection"
@@ -60,7 +60,7 @@ async fn test_invalid_syntax() {
 
 #[actix_rt::test]
 async fn test_invalid_subchild() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let query = "
         query{
           posts {
@@ -68,7 +68,7 @@ async fn test_invalid_subchild() {
           }
         }";
 
-    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    let err = pogg.parse_graphql(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
         "Post does not have selection nonExistentChild"
@@ -77,7 +77,7 @@ async fn test_invalid_subchild() {
 
 #[actix_rt::test]
 async fn test_error_propagation() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let query = "
         query{
             siteUsers{
@@ -93,7 +93,7 @@ async fn test_error_propagation() {
             }
         }";
 
-    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    let err = pogg.parse_graphql(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
         "Comment does not have selection nonExistentChild"
@@ -102,11 +102,11 @@ async fn test_error_propagation() {
 
 #[actix_rt::test]
 async fn test_no_root() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let query = "
         query{
         }";
-    let err = pogg.build_root(query).expect_err("Wasn't Err");
+    let err = pogg.parse_graphql(query).expect_err("Wasn't Err");
     assert_eq!(
         err.as_str(),
         " --> 3:9\n  |\n3 |         }\n  |         ^---\n  |\n  = expected selection"
@@ -115,7 +115,7 @@ async fn test_no_root() {
 
 #[actix_rt::test]
 async fn delete_mutation() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let gql_query = "
         mutation DELETE_SITE_USER {
           deleteSiteUser(id: 1){
@@ -123,13 +123,13 @@ async fn delete_mutation() {
           }
         }
         ";
-    let ctx = pogg.build_root(gql_query).unwrap();
+    let ctx = pogg.parse_graphql(gql_query).unwrap();
     assert_eq!(ctx.sql_query, "WITH __table_0__ AS ( DELETE FROM site_user AS __table_0__ WHERE __table_0__.id = 1 RETURNING *) SELECT __table_0__.id AS __t0_pk0__, __table_0__.displayname AS __t0_c0__ FROM __table_0__");
 }
 
 #[actix_rt::test]
 async fn handle_named_operation() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let gql_query = "
         query named_operation {
             siteUsers{
@@ -138,5 +138,5 @@ async fn handle_named_operation() {
             }
         }
         ";
-    pogg.build_root(gql_query).unwrap();
+    pogg.parse_graphql(gql_query).unwrap();
 }

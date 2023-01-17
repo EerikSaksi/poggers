@@ -24,7 +24,7 @@ pub struct GraphQLSchema {
 #[derive(Debug)]
 pub struct JsonBuilderContext {
     pub sql_query: String,
-    pub table_query_infos: Vec<TableQueryInfo>,
+    pub table_metadata: Vec<TableMetadata>,
     pub root_key_name: String,
     pub root_query_is_many: bool,
 }
@@ -35,9 +35,9 @@ pub struct SqlQueryComponents {
     order_by: String,
 }
 #[derive(Debug)]
-pub struct TableQueryInfo {
-    graphql_fields: Vec<ColumnInfo>,
-    primary_key_range: std::ops::Range<usize>,
+pub struct TableMetadata {
+    pub graphql_fields: Vec<ColumnInfo>,
+    pub primary_key_range: std::ops::Range<usize>,
 }
 #[derive(Debug)]
 pub enum ColumnInfo {
@@ -57,7 +57,7 @@ impl GraphQLSchema {
         }
     }
 
-    pub fn build_root(&self, query: &str) -> Result<JsonBuilderContext, String> {
+    pub fn parse_graphql(&self, query: &str) -> Result<JsonBuilderContext, String> {
         let ast;
         match parse_query::<&str>(query) {
             Ok(tree) => ast = tree,
@@ -82,7 +82,7 @@ impl GraphQLSchema {
             filter: String::from(" WHERE "),
             order_by: String::new(),
         };
-        let mut table_query_infos: Vec<TableQueryInfo> = vec![];
+        let mut table_metadata: Vec<TableMetadata> = vec![];
 
         let root_key_name: &str;
         if let Selection::Field(field) = &selection_set.node.items.get(0).unwrap().node {
@@ -109,7 +109,7 @@ impl GraphQLSchema {
             };
             if let Err(e) = &self.build_selection(
                 &mut sql,
-                &mut table_query_infos,
+                &mut table_metadata,
                 selection_set.node.items.get(0).unwrap(),
                 node_index,
                 0,
@@ -184,7 +184,7 @@ impl GraphQLSchema {
 
             Ok(JsonBuilderContext {
                 sql_query,
-                table_query_infos,
+                table_metadata,
                 root_key_name: root_key_name.to_owned(),
                 root_query_is_many: is_many,
             })
@@ -196,7 +196,7 @@ impl GraphQLSchema {
     fn build_selection(
         &self,
         sql: &mut SqlQueryComponents,
-        table_query_infos: &mut Vec<TableQueryInfo>,
+        table_metadata: &mut Vec<TableMetadata>,
         selection: &Positioned<Selection>,
         node_index: NodeIndex<u32>,
         column_offset: usize,
@@ -304,7 +304,7 @@ impl GraphQLSchema {
                     }
                 }
             }
-            table_query_infos.push(TableQueryInfo {
+            table_metadata.push(TableMetadata {
                 graphql_fields,
                 //the value at which primary keys start is the column offset before we started
                 //adding any new columns (column offset was copied before we started modifiying it
@@ -317,7 +317,7 @@ impl GraphQLSchema {
             for child in children {
                 match self.build_selection(
                     sql,
-                    table_query_infos,
+                    table_metadata,
                     child.0,
                     child.1,
                     new_col_offset,

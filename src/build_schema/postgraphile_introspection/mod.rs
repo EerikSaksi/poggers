@@ -156,13 +156,13 @@ impl PostgresEntity {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::build_schema::get_pogg_and_client;
+    use crate::build_schema::get_schema_and_client;
     use query::introspection_query_data;
     use std::collections::HashSet;
 
     #[actix_rt::test]
     async fn test_attributes_present() {
-        let (_, client) = get_pogg_and_client().await;
+        let (_, client) = get_schema_and_client().await;
         let IntrospectionOutput {
             type_map: _,
             class_map,
@@ -188,7 +188,7 @@ mod test {
     //}
     #[actix_rt::test]
     async fn constraints_present() {
-        let (_, client) = get_pogg_and_client().await;
+        let (_, client) = get_schema_and_client().await;
         let IntrospectionOutput {
             type_map: _,
             class_map,
@@ -219,7 +219,7 @@ mod test {
 
     #[actix_rt::test]
     async fn all_tables_present() {
-        let (_, client) = get_pogg_and_client().await;
+        let (_, client) = get_schema_and_client().await;
         let class_map = introspection_query_data(&client).await.class_map;
         let expected_names = [
             "postlink",

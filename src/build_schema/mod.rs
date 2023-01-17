@@ -70,7 +70,7 @@ impl From<(&str, bool)> for PostgresType {
                 "double precision" | "float8" | "numeric" => PostgresType::Float,
                 "boolean" => PostgresType::Boolean,
                 "json" | "jsonb" => PostgresType::Json,
-                other => {
+                _ => {
                     panic!("Unhandled type");
                 }
             }
@@ -248,7 +248,7 @@ fn gen_edge_field_name(table_name: &str, foreign_cols: &[String], pluralize: boo
 }
 
 #[allow(dead_code)]
-pub async fn get_pogg_and_client() -> (GraphQLSchema, Client) {
+pub async fn get_schema_and_client() -> (GraphQLSchema, Client) {
     let (client, connection) = deadpool_postgres::tokio_postgres::connect(
         "postgres://postgres:postgres@127.0.0.1:5432/pets",
         deadpool_postgres::tokio_postgres::NoTls,

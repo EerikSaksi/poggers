@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use postgres::Row;
 
 impl PostgresType {
-    fn stringify_column(&self, row: Row, index: usize) -> String {
+    pub fn stringify_column(&self, row: &Row, index: usize) -> String {
         match self {
             PostgresType::Int => {
                 let col_val: i32 = row.get(index);

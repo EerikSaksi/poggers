@@ -1,5 +1,5 @@
 use super::*;
-use crate::build_schema::get_pogg_and_client;
+use crate::build_schema::get_schema_and_client;
 use petgraph::graph::Edge;
 fn assert_some_edge_eq(
     field_names: (&str, &str),
@@ -42,7 +42,7 @@ fn assert_some_edge_eq(
 
 #[actix_rt::test]
 async fn test_one_to_many() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     assert_some_edge_eq(
         ("postsByOwneruserid", "siteUserByOwneruserid"),
@@ -63,7 +63,7 @@ async fn test_one_to_many() {
 
 #[actix_rt::test]
 async fn test_composite_primary_keys() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     assert_some_edge_eq(
         (
@@ -89,7 +89,7 @@ async fn test_composite_primary_keys() {
 
 #[actix_rt::test]
 async fn check_id_primary_keys() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     for weight in g.node_weights() {
         //every table but the parent table one has primary key as id
@@ -107,7 +107,7 @@ async fn check_id_primary_keys() {
 
 #[actix_rt::test]
 async fn foreign_primary_key() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     let node = g
         .node_indices()
@@ -124,7 +124,7 @@ async fn foreign_primary_key() {
 
 #[actix_rt::test]
 async fn field_to_operation() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let field_to_operation = pogg.field_to_operation;
     assert!(
         field_to_operation.contains_key("siteUsers"),
@@ -138,7 +138,7 @@ async fn field_to_operation() {
 
 #[actix_rt::test]
 async fn post_has_owneruserid() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert!(
@@ -150,7 +150,7 @@ async fn post_has_owneruserid() {
 
 #[actix_rt::test]
 async fn post_has_correct_num_fields() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     let post_node = g.node_weights().find(|n| n.table_name == "post").unwrap();
     assert_eq!(
@@ -163,7 +163,7 @@ async fn post_has_correct_num_fields() {
 
 #[actix_rt::test]
 async fn check_nullability() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let g = pogg.g;
     let user_node = g
         .node_weights()
@@ -193,7 +193,7 @@ async fn check_nullability() {
 
 #[actix_rt::test]
 async fn test_delete_comment_mutation() {
-    let (pogg, _) = get_pogg_and_client().await;
+    let (pogg, _) = get_schema_and_client().await;
     let field_to_operation = pogg.field_to_operation;
     assert!(
         field_to_operation.contains_key("deleteComment"),
