@@ -2,7 +2,7 @@ mod build_schema;
 mod generate_sql;
 mod state_machine_builder;
 use crate::generate_sql::GraphQLSchema;
-use tokio_postgres::NoTls;
+use tokio_postgres::{NoTls, Row};
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 async fn main() {
@@ -30,10 +30,10 @@ async fn main() {
             }
         }
     ";
-    let ctx = schema.parse_graphql(gql_query).unwrap();
+    let mut ctx = schema.parse_graphql(gql_query).unwrap();
+    ctx.sql_query.push_str(" limit 5");
     let rows = client.query(&ctx.sql_query, &[]).await.unwrap();
     let mut builder = state_machine_builder::JsonBuilder::new(rows.iter(), ctx.table_metadata, &ctx.root_key_name);
-    builder.exec_until_state_change();
     builder.exec_until_state_change();
     println!("{}", builder.s);
 }
